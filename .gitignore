@@ -40,3 +40,4 @@ temp
 ~testout~
 paket-files/
 /out
+src/Xake.*.xml

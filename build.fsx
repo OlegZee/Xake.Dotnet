@@ -1,5 +1,5 @@
 #r "paket:
-    nuget Xake ~> 1.0 prerelease //"
+    nuget Xake ~> 1.1 prerelease //"
 
 #if !FAKE
 #load ".fake/build.fsx/intellisense.fsx"
@@ -88,7 +88,7 @@ do xakeScript {
                             "--configuration"; "Release"
                             "--framework"; framework
                             "--output"; "../out/" + framework
-                            "/p:DocumentationFile=Xake.xml"
+                            "/p:DocumentationFile=Xake.Dotnet.xml"
                         ]
         }
     ]
