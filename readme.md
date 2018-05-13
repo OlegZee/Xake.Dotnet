@@ -2,6 +2,10 @@ Xake is a make utility made for .NET on F# language. Xake is inspired by [shake]
 
 See [Xake documentation](https://github.com/xakebuild/Xake/wiki/introduction) for more details.
 
+## Prerequisites
+
+The build sctipt expects dotnet 2.1.300+ to build the package. That version properly writes package metadata.
+
 ## Csc task
 
 The simple script looks like:

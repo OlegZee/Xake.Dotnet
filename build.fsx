@@ -79,12 +79,14 @@ do xakeScript {
                 }
 
             do! needFiles allFiles
+            let! version = getVersion()
 
             for framework in frameworks do
                 do! dotnet
                         [
                             "build"
                             "src"
+                            "/p:Version=" + version
                             "--configuration"; "Release"
                             "--framework"; framework
                             "--output"; "../out/" + framework
