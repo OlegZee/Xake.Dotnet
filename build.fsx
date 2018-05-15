@@ -27,7 +27,7 @@ let makePackageName () = recipe {
         getVar("SUFFIX")
         |> Recipe.map (
             function
-            | None -> "-alpha"
+            | None -> "-beta"
             | Some "" -> "" // this is release!
             | Some s -> "-" + s
             )
