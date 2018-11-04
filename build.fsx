@@ -28,10 +28,7 @@ do xakeScript {
     // consolelog Verbosity.Normal
 
     rules [
-        "main"  => recipe {
-            do! need ["build"]
-            do! need ["test"]
-            }
+        "main" <<< ["build"; "test"]
 
         "clean" => rm {dir "out"}
         "build" <==
@@ -79,10 +76,8 @@ do xakeScript {
                     "/p:DocumentationFile=Xake.Dotnet.xml"
                   ]
         }
-    ]
 
-    (* Nuget publishing rules *)
-    rules [
+        (* Nuget publishing rules *)
         "pack" => recipe {
             let! version = getVersion()
             do! need ["out" </> makePackageName version]
