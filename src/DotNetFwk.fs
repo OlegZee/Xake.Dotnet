@@ -227,7 +227,7 @@ module DotNetFwk =
     /// </summary>
     /// <param name="fwk"></param>
     let locateFramework =
-        CommonLib.memoize impl.locateFramework
+        Util.memoize impl.locateFramework
 
     /// <summary>
     /// Locates "global" assembly for specific framework
@@ -250,4 +250,4 @@ module DotNetFwk =
             )
             |> function | Some x -> x | None -> file
             
-        CommonLib.memoize lookupFile
+        Util.memoize lookupFile

@@ -30,8 +30,10 @@ packages
 *.swp
 TestResult.*
 .xake*
-.fake
+.fake/
 .vs/
+.vscode/
+.ionide/
 samples/**/*.exe
 samples/**/*.dll
 samples/**/*.fsx.lock
