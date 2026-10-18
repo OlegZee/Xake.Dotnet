@@ -290,9 +290,8 @@ any of them shows in `check-locks` as `~ Import <path>`.
 `build` above compiles entries in lock order. With `ProjectReference`s, a reference in the lock
 has no hash and points at the path msbuild would have built it at. Use one file rule per
 output and map the reference to the other entry's `/out:`: the rule in
-[../hermetic-guide.md](../hermetic-guide.md#6-building-from-an-imported-lock) (from
-`docs/features/hermetic-build/import.fsx`, run by the maintainers on dataengine, 36/36
-byte-identical).
+[../hermetic-guide.md](../hermetic-guide.md#6-building-from-an-imported-lock) (run by the maintainers on a
+three-project library repository, 36/36 byte-identical).
 
 ### `$(SourceRevisionId)`
 
@@ -426,7 +425,7 @@ before 0.2); `-d NUGET_FETCH=off` does the same for the whole build. The per-tar
 `NUGET_PACKAGES` and `NUGET_FETCH` *script variables* reach this side too (`Restore.resolve`:
 `DotNetFwk.packageRoot`, `fetchEnabled`).
 
-The `Restore.into` form, from [restore.md](restore.md) (run by the maintainers on dataengine,
+The `Restore.into` form, from [restore.md](restore.md) (run by the maintainers on repo-a,
 not for this page):
 
 ```fsharp

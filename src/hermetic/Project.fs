@@ -29,7 +29,7 @@ module Project =
         /// once, without `TargetFramework`, so its `project.assets.json` holds every target,
         /// and the design-time build then runs per framework against that one restore. One
         /// lock per framework was what made two frameworks of one project impossible to
-        /// import concurrently (verify-dataengine.md §6)
+        /// import concurrently (the repo-a verification notes §6)
         Frameworks: string list
         Configuration: string
         /// What else selects the compilation, e.g. `["Brand", "Acme"]`. Each distinct set
@@ -42,7 +42,7 @@ module Project =
         Output: string
         /// Extra roots to tokenize paths against, beyond the built-in three (`$(NuGetPackageRoot)`,
         /// `$(ProjectRoot)`, `$(DotnetRoot)`) -- one token per sibling repository, e.g.
-        /// `["$(DataEngineRoot)", "/abs/path/to/dataengine"]` when a `Projects` entry or a
+        /// `["$(RepoARoot)", "/abs/path/to/repo-a"]` when a `Projects` entry or a
         /// project reference resolves outside `$(ProjectRoot)` (the current directory). See
         /// `Roots.make`.
         Roots: (string * string) list
@@ -347,7 +347,7 @@ module Project =
     ///    it stops walking the project graph, so a project's restore no longer rewrites the
     ///    assets files of the projects it references -- which is the half `withProjectLock`
     ///    never covered and what made two frameworks of one project impossible to import
-    ///    concurrently (verify-dataengine.md §6). Verified on the dataengine fixture: with the
+    ///    concurrently (the repo-a verification notes §6). Verified on the repo-a fixture: with the
     ///    flag, only the restored project's own assets file is written.
     /// 2. **A design-time build per framework**, `-p:TargetFramework=&lt;f&gt;` and **no**
     ///    `-restore` -- the restore above already produced everything it reads.

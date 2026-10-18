@@ -30,7 +30,7 @@ versions use different namespace URIs for the same element.
 `project.assets.json`'s `targets` section keys on `"<framework>"` or `"<framework>/<rid>"`,
 where `<framework>` is the alias (`netstandard2.0`) for a project with `TargetFrameworks` and the
 **full framework name** (`.NETStandard,Version=v2.0`) for one with a single `TargetFramework` --
-dataengine's, found when the import first read its assets (2026-09-24; page's multi-target
+repo-a's, found when the import first read its assets (2026-09-24; page's multi-target
 projects had hidden it). `readAssets` tries the alias and `Nuget.frameworkFullName alias`
 (`netstandard*`, `netcoreapp*`, `net4xx` folded; `net5.0`+ is its own full name), exact match
 first, then a prefix match -- the rid-qualified entries are for a self-contained publish, not the

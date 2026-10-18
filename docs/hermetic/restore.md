@@ -103,7 +103,7 @@ against the ~700 SHA-256 the hash check computes immediately afterwards: noise.
 
 **The synthesized project lives under the build's project root** (`obj/xake/restore/`), not
 in a temp directory. NuGet discovers `nuget.config` from the project's own directory, so a
-lock whose packages come from a company feed is otherwise simply unrestorable — the dataengine
+lock whose packages come from a company feed is otherwise simply unrestorable — the repo-a
 fixture has exactly that shape. The repository's msbuild customizations, which are written for
 real projects and not for a download shim, are switched off on the command line instead:
 `ImportDirectoryBuildProps`, `ImportDirectoryBuildTargets`, `ImportDirectoryPackagesProps`,
@@ -184,7 +184,7 @@ package out of, and the base cannot depend on `Restore`, so it restores through
 
 ## Measured
 
-Fixture: `git archive origin/develop` of `acme-data-engine` into a temp dir, three
+Fixture: `git archive origin/develop` of `repo-a` into a temp dir, three
 projects × two brands, netstandard2.0, imported with `-t 1`, built with the package folder
 pointed at `.packages/` inside the copy (macOS, 8 cores, SDK 8.0.x, `-p:NuGetAudit=false`).
 The lock entries name 113–115 references each, essentially all of them from
