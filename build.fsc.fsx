@@ -53,12 +53,15 @@ module XakeFloor =
         | releases -> List.last releases
 
     /// Writes `floor` as the lower bound of the range; the upper bound stays. Returns the floor
-    /// it replaced.
+    /// it replaced. A UTF-8 BOM the file starts with is kept (`ReadAllText` drops it).
     let write (floor: string) =
+        let bytes = System.IO.File.ReadAllBytes projectFile
+        let bom = bytes.Length >= 3 && bytes.[0] = 0xEFuy && bytes.[1] = 0xBBuy && bytes.[2] = 0xBFuy
         let text = System.IO.File.ReadAllText projectFile
         let m = rangeRx.Match text
         if not m.Success then failwith $"{projectFile}: no default XakeVersion range to move"
-        System.IO.File.WriteAllText (projectFile, rangeRx.Replace (text, "${1}" + floor + "${3}", 1))
+        let encoding = System.Text.UTF8Encoding (encoderShouldEmitUTF8Identifier = bom)
+        System.IO.File.WriteAllText (projectFile, rangeRx.Replace (text, "${1}" + floor + "${3}", 1), encoding)
         m.Groups.[2].Value
 
 // Own database (.xake.fsc): the phony targets (build, test, clean) share names with build.fsx's.
