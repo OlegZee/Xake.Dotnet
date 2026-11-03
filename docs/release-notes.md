@@ -6,7 +6,7 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
-## 4.0.0 (unreleased)
+## 4.0.0 (2026-11-03)
 
 The first release from this repository, on `Xake` 4.0.0. The engine's own changes (patterns,
 variables, typed targets) are in
