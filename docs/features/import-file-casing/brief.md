@@ -169,5 +169,9 @@ Constraint: only **paths to files** change. A resource's name (msbuild's manifes
    checked before anything is built); the fix is a re-import, not a fallback.
 5. Resource names are not touched (see the constraint).
 6. Yes: the legacy `Project.import` route too.
-7. (open)
-8. (open)
+7. `ResXFileRef` in a `.resx`: the import resolves each referenced file through the git index; the
+   lock records the pairs (the resx's spelling -> the repository path, hashed as the resx's inputs);
+   the resx compile reads the file at the recorded path. The `.resx` itself is not rewritten; no
+   case-insensitive lookup at replay.
+8. `<include file=...>` in C# doc comments: the import finds them and warns about each one with both
+   spellings; the fix is the consumer's, in the sources.

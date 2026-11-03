@@ -14,6 +14,12 @@ resolver (git index for tracked files, a directory walk for the rest), the effec
 Riskiest point: embedded resource names. msbuild derives them from the item's spelling, and
 `ResourceManager` lookups are case-sensitive: correcting a resource's `file` must not change its name.
 
+The owner answered all eight decisions (brief §7, 2026-11-04): the git index is the truth (read
+with `git ls-files`, never parsed by us); only paths change, never a resource's name or a file's
+content; every difference is warned at import; the replay is unchanged (an old miscased lock fails
+as stale; the fix is a re-import); `ResXFileRef` files are recorded in the lock; doc `<include>`
+references are warned only.
+
 ## Next step
 
-The owner answers the brief's questions (`brief.md`, section 6). Then the first item of `tracker.md`.
+Implementation, in the tracker's order, starting with the resolver.
