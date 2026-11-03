@@ -27,28 +27,38 @@
     "Dotnet.resgen.fs",
     "Dotnet.Msbuild.fs"
   ],
-  "projectRefs": ["Xake"],
   "packages": [
+    { "id": "Xake", "version": "[4.0.0-preview.1, 5.0)" },
     { "id": "System.Resources.Extensions", "version": "8.0.0" },
     { "id": "FSharp.Core", "version": "8.0.100" }
   ],
   "options": { "doc": true },
-  "internalsVisibleTo": ["tests"],
+  "internalsVisibleTo": ["dotnet.tests"],
   "byFramework": {
     "net462": { "references": ["System.Windows.Forms"] },
     "netstandard2.0": { "packages": [{ "id": "Microsoft.Win32.Registry", "version": "5.0.0" }] }
   },
   "package": {
-    "id": "Xake",
-    "description": "Xake build tool: the engine and the tasks for full .NET framework",
+    "id": "Xake.Dotnet",
+    "description": "Xake build tool: the .NET tasks (csc, fsc, msbuild, resgen, project descriptions) and reproducible builds (lock files, restore, SBOM, verification, packing, signing)",
     "authors": "OlegZee",
     "copyright": "(c) OlegZee 2014-2026",
-    "tags": ["fsharp", "build", "make", "buildtool", "automation", "shake"],
+    "tags": [
+      "fsharp",
+      "build",
+      "make",
+      "buildtool",
+      "csc",
+      "fsc",
+      "dotnet",
+      "reproducible",
+      "lockfile",
+      "sbom"
+    ],
     "license": "MIT",
-    "projectUrl": "https://github.com/OlegZee/Xake",
-    "repository": { "type": "git", "url": "https://github.com/OlegZee/Xake" },
+    "projectUrl": "https://github.com/OlegZee/Xake.Dotnet",
+    "repository": { "type": "git", "url": "https://github.com/OlegZee/Xake.Dotnet" },
     "icon": "../../Icon.png",
-    "readme": "../../readme.md",
-    "bundle": ["Xake"]
+    "readme": "readme.md"
   }
 }

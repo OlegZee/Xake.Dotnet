@@ -13,19 +13,53 @@ open Xake.Hermetic.Dotnet
 open Testjobs
 
 let vars = {|
-    Version         = Var.create<string>(description = "Xake package version") |> withDefault "0.0.1"
-    HermeticVersion = Var.create<string>(description = "Xake.Hermetic.Dotnet package version") |> withDefault "0.3.0"
-    TestFilter      = Var.string(cliArg = "FILTER", envVar = "FILTER", description = "Runs only the tests whose name matches this regex, e.g. 'Lock'")
+    Version    = Var.create<string>(description = "Xake.Dotnet package version (both assemblies)") |> withDefault "0.0.1"
+    TestFilter = Var.string(cliArg = "FILTER", envVar = "FILTER", description = "Runs only the tests whose name matches this regex, e.g. 'Lock'")
+    XakeFloor  = Var.string(cliArg = "XAKE_FLOOR", description = "bump-base: the Xake version to build against (default: the newest on nuget.org)")
 |}
 
-let projects = [ "Xake", "src/core"; "Xake.Dotnet", "src/dotnet"; "Xake.Hermetic.Dotnet", "src/hermetic" ]
+// The engine is the published `Xake` package (a package reference in the descriptions), not a
+// project of this script.
+let projects = [ "Xake.Dotnet", "src/dotnet"; "Xake.Hermetic.Dotnet", "src/hermetic" ]
 let descriptions = !! "src/*/xake.project.json"
 let dirOf = dict projects
 let descriptionOf name = $"{dirOf[name]}/xake.project.json"
 let lockOf name cfg = $"locks/{name}/{cfg}.json"
 let outOf cfg fwk (_: string) = $"out/{cfg}/{fwk}"
-let versions = [ "src/hermetic/**", vars.HermeticVersion; "**", vars.Version ]   // first mask matching the project
+let versions = [ ("**", vars.Version) ]   // one package, one version
 let fingerprints = "xake.fingerprints"
+
+/// bump-base's view of the engine version: the versions nuget.org lists and the floor of the
+/// `XakeVersion` range in src/dotnet/Xake.Dotnet.fsproj (the one place it is written).
+module XakeFloor =
+    let projectFile = "src/dotnet/Xake.Dotnet.fsproj"
+    let private rangeRx =
+        System.Text.RegularExpressions.Regex @"(<XakeVersion Condition=""'\$\(XakeVersion\)' == ''"">\[)([^,\]]+)(,[^<]*</XakeVersion>)"
+
+    /// The Xake versions on nuget.org, oldest first (the flat-container index, previews included).
+    let published () =
+        use http = new System.Net.Http.HttpClient ()
+        let json = http.GetStringAsync("https://api.nuget.org/v3-flatcontainer/xake/index.json").Result
+        use doc = System.Text.Json.JsonDocument.Parse json
+        [ for v in doc.RootElement.GetProperty("versions").EnumerateArray () -> v.GetString () ]
+
+    /// The default floor: the newest 4.x (or later) release, else the newest 4.x preview.
+    let newest (published: string list) =
+        let major (v: string) = int (v.Split('.').[0])
+        let current = published |> List.filter (fun v -> major v >= 4)
+        match current |> List.filter (fun v -> not (v.Contains "-")) with
+        | [] when current = [] -> failwith "bump-base: no Xake 4.x on nuget.org"
+        | [] -> List.last current
+        | releases -> List.last releases
+
+    /// Writes `floor` as the lower bound of the range; the upper bound stays. Returns the floor
+    /// it replaced.
+    let write (floor: string) =
+        let text = System.IO.File.ReadAllText projectFile
+        let m = rangeRx.Match text
+        if not m.Success then failwith $"{projectFile}: no default XakeVersion range to move"
+        System.IO.File.WriteAllText (projectFile, rangeRx.Replace (text, "${1}" + floor + "${3}", 1))
+        m.Groups.[2].Value
 
 // Own database (.xake.fsc): the phony targets (build, test, clean) share names with build.fsx's.
 do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
@@ -55,12 +89,29 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
         }
         command "update-locks" { for name, _ in projects do do! need [ $"lock::{name}::Release" ] }
 
-        // Until Xake 4.0 Xake.Hermetic.Dotnet builds on the in-repo Xake (project references to
-        // src/core and src/dotnet, owner 2026-10-31): there is no Xake floor to move. At 4.0
-        // Xake.Dotnet and the hermetic package leave the `Xake` package together
-        // (docs/features/release-process).
+        // Moves the Xake floor (release-process E1): -d XAKE_FLOOR=<v> (default: the newest Xake on
+        // nuget.org; previews count while no 4.x release exists) becomes the floor of
+        // `XakeVersion` in src/dotnet's project file, the descriptions are re-imported, and Xake
+        // is re-resolved in the locks only. Refuses a version nuget.org does not list (a floor
+        // that does not exist warns NU1603 on every restore). Commit the project file,
+        // descriptions, locks and xake.fingerprints.
         command "bump-base" {
-            failwith "bump-base: Xake.Hermetic.Dotnet builds on the in-repo Xake until 4.0 (project references); there is no Xake floor to move"
+            let! requested = vars.XakeFloor
+            let published = XakeFloor.published ()
+            let floor = match requested with Some v -> v | None -> XakeFloor.newest published
+            if not (List.contains floor published) then
+                failwith $"Xake {floor} is not on nuget.org; a floor that does not exist warns NU1603 on every restore"
+            let previous = XakeFloor.write floor
+            do! trace Level.Message "Xake floor %s -> %s (%s)" previous floor XakeFloor.projectFile
+            // right after a release the local NuGet HTTP cache still lists the old versions (it
+            // keeps a package's version list for 30 minutes) and the lock's restore fails NU1102
+            if previous <> floor then
+                do! sh "dotnet nuget locals http-cache --clear" { failonerror }
+            do! need [ "import" ]
+            // the lock keeps the Xake it holds unless LOCK_REFRESH names it; the lock rule reads
+            // the script variable, else the environment, and this run asks for nothing else
+            System.Environment.SetEnvironmentVariable ("LOCK_REFRESH", "Xake")
+            do! need [ "update-locks" ]
         }
         "check" => Fingerprints.check fingerprints
 

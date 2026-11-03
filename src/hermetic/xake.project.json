@@ -25,22 +25,9 @@
     "Pack.fs",
     "Sign.fs"
   ],
-  "projectRefs": ["Xake", "Xake.Dotnet"],
+  "projectRefs": ["Xake.Dotnet"],
   "packages": [{ "id": "FSharp.Core", "version": "8.0.100" }],
   "options": { "doc": true },
   "internalsVisibleTo": ["hermetic.tests"],
-  "byFramework": { "net462": { "references": ["System.IO.Compression"] } },
-  "package": {
-    "id": "Xake.Hermetic.Dotnet",
-    "description": "Reproducible .NET builds for Xake: lock files, restore, SBOM, verification, packing and signing",
-    "authors": "OlegZee",
-    "copyright": "(c) OlegZee 2014-2026",
-    "tags": ["reproducible", "lockfile", "sbom", "cyclonedx", "hermetic", "dotnet"],
-    "license": "MIT",
-    "projectUrl": "https://github.com/OlegZee/Xake",
-    "repository": { "type": "git", "url": "https://github.com/OlegZee/Xake" },
-    "icon": "../../Icon.png",
-    "readme": "readme.md",
-    "bundle": ["Xake"]
-  }
+  "byFramework": { "net462": { "references": ["System.IO.Compression"] } }
 }
