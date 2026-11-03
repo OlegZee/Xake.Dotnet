@@ -20,19 +20,21 @@ let vars = {|
 |}
 
 // The engine is the published `Xake` package (a package reference in the descriptions), not a
-// project of this script.
-let projects = [ "Xake.Dotnet", "src/dotnet"; "Xake.Hermetic.Dotnet", "src/hermetic" ]
-let descriptions = !! "src/*/xake.project.json"
-let dirOf = dict projects
-let descriptionOf name = $"{dirOf[name]}/xake.project.json"
-let lockOf name cfg = $"locks/{name}/{cfg}.json"
-let outOf cfg fwk (_: string) = $"out/{cfg}/{fwk}"
-let versions = [ ("**", vars.Version) ]   // one package, one version
-let fingerprints = "xake.fingerprints"
+// project here. The paths come from the patterns; the functions the Locks API takes are made of them.
+type ProjG = { dir: string; name: string }
+let Fsproj = Target<ProjG> "src/(dir:*)/(name:*).fsproj"
+let Desc = Target<string> "src/(dir:*)/xake.project.json"   // beside the project file
 type LockG = { name: string; cfg: string }
 let Lock = Command<LockG> "lock::(name:*)::(cfg:*)"
+let LockFile = Target<LockG> "locks/(name:*)/(cfg:*).json"
 type DllG = { cfg: string; fwk: string; name: string }
 let Dll = Target<DllG> "out/(cfg:*)/(fwk:*)/(name:*).dll"
+let projects = [ { dir = "dotnet"; name = "Xake.Dotnet" }; { dir = "hermetic"; name = "Xake.Hermetic.Dotnet" } ]
+let descriptionOf name = Desc.Format (projects |> List.find (fun p -> p.name = name)).dir
+let lockOf name cfg = LockFile.Format { name = name; cfg = cfg }
+let outOf cfg fwk name = System.IO.Path.GetDirectoryName (Dll.Format { cfg = cfg; fwk = fwk; name = name })
+let versions = [ ("**", vars.Version) ]   // one package, one version
+let fingerprints = "xake.fingerprints"
 
 /// bump-base's view of the engine version: the versions nuget.org lists and the floor of the
 /// `XakeVersion` range in src/dotnet/Xake.Dotnet.fsproj (the one place it is written).
@@ -84,18 +86,18 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
 
         // (a) project file -> description, under msbuild; records the msbuild files it read
         command "import" {
-            let! imported = Import.descriptions [ for name, dir in projects -> $"{dir}/{name}.fsproj" ] Description.beside []
+            let! imported = Import.descriptions (Fsproj.For projects) Description.beside []
             for i in imported do do! Fingerprints.record fingerprints i.Description i.Inputs
         }
         // (b) description -> lock, referenced projects first; `-d LOCK_REFRESH=FSharp.Core` (or `*`) re-resolves.
         // Lock rules run one at a time (`for`): each records its line into the one fingerprint file.
-        Lock.Rule <| fun { name = name; cfg = cfg } -> recipe {
-            let! d = Description.load (descriptionOf name)
-            for r in d.ProjectRefs do do! need [ Lock.Format { name = r; cfg = cfg } ]
-            do! Locks.generate lockOf outOf cfg (descriptionOf name)
-            do! Fingerprints.record fingerprints (lockOf name cfg) (descriptionOf name :: [ for r in d.ProjectRefs -> lockOf r cfg ])
+        Lock.Rule <| fun m -> recipe {
+            let! d = Description.load (descriptionOf m.name)
+            for r in d.ProjectRefs do do! need [ Lock.Format { m with name = r } ]
+            do! Locks.generate lockOf outOf m.cfg (descriptionOf m.name)
+            do! Fingerprints.record fingerprints (LockFile.Format m) (descriptionOf m.name :: LockFile.For [ for r in d.ProjectRefs -> { m with name = r } ])
         }
-        command "update-locks" { for name, _ in projects do do! need [ Lock.Format { name = name; cfg = "Release" } ] }
+        command "update-locks" { for p in projects do do! need [ Lock.Format { name = p.name; cfg = "Release" } ] }
 
         // Moves the Xake floor (release-process E1): -d XAKE_FLOOR=<v> (default: the newest Xake on
         // nuget.org; previews count while no 4.x release exists) becomes the floor of
@@ -126,7 +128,7 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
         // (c) every described project's Release outputs, from the committed files only (fresh clone, CI)
         command "build" {
             do! Fingerprints.warn fingerprints
-            do! Locks.needAll descriptions "Release" lockOf outOf
+            do! Locks.needAll (Desc.Glob Desc.Any) "Release" lockOf outOf
         }
         Dll.Rule <| fun m -> Locks.compileAs (lockOf m.name m.cfg) m.fwk versions
         // pack (nupkg from out/Release, no second msbuild run) comes with Package.nupkg (fsc-rework PR 8)

@@ -26,12 +26,11 @@ type Slice =
     /// every fixture of the project not named by its other slices
     | Rest
 
-type TestJob = { Project: string; Name: string; Slice: Slice; Server: bool }
+/// A job's key, `test::<project>/<slice>`: the test project (`dotnet` is src/dotnet.tests) and the slice's name.
+type JobG = { project: string; slice: string }
+type TestJob = { Key: JobG; Slice: Slice; Server: bool }
 
-/// Test project key (`test::<key>/<slice>`) -> project folder.
-let testProjects = [ "dotnet", "src/dotnet.tests"; "hermetic", "src/hermetic.tests" ]
-
-let private job project name slice = { Project = project; Name = name; Slice = slice; Server = false }
+let private job project name slice = { Key = { project = project; slice = name }; Slice = slice; Server = false }
 
 let testJobs = [
     // the compiler server's users, serial: dotnet/server, then hermetic/server
@@ -49,29 +48,26 @@ let testJobs = [
     job "hermetic" "rest" Rest                                                                                // ~18 s
 ]
 
-type JobG = { project: string; slice: string }
 let TestJob = Command<JobG> "test::(project:*)/(slice:*)"
 let TestBuild = Command<string> "test-build::(project:*)"
-let testJobName job = $"{job.Project}/{job.Name}"
-let testJobTarget job = TestJob.Format { project = job.Project; slice = job.Name }
-let testJob project name = testJobs |> List.find (fun j -> j.Project = project && j.Name = name)
-let testProjectDir project = testProjects |> List.find (fst >> (=) project) |> snd
+let TestSrc = Target<string> "src/(project:*).tests"
+/// Where a job writes its trx, console log and blame files: a folder of its own.
+let TestOut = Target<JobG> "out/test/(project:*)/(slice:*)"
+let TestLog = Target<JobG> "out/test/(project:*)/(slice:*)/console.log"
 
 /// The jobs a job waits for: a server job, for the server job before it.
 let testJobNeeds job =
     if not job.Server then [] else
     testJobs |> List.filter (fun j -> j.Server) |> List.takeWhile ((<>) job) |> List.rev |> List.truncate 1
-    |> List.map testJobTarget
+    |> List.map (fun j -> TestJob.Format j.Key)
 
 /// The compiler server switch of a job's `dotnet test`: on for the server jobs (their tests
 /// need it), off for every other job (it never touches the server).
 let testJobEnv job = "XAKE_CSC_SERVER", (if job.Server then "on" else "off")
-/// Where a job writes its trx, console log and blame files: a folder of its own.
-let testJobDir job = $"out/test/{job.Project}/{job.Name}"
 
 /// Empties a job's folder before its run: only the last run's files are kept.
 let resetTestJobDir job =
-    let dir = testJobDir job
+    let dir = TestOut.Format job.Key
     if System.IO.Directory.Exists dir then System.IO.Directory.Delete (dir, true)
     System.IO.Directory.CreateDirectory dir |> ignore
 
@@ -85,7 +81,7 @@ let testWhereOf job (filter: string option) =
         match job.Slice with
         | Fixtures fs -> anyOf fs
         | Rest ->
-            match [ for j in testJobs do if j.Project = job.Project then yield! mine j.Slice ] with
+            match [ for j in testJobs do if j.Key.project = job.Key.project then yield! mine j.Slice ] with
             | [] -> ""
             | others -> $"!({anyOf others})"
     match slice, filter with
@@ -97,7 +93,7 @@ let testWhereOf job (filter: string option) =
 /// `dotnet test` arguments of a job (after the project and `-c Release --no-build`); they end
 /// with `-- NUnit.Where=...`, so other options go before them.
 let testArgs job filter =
-    [ yield! [ "--results-directory"; testJobDir job; "--logger"; "\"trx;LogFileName=test.trx\"" ]
+    [ yield! [ "--results-directory"; TestOut.Format job.Key; "--logger"; "\"trx;LogFileName=test.trx\"" ]
       for w in Option.toList (testWhereOf job filter) do yield! [ "--"; $"\"NUnit.Where={w}\"" ] ]
 
 /// The lines of `dotnet test` output that go to the console: the summary and the failed tests
@@ -109,27 +105,27 @@ let isTestSummary (line: string) =
 /// The test rules. The test projects are built once by msbuild (`buildArgs` are added to `dotnet
 /// build`), each job runs `dotnet test --no-build` with `testExtra` before its own arguments.
 let testRules (buildArgs: Recipe<ExecContext, string list>) (testExtra: string list) (filter: OptionalVar<string>) = [
-    "test" <== [ for j in testJobs -> testJobTarget j ]
+    "test" <== TestJob.For [ for j in testJobs -> j.Key ]
     TestBuild.Rule <| fun project -> recipe {
         let! extra = buildArgs
-        do! sh $"dotnet build {testProjectDir project} -c Release" {
+        do! sh $"dotnet build {TestSrc.Format project} -c Release" {
             args extra
             logprefix $"[test-build {project}]"
             stdoutlevel (fun l -> if l.Contains ": error " then Level.Error else Level.Info)
             failonerror }
     }
     TestJob.Rule <| fun m -> recipe {
-        let job = testJob m.project m.slice
+        let job = testJobs |> List.find (fun j -> j.Key = m)
         do! need [ TestBuild.Format m.project ]
         do! need (testJobNeeds job)   // the compiler server's users, one after another
         let! filter = filter
         resetTestJobDir job
-        do! sh $"dotnet test {testProjectDir m.project} -c Release --no-build" {
+        do! sh $"dotnet test {TestSrc.Format m.project} -c Release --no-build" {
             args (testExtra @ testArgs job filter)
             env (testJobEnv job)
-            logprefix $"[{testJobName job}]"
+            logprefix $"[{m.project}/{m.slice}]"
             stdoutlevel (fun l -> if isTestSummary l then Level.Message else Level.Info)
-            captureOutput (ToFile (Both, testJobDir job + "/console.log"))
+            captureOutput (ToFile (Both, TestLog.Format m))
             failonerror }
     }
 ]

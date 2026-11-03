@@ -91,17 +91,17 @@ do xakeScript {
     rules [
         // all jobs of one test project, e.g. `test-project::hermetic`
         TestProject.Rule <| fun project -> recipe {
-            do! need [ for j in testJobs do if j.Project = project then testJobTarget j ]
+            do! need (TestJob.For [ for j in testJobs do if j.Key.project = project then j.Key ])
         }
         "main" <<< ["build"; "test"]
 
-        "build" <== [ for lib in libraries do yield! Lib.For [ for fwk in frameworks -> { fwk = fwk; lib = lib.Name } ] ]
+        "build" <== Lib.For [ for lib in libraries do for fwk in frameworks -> { fwk = fwk; lib = lib.Name } ]
         "clean" => rm {dir "out"}
 
         // one rule compiles them all: which library and which framework is asked for
         // is read off the target being built
-        Lib.Rule <| fun m -> recipe {
-            let framework = m.fwk
+        Lib.rule {
+            let! m = matched
             let lib = library m.lib
 
             let! allFiles = getFiles <| fileset {
@@ -119,8 +119,8 @@ do xakeScript {
                 "build"
                 lib.Dir
                 "--configuration"; "Release"
-                "--framework"; framework
-                "--output"; "./out/" + framework
+                "--framework"; m.fwk
+                "--output"; System.IO.Path.GetDirectoryName (Lib.Format m)
                 "/p:Version=" + version
               ] @ xv)
         }
@@ -137,7 +137,7 @@ do xakeScript {
                 "pack"; "src/dotnet"
                 "-c"; "Release"
                 $"/p:Version={ver}"
-                "--output"; "out/pkg/"
+                "--output"; System.IO.Path.GetDirectoryName nupkg
             ]
 
             match checkPackage nupkg with
