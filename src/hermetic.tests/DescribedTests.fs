@@ -11,10 +11,11 @@ open Xake.Hermetic.Dotnet
 
 /// `fsc { project }` / `csc { project }`, `config`, `packages` and `Described.restore`: a
 /// project description compiled through the lock machinery. The fixtures under
-/// `fixtures/src/core` and `fixtures/src/dotnet` are what `xake.project.json` beside
-/// `src/core/Xake.fsproj` and `src/dotnet/Xake.Dotnet.fsproj` would hold; a test checks them
-/// against the project files, and the integration tests compile the real sources from them
-/// (a copy whose `project` points at the real project file).
+/// `fixtures/src/dotnet` and `fixtures/src/hermetic` are what `xake.project.json` beside
+/// `src/dotnet/Xake.Dotnet.fsproj` and `src/hermetic/Xake.Hermetic.Dotnet.fsproj` hold; a test
+/// checks them against the project files, and the integration tests compile the real sources
+/// from them (a copy whose `project` points at the real project file; the engine is the
+/// package `Xake`).
 ///
 /// Every test that records a lock runs with the script variable `CI=off`.
 [<TestFixture>]
@@ -86,8 +87,8 @@ type ``Described compilation``() =
     /// The fixtures are faithful to the project files: frameworks, compile items in order,
     /// package references (per framework), framework references, the doc switch.
     [<Test>]
-    member x.``the fixtures describe src/core and src/dotnet``() =
-        for dir, projectFile in [ "core", "Xake.fsproj"; "dotnet", "Xake.Dotnet.fsproj" ] do
+    member x.``the fixtures describe src/dotnet and src/hermetic``() =
+        for dir, projectFile in [ "dotnet", "Xake.Dotnet.fsproj"; "hermetic", "Xake.Hermetic.Dotnet.fsproj" ] do
             let path = fixtures </> dir </> Description.FileName
             let text = File.ReadAllText path
             let d = Description.parse text
@@ -98,12 +99,14 @@ type ``Described compilation``() =
             let items (xpath: string) (attr: string) =
                 [ for n in doc.SelectNodes xpath |> Seq.cast<XmlElement> -> n.GetAttribute attr ]
             let property name = (doc.SelectSingleNode (sprintf "//PropertyGroup/%s" name)).InnerText
+            // a version given by a property of the project file (`$(XakeVersion)`) is its value
+            let version (v: string) = if v.StartsWith "$(" then property (v.Substring (2, v.Length - 3)) else v
             Assert.That(d.Sources, Is.EqualTo (items "//Compile" "Include" |> List.map (fun s -> s.Replace ('\\', '/'))))
             Assert.That(d.Frameworks, Is.EqualTo (property "TargetFrameworks" |> fun s -> s.Split ';' |> List.ofArray))
             Assert.That(d.Options.Doc, Is.EqualTo (property "GenerateDocumentationFile" = "true"))
             Assert.That(d.Packages |> List.map (fun p -> p.Id, p.Version.Value),
                 Is.EqualTo (items "/Project/ItemGroup[not(@Condition)]/PackageReference" "Include"
-                            |> List.map (fun id -> id, (doc.SelectSingleNode (sprintf "/Project/ItemGroup[not(@Condition)]/PackageReference[@Include='%s']" id) :?> XmlElement).GetAttribute "Version")))
+                            |> List.map (fun id -> id, version ((doc.SelectSingleNode (sprintf "/Project/ItemGroup[not(@Condition)]/PackageReference[@Include='%s']" id) :?> XmlElement).GetAttribute "Version"))))
             for tfm, items' in d.ByFramework do
                 let cond = sprintf "/Project/ItemGroup[@Condition=\"'$(TargetFramework)' == '%s'\"]" tfm
                 Assert.That(items'.References, Is.EqualTo (items (cond + "/Reference") "Include"), tfm)
@@ -131,53 +134,51 @@ type ``Described compilation``() =
 
     [<Test>]
     member x.``a description with packages needs them passed with packages``() =
-        let core = place "core"
+        let dotnet = place "dotnet"
         let e = Assert.Throws<XakeException>(fun () ->
             x.Run "no-packages" (recipe {
                 // `config` makes it this package's composition (the core's alone composes FSharp.Core itself)
-                let! _ = fsc { targetfwk "netstandard2.0"; out (File.make "out/nopkg/Xake.dll"); project core; config "Release"; resolve }
+                let! _ = fsc { targetfwk "netstandard2.0"; out (File.make "out/nopkg/Xake.Dotnet.dll"); project dotnet; config "Release"; resolve }
                 return () }))
         Assert.That(e.Data0, Does.Contain "resolve them with Described.restore")
 
     [<Test; Category("Integration")>]
     member x.``restore resolves the packages through msbuild``() =
-        let core = place "core"
+        let dotnet = place "dotnet"
         let mutable restored = None
-        x.Run "restore-core" (recipe {
-            let! d = Description.load core
+        x.Run "restore-dotnet" (recipe {
+            let! d = Description.load dotnet
             let! r = Described.restore d "netstandard2.0"
             restored <- Some r })
         let r = restored.Value
         Assert.That(r.References |> List.exists (fun p -> p.EndsWith "/fsharp.core/8.0.100/lib/netstandard2.0/FSharp.Core.dll"), Is.True, sprintf "%A" r.References)
         let fsharpCore = r.Packages |> List.find (fun p -> p.Id = "FSharp.Core")
         Assert.That((fsharpCore.Version, fsharpCore.Direct), Is.EqualTo (("8.0.100", true)))
+        Assert.That(r.References |> List.exists (fun p -> p.Replace('\\', '/').EndsWith "/lib/netstandard2.0/Xake.dll"), Is.True, "the engine package")
         Assert.That(Directory.GetFiles ("obj/xake/restore", "project.assets.json", SearchOption.AllDirectories)
                     |> Array.exists (fun f -> f.Replace('\\', '/').Contains "/netstandard2.0-"), Is.True)
 
-    /// The acceptance of the PR: src/core and src/dotnet from their descriptions, Release,
-    /// both frameworks, through `Lock.record` then `Lock.build`, into assemblies that load.
+    /// The acceptance of the PR: src/dotnet from its description, Release, both frameworks,
+    /// the engine from the package `Xake`, through `Lock.record` then `Lock.build`, into an
+    /// assembly that loads.
     [<Test; Category("Integration")>]
-    member x.``src/core and src/dotnet compile from their descriptions through the lock``() =
-        let core, dotnet = place "core", place "dotnet"
+    member x.``src/dotnet compiles from its description through the lock``() =
+        let dotnet = place "dotnet"
         let lockOf name fwk = sprintf "locks/%s/Release-%s.json" name fwk
         let outOf fwk name = sprintf "out/Release/%s/%s.dll" fwk name
         for f in Directory.GetFiles (".", "*.json", SearchOption.AllDirectories) |> Array.filter (fun f -> f.Contains "locks") do File.Delete f
         let mutable resolved : Fsc list = []
+        let mutable engine = ""
         for fwk in [ "netstandard2.0"; "net462" ] do
             x.Run ("described-" + fwk) (recipe {
-                let! dc = Description.load core
-                let! pc = Described.restore dc fwk
-                let! c = fsc { targetfwk fwk; out (File.make (outOf fwk "Xake")); project core; config "Release"; packages pc; resolve }
-                do! Lock.record (lockOf "Xake" fwk) (Lock.Compilation.Fsc c)
-                do! Lock.build (lockOf "Xake" fwk) (Lock.Compilation.Fsc c)
-
                 let! dd = Description.load dotnet
                 let! pd = Described.restore dd fwk
-                let! f = fsc { targetfwk fwk; out (File.make (outOf fwk "Xake.Dotnet")); ref !!(outOf fwk "Xake")
-                               project dotnet; config "Release"; packages pd; resolve }
+                if fwk = "netstandard2.0" then
+                    engine <- pd.References |> List.find (fun p -> p.Replace('\\', '/').EndsWith "/Xake.dll")
+                let! f = fsc { targetfwk fwk; out (File.make (outOf fwk "Xake.Dotnet")); project dotnet; config "Release"; packages pd; resolve }
                 do! Lock.record (lockOf "Xake.Dotnet" fwk) (Lock.Compilation.Fsc f)
                 do! Lock.build (lockOf "Xake.Dotnet" fwk) (Lock.Compilation.Fsc f)
-                resolved <- resolved @ [ c; f ] })
+                resolved <- resolved @ [ f ] })
 
         for f in resolved do
             Assert.That(f.Options, Does.Contain "--deterministic+")
@@ -190,38 +191,37 @@ type ``Described compilation``() =
             // packages from the restore, the framework from targetfwk; nothing else from NuGet
             let fsharpCore = f.Dependencies.References |> List.filter (fun r -> r.Path.EndsWith "FSharp.Core.dll")
             Assert.That(fsharpCore |> List.map (fun r -> r.Path), Has.All.Contains "/fsharp.core/8.0.100/lib/netstandard2.0/")
-        Assert.That(resolved.[1].Defines, Does.Contain "NETSTANDARD2_0")
-        Assert.That(resolved.[3].Defines, Does.Contain "NETFRAMEWORK")
-        Assert.That(resolved.[1].Dependencies.References |> List.exists (fun r -> r.Path.EndsWith "Microsoft.Win32.Registry.dll"), Is.True)
-        Assert.That(resolved.[3].Dependencies.References |> List.exists (fun r -> r.Path.EndsWith "System.Windows.Forms.dll"), Is.True)
+            Assert.That(f.Dependencies.References |> List.exists (fun r -> r.Path.EndsWith "/Xake.dll"), Is.True, "the engine package")
+        Assert.That(resolved.[0].Defines, Does.Contain "NETSTANDARD2_0")
+        Assert.That(resolved.[1].Defines, Does.Contain "NETFRAMEWORK")
+        Assert.That(resolved.[0].Dependencies.References |> List.exists (fun r -> r.Path.EndsWith "Microsoft.Win32.Registry.dll"), Is.True)
+        Assert.That(resolved.[1].Dependencies.References |> List.exists (fun r -> r.Path.EndsWith "System.Windows.Forms.dll"), Is.True)
 
         let entry = (readLock (lockOf "Xake.Dotnet" "netstandard2.0")).Entries.Head
         Assert.That(entry.Compilation.Options |> List.exists (fun o -> o = "--pathmap:$(ProjectRoot)/=/_/"), Is.False,
             "the lock is read back expanded")
         Assert.That(File.ReadAllText (lockOf "Xake.Dotnet" "netstandard2.0"), Does.Contain "\"--pathmap:$(ProjectRoot)/=/_/\"")
 
-        // loadable: the netstandard2.0 pair in a context of its own
+        // loadable: the netstandard2.0 assembly in a context of its own, the engine from the package
         let alc = System.Runtime.Loader.AssemblyLoadContext ("described", true)
         alc.add_Resolving (fun ctx name ->
-            let candidate = Path.GetFullPath (outOf "netstandard2.0" name.Name)
-            if File.Exists candidate then ctx.LoadFromAssemblyPath candidate else null)
+            if name.Name = "Xake" then ctx.LoadFromAssemblyPath engine else null)
         try
-            for name in [ "Xake"; "Xake.Dotnet" ] do
-                let a = alc.LoadFromAssemblyPath (Path.GetFullPath (outOf "netstandard2.0" name))
-                Assert.That(a.GetExportedTypes (), Is.Not.Empty, name)
+            let a = alc.LoadFromAssemblyPath (Path.GetFullPath (outOf "netstandard2.0" "Xake.Dotnet"))
+            Assert.That(a.GetName().Name, Is.EqualTo "Xake.Dotnet")
             Assert.That(File.Exists (outOf "net462" "Xake.Dotnet"), Is.True)
             Assert.That(File.Exists (outOf "net462" "Xake.Dotnet" |> fun p -> Path.ChangeExtension (p, ".xml")), Is.True)
         finally alc.Unload ()
 
     [<Test; Category("Integration")>]
     member x.``Debug is the SDK's Debug preset``() =
-        let core = place "core"
+        let dotnet = place "dotnet"
         let mutable options = []
         let mutable defines = []
         x.Run "described-debug" (recipe {
-            let! d = Description.load core
+            let! d = Description.load dotnet
             let! p = Described.restore d "netstandard2.0"
-            let! c = fsc { targetfwk "netstandard2.0"; out (File.make "out/Debug/Xake.dll"); project core; config "Debug"; packages p; resolve }
+            let! c = fsc { targetfwk "netstandard2.0"; out (File.make "out/Debug/Xake.Dotnet.dll"); project dotnet; config "Debug"; packages p; resolve }
             options <- c.Options
             defines <- c.Defines })
         Assert.That(options, Is.SupersetOf [ "--debug+"; "--debug:portable"; "--optimize-"; "--tailcalls-"; "--deterministic+" ])

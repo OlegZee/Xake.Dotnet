@@ -1,0 +1,14 @@
+<Project>
+  <!-- Until Xake ships the engine alone (Xake 4.0 split, step S7), the `Xake` package also carries
+       an older Xake.Dotnet.dll next to Xake.dll. This repository builds that assembly itself, so
+       the package's copy is dropped from the compile references and the copy-local files. Imported by
+       the four projects of this repository (not a Directory.Build.targets: the test projects the
+       hermetic tests generate under src/*.tests/~testout~ must not inherit it). A no-op once the
+       package no longer has it; remove it then. -->
+  <Target Name="DropXakeDotnetOfXakePackage" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <ResolvedCompileFileDefinitions Remove="@(ResolvedCompileFileDefinitions)" Condition="'%(ResolvedCompileFileDefinitions.NuGetPackageId)' == 'Xake' and '%(ResolvedCompileFileDefinitions.Filename)' == 'Xake.Dotnet'" />
+      <RuntimeCopyLocalItems Remove="@(RuntimeCopyLocalItems)" Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Xake' and '%(RuntimeCopyLocalItems.Filename)' == 'Xake.Dotnet'" />
+    </ItemGroup>
+  </Target>
+</Project>

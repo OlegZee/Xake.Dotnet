@@ -1,9 +1,9 @@
 // The test jobs of `test`, loaded by build.fsx and build.fsc.fsx so both run the same slices.
 // Plain data and string functions only: the two scripts bootstrap on different Xake versions.
 //
-// A job is a test project and a slice of its fixtures (`tests/jobs`, `hermetic/run`, ...); the
+// A job is a test project and a slice of its fixtures (`dotnet/jobs`, `hermetic/run`, ...); the
 // slices of a project are made of whole fixture classes, since each fixture owns its working
-// folder (src/tests/~testout~/<folder>, XakeTestBase), so two jobs never share one. The last
+// folder (src/dotnet.tests/~testout~/<folder>, XakeTestBase), so two jobs never share one. The last
 // slice of a project (`Rest`) is every fixture not named by the project's other slices: each
 // test is in exactly one job. Slices are cut to roughly even durations (seconds measured on
 // 18 logical CPUs, 2026-10); a new fixture lands in `rest` until it is worth a slice of its own.
@@ -24,17 +24,17 @@ type Slice =
 type TestJob = { Project: string; Name: string; Slice: Slice; Server: bool }
 
 /// Test project key (`test::<key>/<slice>`) -> project folder.
-let testProjects = [ "tests", "src/tests"; "hermetic", "src/hermetic.tests" ]
+let testProjects = [ "dotnet", "src/dotnet.tests"; "hermetic", "src/hermetic.tests" ]
 
 let private job project name slice = { Project = project; Name = name; Slice = slice; Server = false }
 
 let testJobs = [
-    // the compiler server's users, serial: tests/server, then hermetic/server
-    { job "tests" "server" (Fixtures [ "Tests.Csc compiler server" ]) with Server = true }                 // ~2 s
+    // the compiler server's users, serial: dotnet/server, then hermetic/server
+    { job "dotnet" "server" (Fixtures [ "Tests.Csc compiler server" ]) with Server = true }                 // ~2 s
     { job "hermetic" "server" (Fixtures [ "Tests.Building from Xake-generated locks"                       // ~32 s
                                           "Tests.Compile under the compiler server" ]) with Server = true }
-    job "tests" "jobs" (Fixtures [ "Tests.Compiler jobs"; "Tests.Delegated and resource tests" ])            // ~38 s
-    job "tests" "rest" Rest                                                                                   // ~29 s
+    job "dotnet" "jobs" (Fixtures [ "Tests.Compiler jobs" ])
+    job "dotnet" "rest" Rest
     job "hermetic" "record" (Fixtures [ "Tests.Import record"; "Tests.Import record project chain"           // ~34 s
                                         "Tests.Import record configurations"; "Tests.Import record refusals and descriptions"
                                         "Tests.Import record switch files"; "Tests.Import record concurrent brands" ])

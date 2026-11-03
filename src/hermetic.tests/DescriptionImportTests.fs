@@ -7,7 +7,7 @@ open Xake
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet
 
-/// `Import`: a project file evaluated by msbuild into its description -- Xake's own three
+/// `Import`: a project file evaluated by msbuild into its description -- this repository's two
 /// projects, write-on-change, a brand chosen by a global property, the msbuild files read.
 [<TestFixture>]
 type ``Description import``() =
@@ -37,14 +37,14 @@ type ``Description import``() =
         Assert.That(Import.relativeTo "/a/b/" "/a/b/src/p.fsproj", Is.EqualTo "src/p.fsproj")
 
     member x.OwnProjects () =
-        [ src </> "core" </> "Xake.fsproj"; src </> "dotnet" </> "Xake.Dotnet.fsproj"; src </> "hermetic" </> "Xake.Hermetic.Dotnet.fsproj" ]
+        [ src </> "dotnet" </> "Xake.Dotnet.fsproj"; src </> "hermetic" </> "Xake.Hermetic.Dotnet.fsproj" ]
 
     /// Descriptions in a folder of the test's own, one per project name: never beside the
     /// real projects.
     member x.Own (project: string) = Directory.GetCurrentDirectory () </> "own" </> Path.GetFileNameWithoutExtension project </> Description.FileName
 
     [<Test; Category("Integration")>]
-    member x.``Xake's own projects import into descriptions that round-trip``() =
+    member x.``the repository's own projects import into descriptions that round-trip``() =
         let imported = x.Import (x.OwnProjects ()) x.Own [ "Configuration", "Release" ]
         let ds = imported |> List.map (fun i -> Description.read i.Description)
         for i, d in List.zip imported ds do
@@ -59,36 +59,35 @@ type ``Description import``() =
             Assert.That(d.Packages |> List.exists (fun p -> p.Id = "NETStandard.Library" || p.Id = "System.ValueTuple"), Is.False)
             Assert.That(i.Dropped |> List.exists (fun s -> s.Contains "implicit package NETStandard.Library"), Is.True)
         match ds with
-        | [ core; dotnet; hermetic ] ->
-            Assert.That(core.Name, Is.EqualTo "Xake")
+        | [ dotnet; hermetic ] ->
+            Assert.That(dotnet.Name, Is.EqualTo "Xake.Dotnet")
             // every Compile item of the project file, in order
             let compileItems =
-                System.Text.RegularExpressions.Regex.Matches(File.ReadAllText (src </> "core" </> "Xake.fsproj"), """<Compile Include="([^"]+)" />""")
+                System.Text.RegularExpressions.Regex.Matches(File.ReadAllText (src </> "dotnet" </> "Xake.Dotnet.fsproj"), """<Compile Include="([^"]+)" />""")
                 |> Seq.map (fun m -> m.Groups.[1].Value.Replace('\\', '/')) |> List.ofSeq
-            Assert.That(core.Sources, Is.EqualTo compileItems)
-            Assert.That(core.Sources |> List.take 3, Is.EqualTo [ "Prelude.fs"; "Logging.fs"; "Pickler.fs" ])
-            Assert.That(core.Sources, Does.Contain "Tasks/Cp.fs")
-            Assert.That(core.InternalsVisibleTo |> List.map (fun f -> f.Name), Is.EqualTo [ "tests" ])
-            Assert.That(core.Package, Is.EqualTo None, "IsPackable is false")
-            Assert.That(dotnet.Name, Is.EqualTo "Xake.Dotnet")
+            Assert.That(dotnet.Sources, Is.EqualTo compileItems)
             Assert.That(dotnet.Sources |> List.head, Is.EqualTo "Tool.fs")
-            Assert.That(dotnet.ProjectRefs, Is.EqualTo [ "Xake" ])
+            Assert.That(dotnet.InternalsVisibleTo |> List.map (fun f -> f.Name), Is.EqualTo [ "dotnet.tests" ])
+            // the engine is the published package, its range as the project file writes it
+            Assert.That(dotnet.ProjectRefs, Is.Empty)
+            let xake = dotnet.Packages |> List.find (fun p -> p.Id = "Xake")
+            Assert.That(xake.Version.Value, Does.StartWith "[4.")
             Assert.That(dotnet.ByFramework |> List.map fst, Is.EqualTo [ "net462"; "netstandard2.0" ])
             Assert.That((dotnet.ByFramework |> List.find (fst >> (=) "net462") |> snd).References, Is.EqualTo [ "System.Windows.Forms" ])
             Assert.That((dotnet.ByFramework |> List.find (fst >> (=) "netstandard2.0") |> snd).Packages |> List.map (fun p -> p.Id, p.Version),
                         Is.EqualTo [ "Microsoft.Win32.Registry", Some "5.0.0" ])
             let pkg = dotnet.Package.Value
-            Assert.That(pkg.Id, Is.EqualTo "Xake")
-            Assert.That(pkg.Bundle, Is.EqualTo [ "Xake" ], "the PrivateAssets=all reference is packed into the package")
-            Assert.That((pkg.Icon, pkg.Readme), Is.EqualTo ((Some "../../Icon.png", Some "../../readme.md")))
+            Assert.That(pkg.Id, Is.EqualTo "Xake.Dotnet")
+            Assert.That(pkg.Bundle, Is.Empty, "no private project reference to pack in")
+            Assert.That((pkg.Icon, pkg.Readme), Is.EqualTo ((Some "../../Icon.png", Some "readme.md")))
             Assert.That(pkg.License, Is.EqualTo (Some "MIT"))
-            // until Xake 4.0 the hermetic project builds on the in-repo Xake: project references
-            Assert.That(hermetic.ProjectRefs, Is.EqualTo [ "Xake"; "Xake.Dotnet" ])
+            // the hermetic assembly ships in Xake.Dotnet's package: a project reference, not packable
+            Assert.That(hermetic.ProjectRefs, Is.EqualTo [ "Xake.Dotnet" ])
             Assert.That(hermetic.Packages |> List.map (fun p -> p.Id, p.Version),
                         Is.EqualTo [ "FSharp.Core", Some "8.0.100" ])
             Assert.That(hermetic.Sources, Does.Contain "Import.fs")
-            Assert.That(hermetic.Package.Value.Readme, Is.EqualTo (Some "readme.md"))
-        | _ -> Assert.Fail "three descriptions expected"
+            Assert.That(hermetic.Package, Is.EqualTo None, "IsPackable is false")
+        | _ -> Assert.Fail "two descriptions expected"
         // the files msbuild read: the project itself, nothing of the SDK
         for i in imported do
             Assert.That(i.Inputs, Does.Contain i.Project)

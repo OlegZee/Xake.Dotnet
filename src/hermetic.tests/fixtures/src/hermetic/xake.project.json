@@ -25,7 +25,7 @@
     "Pack.fs",
     "Sign.fs"
   ],
-  "projectRefs": ["Xake", "Xake.Dotnet"],
+  "projectRefs": ["Xake.Dotnet"],
   "packages": [{ "id": "FSharp.Core", "version": "8.0.100" }],
   "options": { "doc": true },
   "internalsVisibleTo": ["hermetic.tests"],

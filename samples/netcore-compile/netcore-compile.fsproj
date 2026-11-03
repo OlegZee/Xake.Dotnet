@@ -8,7 +8,7 @@
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\core\Xake.fsproj" />
+    <PackageReference Include="Xake" Version="4.0.0-preview.1" />
   </ItemGroup>
   <!-- <ItemGroup>
     <Reference Include="..\..\core\bin\Debug\netstandard2.0\Xake.Core.dll"/>

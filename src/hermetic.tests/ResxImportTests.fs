@@ -12,7 +12,7 @@ open Xake.Hermetic.Dotnet
 
 /// The lock/`run` plumbing that regenerates an imported project's `.resources` files from their
 /// resx on a machine that only has the lock: byte-identical to msbuild's (the base variant,
-/// `Resx.compile` alone, is in src/tests/ResxTests.fs).
+/// `Resx.compile` alone, is in src/dotnet.tests/ResxTests.fs).
 [<TestFixture>]
 type ``Resx resources of an imported project``() =
     inherit XakeTestBase("resx-import")

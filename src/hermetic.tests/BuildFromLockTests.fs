@@ -340,13 +340,14 @@ type ``Building from Xake-generated locks``() =
         Assert.That(File.Exists out, Is.False, "nothing compiled, nothing failed")
         Assert.That(File.ReadAllText "options-custom.log", Does.Not.Contain warning, "an explicit server is not resolved")
 
-    /// Xake's three projects from the locks `update-locks` writes, into out/Release/<fwk>/.
+    /// The repository's two projects from the locks `update-locks` writes, into
+    /// out/Release/<fwk>/; the engine from the package `Xake`.
     [<Test; Category("Integration")>]
-    member x.``Xake's three projects build from their generated locks``() =
+    member x.``the repository's projects build from their generated locks``() =
         for dir in [ "desc"; "out"; "locks" ] do
             if Directory.Exists dir then Directory.Delete (dir, true)
         let described =
-            [ for dir in [ "core"; "dotnet"; "hermetic" ] do
+            [ for dir in [ "dotnet"; "hermetic" ] do
                 let d = Description.read (fixtures </> dir </> Description.FileName)
                 let target = Path.GetFullPath ("desc" </> dir)
                 Directory.CreateDirectory target |> ignore
@@ -356,13 +357,13 @@ type ``Building from Xake-generated locks``() =
         x.Generate "generate-xake" (fun n -> described.[n]) (List.ofSeq described.Keys) [ "Release" ] |> ignore
         x.Script "build-xake" [] descriptions "Release"
         for fwk in [ "net462"; "netstandard2.0" ] do
-            for name in [ "Xake"; "Xake.Dotnet"; "Xake.Hermetic.Dotnet" ] do
+            for name in [ "Xake.Dotnet"; "Xake.Hermetic.Dotnet" ] do
                 Assert.That(File.Exists (sprintf "out/Release/%s/%s.dll" fwk name), Is.True, name + " " + fwk)
                 Assert.That(File.Exists (sprintf "out/Release/%s/%s.xml" fwk name), Is.True, name + " " + fwk + " doc")
         let alc = System.Runtime.Loader.AssemblyLoadContext ("from-lock", true)
         try
-            let a = alc.LoadFromAssemblyPath (Path.GetFullPath "out/Release/netstandard2.0/Xake.dll")
-            Assert.That(a.GetExportedTypes (), Is.Not.Empty)
+            let a = alc.LoadFromAssemblyPath (Path.GetFullPath "out/Release/netstandard2.0/Xake.Hermetic.Dotnet.dll")
+            Assert.That(a.GetName().Name, Is.EqualTo "Xake.Hermetic.Dotnet")
         finally alc.Unload ()
 
     /// G5: A3 -> B3 -> C, A3's source uses C's type through B3 and its description names only

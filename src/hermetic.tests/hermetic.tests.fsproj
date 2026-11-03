@@ -5,10 +5,10 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <!-- The shared helpers are linked from src/tests, not copied. XakeTestBase's scratch
-         folders therefore stay under src/tests/~testout~ (its __SOURCE_DIRECTORY__). -->
-    <Compile Include="..\tests\Common.fs" Link="Common.fs" />
-    <Compile Include="..\tests\XakeTestBase.fs" Link="XakeTestBase.fs" />
+    <!-- The shared helpers are linked from src/dotnet.tests, not copied. XakeTestBase's scratch
+         folders therefore stay under src/dotnet.tests/~testout~ (its __SOURCE_DIRECTORY__). -->
+    <Compile Include="..\dotnet.tests\Common.fs" Link="Common.fs" />
+    <Compile Include="..\dotnet.tests\XakeTestBase.fs" Link="XakeTestBase.fs" />
     <Compile Include="ProjectImportTests.fs" />
     <Compile Include="LockDiffTests.fs" />
     <Compile Include="FromLockTests.fs" />
@@ -41,8 +41,7 @@
     <Compile Include="HermeticVarsTests.fs" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The in-repo Xake (engine and Xake.Dotnet), as src/hermetic builds on it until 4.0. -->
-    <ProjectReference Include="..\core\Xake.fsproj" />
+    <!-- The engine (package `Xake`) comes with src/dotnet's package reference. -->
     <ProjectReference Include="..\dotnet\Xake.Dotnet.fsproj" />
     <ProjectReference Include="..\hermetic\Xake.Hermetic.Dotnet.fsproj" />
   </ItemGroup>
@@ -53,4 +52,5 @@
     <PackageReference Include="NUnit.Analyzers" Version="3.6.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
   </ItemGroup>
+  <Import Project="..\XakePackage.targets" />
 </Project>

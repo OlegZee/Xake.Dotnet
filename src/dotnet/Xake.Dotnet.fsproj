@@ -3,14 +3,13 @@
   <PropertyGroup>
     <AssemblyName>Xake.Dotnet</AssemblyName>
 
-    <!-- The whole tool ships as a single package: this project references the core and
-         pulls its assembly into the same nupkg (see IncludeCoreOutput below), so both
-         assemblies share one version and one publish. -->
-    <PackageId>Xake</PackageId>
-    <!-- when Xake.Hermetic.Dotnet is packed (its HermeticVersion is its own), the version of
-         this project and so of the hermetic package's `Xake` dependency -->
-    <Version Condition="'$(XakePackageVersion)' != ''">$(XakePackageVersion)</Version>
-    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeCoreOutput</TargetsForTfmSpecificBuildOutput>
+    <!-- The one package of this repository: Xake.Dotnet.dll and, added by IncludeHermeticOutput
+         below, Xake.Hermetic.Dotnet.dll, at one version. The engine is the published `Xake`
+         package (XakeVersion, a range: its floor is the version this repository builds against,
+         moved by `build.fsc.fsx bump-base`; -p:XakeVersion=... overrides it, CI's xake-latest). -->
+    <PackageId>Xake.Dotnet</PackageId>
+    <XakeVersion Condition="'$(XakeVersion)' == ''">[4.0.0-preview.1, 5.0)</XakeVersion>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeHermeticOutput</TargetsForTfmSpecificBuildOutput>
     <OutputType>Library</OutputType>
     <!-- The SDK would otherwise reference its own FSharp.Core, see the pin below. -->
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
@@ -19,11 +18,11 @@
     <Copyright>(c) OlegZee 2014-2026</Copyright>
     <Authors>OlegZee</Authors>
 
-    <Description>Xake build tool: the engine and the tasks for full .NET framework</Description>
-    <PackageProjectUrl>https://github.com/OlegZee/Xake</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/OlegZee/Xake</RepositoryUrl>
+    <Description>Xake build tool: the .NET tasks (csc, fsc, msbuild, resgen, project descriptions) and reproducible builds (lock files, restore, SBOM, verification, packing, signing)</Description>
+    <PackageProjectUrl>https://github.com/OlegZee/Xake.Dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/OlegZee/Xake.Dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>fsharp;build;make;buildtool;automation;shake</PackageTags>
+    <PackageTags>fsharp;build;make;buildtool;csc;fsc;dotnet;reproducible;lockfile;sbom</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>Icon.png</PackageIcon>
     <PackageReadmeFile>readme.md</PackageReadmeFile>
@@ -33,7 +32,7 @@
        be listed explicitly. -->
   <ItemGroup>
     <None Include="..\..\Icon.png" Pack="true" PackagePath="\" Visible="false" />
-    <None Include="..\..\readme.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="readme.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -59,9 +58,9 @@
     <Compile Include="Description.fs" />
     <Compile Include="ProjectPlan.fs" />
     <!-- The resolved compilations (`Csc`, `Fsc`), their settings and runners; then the csc {}
-         and fsc {} builders over them. The lock, restore, SBOM, verification, packing and signing live in a
-         package of their own (Xake.Hermetic.Dotnet), which references this project, never the other
-         way round. -->
+         and fsc {} builders over them. The lock, restore, SBOM, verification, packing and signing live in
+         an assembly of their own (Xake.Hermetic.Dotnet, src/hermetic), which references this project,
+         never the other way round; it ships in this project's package. -->
     <Compile Include="Csc.fs" />
     <Compile Include="Fsc.fs" />
     <Compile Include="Dotnet.csc.fs" />
@@ -71,19 +70,24 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\core\Xake.fsproj" PrivateAssets="all" />
+    <PackageReference Include="Xake" Version="$(XakeVersion)" />
   </ItemGroup>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>tests</_Parameter1>
+      <_Parameter1>dotnet.tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 
-  <!-- Xake.dll and Xake.xml next to Xake.Dotnet.dll in lib/{tfm} -->
-  <Target Name="IncludeCoreOutput">
+  <!-- Xake.Hermetic.Dotnet.dll and .xml next to Xake.Dotnet.dll in lib/{tfm}. src/hermetic
+       references this project, so it cannot be a project reference here (a cycle): it is built
+       by an explicit MSBuild call (same configuration, framework and version) when the package
+       is assembled. -->
+  <Target Name="IncludeHermeticOutput">
+    <MSBuild Projects="..\hermetic\Xake.Hermetic.Dotnet.fsproj" Targets="Build" Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)" />
     <ItemGroup>
-      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget','ProjectReference'))" />
+      <BuildOutputInPackage Include="..\hermetic\bin\$(Configuration)\$(TargetFramework)\Xake.Hermetic.Dotnet.dll" />
+      <BuildOutputInPackage Include="..\hermetic\bin\$(Configuration)\$(TargetFramework)\Xake.Hermetic.Dotnet.xml" />
     </ItemGroup>
   </Target>
 
@@ -102,9 +106,10 @@
     <PackageReference Include="System.Resources.Extensions" Version="8.0.0" />
   </ItemGroup>
 
-  <!-- Kept in step with src/core: this is the FSharp.Core floor the package imposes on its
-       consumers. See the note there. -->
+  <!-- Kept in step with the `Xake` package: this is the FSharp.Core floor the package imposes
+       on its consumers. -->
   <ItemGroup>
     <PackageReference Include="FSharp.Core" Version="8.0.100" />
   </ItemGroup>
+  <Import Project="..\XakePackage.targets" />
 </Project>
