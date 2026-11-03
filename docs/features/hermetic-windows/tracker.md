@@ -13,6 +13,7 @@ One line per item. Status as of 2026-11-03. "Xake" means the engine repository; 
 - [x] Bootstrap bump (OlegZee/Xake#97); releases `v3.13.0`, `hermetic-v0.8.0`; series closed 2026-10-27
 - [x] Windows CI leg (OlegZee/Xake#120); log flush on exit and locked previous log (OlegZee/Xake#123)
 - [x] Feature folder moved to Xake.Dotnet (2026-11-03)
+- [x] Owner: one branch `feature/hermetic-windows` for the open items (2026-11-03, brief §7)
 
 ## Open (in this repository, after the 4.0.0 release)
 

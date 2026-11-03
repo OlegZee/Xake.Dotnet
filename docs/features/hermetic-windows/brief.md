@@ -381,3 +381,8 @@ To apply to [`docs/roadmap.md`](https://github.com/OlegZee/Xake/blob/dev/docs/ro
 7. Secrets: `Project.ImportOptions` also needs an `Environment` field, not only `Import.RecordOptions`.
 8. Packs: the replay already falls back to the package copy; the hard failure is a lock recorded from an
    installed pack built where that pack is missing. A separate pack pin matters only without an exact SDK pin.
+
+## 7. Decisions after the move to Xake.Dotnet
+
+- 2026-11-03: the three open items (the `Environment` fields, the floor check through the SDK probe,
+  the SDK 8 runs) are done on **one branch**, `feature/hermetic-windows`, one PR with a commit per item.

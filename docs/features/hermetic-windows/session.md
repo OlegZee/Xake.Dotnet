@@ -3,7 +3,8 @@
 Moved to Xake.Dotnet on 2026-11-03 from the Xake repository (`docs/features/hermetic-windows/` on
 Xake `dev`, plus the round-3/4 interview text of the old branch `feature/hermetic-windows`). The
 decisions in `brief.md` and `interview.md` stand; `interview.md` is authoritative over `brief.md`.
-Branch for the work that remains here: `feature/hermetic-windows` (from `dev`), or one branch per item.
+Branch for the work that remains here: `feature/hermetic-windows` (from `dev`), one branch for all
+open items (owner, 2026-11-03; brief §7).
 
 ## State at 2026-11-03
 
@@ -44,7 +45,8 @@ into `tracker.md` as items.
 ## Next step
 
 1. Wait for the Xake.Dotnet 4.0.0 release (do not touch `build.fsx`, the fsprojs or the locks meanwhile).
-2. Then open `feature/hermetic-windows` and take the tracker's open items in this order:
+2. Then rebase `feature/hermetic-windows` (it exists, with the doc updates only) on `dev` and take the
+   tracker's open items in this order, a commit each, one PR:
    a. `Import.RecordOptions.Environment` and `Project.ImportOptions.Environment` (secret environment for the
       import's msbuild runs; decision 15, the core part shipped in 3.13); a minor of the hermetic assembly.
    b. The floor check through the SDK probe and `MSBuild.deps.json` instead of `dotnet msbuild -version`
