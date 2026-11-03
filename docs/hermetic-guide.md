@@ -97,7 +97,7 @@ Notes:
 - `lock` must be the last operation. An operation after it does not compile.
 - `targetfwk` (or the script variable `NETFX-TARGET`) is required. The composed `csc` task
   targets .NET Framework monikers (`net-4.6.2`, `net472`, ...) and `netstandard2.0`/`2.1`; see
-  [tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md#csc).
+  [tasks.md](tasks.md#csc).
 - The compiler is the block's `toolset "<version>"`, else the script variable `CSC_TOOLSET`
   (same meaning: a `Microsoft.Net.Compilers.Toolset` version), else the SDK's `csc.dll`; `cscpath`
   overrides all three. The SDK is the one a `global.json` in (or above) the project root selects,
@@ -732,6 +732,6 @@ The package reference: [hermetic/README.md](hermetic/README.md), [hermetic/lock.
 [hermetic/restore.md](hermetic/restore.md),
 [hermetic/verify.md](hermetic/verify.md), [hermetic/pack.md](hermetic/pack.md),
 [hermetic/strongname.md](hermetic/strongname.md), [hermetic/signing.md](hermetic/signing.md). The base
-`csc` task, `resolve` and `Csc.run`: [tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md), [csc-syntax.md](csc-syntax.md). The compiler
+`csc` task, `resolve` and `Csc.run`: [tasks.md](tasks.md), [csc-syntax.md](csc-syntax.md). The compiler
 server: [csc-server.md](csc-server.md). Design, evidence and limits:
 [hermetic-architecture.md](hermetic-architecture.md).

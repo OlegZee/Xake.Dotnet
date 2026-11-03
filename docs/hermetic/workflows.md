@@ -142,7 +142,7 @@ machine that does not have it restores it **(run)**:
 ```
 
 Precedence: `cscpath`, then the block's `toolset`, then `CSC_TOOLSET`, then the SDK
-([../tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md#compiler-toolset-for-the-whole-script)). Set it in the script
+([../tasks.md](../tasks.md#compiler-toolset-for-the-whole-script)). Set it in the script
 (`var "CSC_TOOLSET" "4.12.0"`) rather than on the command line, so every machine gets the
 same value.
 
@@ -744,7 +744,7 @@ What breaks offline:
 | `the SDK is not pinned (...) -- the lock's compiler (...) will drift ...` (import warning) | no exact pin | `global.json` with `rollForward: "disable"` |
 | `'<name>': depends on the .NET SDK <v> but global.json does not pin it exactly; ...` (recording warning) | the entry names the SDK, no exact pin, so no prerequisite | `global.json` with `"version": "<v>", "rollForward": "disable"`, then re-record |
 
-More messages: [../hermetic-guide.md](../hermetic-guide.md#12-troubleshooting).
+More messages: [../hermetic-guide.md](../hermetic-guide.md#11-troubleshooting).
 
 ## Gaps
 

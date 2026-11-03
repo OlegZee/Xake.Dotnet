@@ -60,7 +60,7 @@ open Xake.Hermetic.Dotnet
 | `Lock.verify path c` | recipe | the diff between the lock at `path` and `c`, write and compile nothing; a missing lock fails |
 | `csc { ...; lock "path" }` | operation | `Lock.build` as an operation of a `csc {}` block; only `nofetch` may follow |
 | `fsc { ...; lock "path" }` | operation | the same for an `fsc {}` block |
-| `csc`/`fsc { ...; project "path"; config "Release"; packages p; lock "path" }` | operation | a compilation from a project description, gated the same way; a C# lock keeps the description's masks in `Sources` (an exclude as `!$(ProjectRoot)/...`), expanded when compiled ([../csc-syntax.md](../csc-syntax.md#from-a-project-description-project-config-packages)). No format change: `Sources` entries are strings the reader takes as written |
+| `csc`/`fsc { ...; project "path"; config "Release"; packages p; lock "path" }` | operation | a compilation from a project description, gated the same way; a C# lock keeps the description's masks in `Sources` (an exclude as `!$(ProjectRoot)/...`), expanded when compiled ([../csc-syntax.md](../csc-syntax.md#from-a-project-description-in-xakehermeticdotnet-project-config-packages)). No format change: `Sources` entries are strings the reader takes as written |
 | `Described.restore d framework` | recipe | a description's packages through an msbuild restore: compile assets, the graph for `Entry.Packages`, the packages' `frameworkAssemblies` (`FrameworkReferences`, referenced by name on .NET Framework) |
 | `Described.restoreWith descriptionOf d framework` | recipe | `restore` plus the packages `d`'s project references declare (their closure; each description at `descriptionOf name`; not `private` ones): for a project compiled without a lock |
 | `Described.restoreAll descriptionOf descriptions frameworks` | recipe | the `restoreWith` sets of every description (paths) x framework (`[]`: each one's own) in ONE `dotnet restore`, kept in the build's cache: the direct route's batch ([one restore per build](#one-restore-per-build)) |
@@ -1705,7 +1705,7 @@ What `Locks.generate lockOf outOf config descriptionPath` does for the descripti
 - **One lock** at `lockOf name config`, `Configuration` set to the configuration, one entry per
   framework of the description, in the description's order.
 - **The compilation** is `fsc`/`csc { targetfwk; out; ref; project; config; packages; resolve }`
-  ([../csc-syntax.md](../csc-syntax.md#from-a-project-description-project-config-packages)): the
+  ([../csc-syntax.md](../csc-syntax.md#from-a-project-description-in-xakehermeticdotnet-project-config-packages)): the
   SDK preset, `--deterministic+`, `--pathmap:$(ProjectRoot)/=/_/`. The output switch (`--out:`,
   `/out:`) is removed: the output path is the build's. The doc switch stays, at the layout path
   `outOf cfg fwk name`.

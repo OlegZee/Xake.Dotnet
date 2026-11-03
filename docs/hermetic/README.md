@@ -392,7 +392,7 @@ open Xake.Hermetic.Dotnet
 
 The compilation itself, `csc {}`/`fsc {}`, `Csc.ofSettings`/`Fsc.ofSettings` and the runners
 `Csc.run`/`Fsc.run`, stay in `Xake.Dotnet`:
-[../csc-syntax.md](../csc-syntax.md), [../tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md).
+[../csc-syntax.md](../csc-syntax.md), [../tasks.md](../tasks.md).
 
 - [Architecture](../hermetic-architecture.md): the design, where it meets `Xake`, the evidence
   and the known limits, for maintainers and reviewers.
