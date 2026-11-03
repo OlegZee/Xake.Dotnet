@@ -19,17 +19,27 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 - The 1.x code of 2018 is on `master` up to the 1.x tip and under `v1.1.0`, `v1.1.4`,
   `legacy-1.x`.
 
+## Release state
+
+- Xake 4.0.0 is on nuget.org (2026-11-03). `release/4.0.0` moves the floor to `[4.0.0, 5.0)`,
+  writes the 4.0.0 notes (`docs/release-notes.md`) and goes to `dev`; the owner then merges `dev`
+  into `master` and tags `v4.0.0` (`publish.yml` pushes `Xake.Dotnet` 4.0.0 with the repository
+  secret `NUGET_API_KEY`). Not published yet.
+- After the publish (S9): `build.fsc.fsx` on `#r "nuget: Xake.Dotnet, 4.0.0"`; deprecate and
+  unlist `Xake.Hermetic.Dotnet` and the 1.1.x betas of `Xake.Dotnet` on nuget.org.
+- `bump-base` keeps the UTF-8 BOM of `src/dotnet/Xake.Dotnet.fsproj` (it used to drop it).
+
 ## Build facts
 
-- `build.fsx` bootstraps on `Xake 4.0.0-preview.3`; `build.fsc.fsx` on `Xake 3.15.0` +
+- `build.fsx` bootstraps on `Xake 4.0.0`; `build.fsc.fsx` on `Xake 3.15.0` +
   `Xake.Hermetic.Dotnet 0.10.0` until `Xake.Dotnet` 4.0.0 is published (then one
-  `#r "nuget: Xake.Dotnet, 4.0.0"`).
+  `#r "nuget: Xake.Dotnet, 4.0.0"`, split step S9).
 - `src/hermetic` cannot be a project reference of `src/dotnet` (it references `src/dotnet`): the
   `IncludeHermeticOutput` target of `src/dotnet/Xake.Dotnet.fsproj` builds it with an explicit
   `MSBuild` call while packing and adds its dll and xml to `lib/<tfm>/`.
 - The `Xake` package carries `Xake.dll` only from `4.0.0-preview.2` (Xake S-D14); earlier ones
   also carried an older `Xake.Dotnet.dll`. The hermetic code uses the pattern module (`PatternAst`,
-  `MaskText`, Xake #131), first in `4.0.0-preview.3`, so the `XakeVersion` floor stays at preview.3 or later.
+  `MaskText`, Xake #131), first in `4.0.0-preview.3`; the `XakeVersion` floor is `4.0.0` (release 4.0.0).
 - Trap: `build.fsx`'s `test-build::<project>` is a phony rule with no file dependencies; an
   old `.xake` database can skip it and run the tests of a stale build. Delete `.xake` (or
   `clean`) after editing tests outside a full rebuild.

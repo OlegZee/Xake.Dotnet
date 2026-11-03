@@ -1,4 +1,4 @@
-#r "nuget: Xake, 4.0.0-preview.3"
+#r "nuget: Xake, 4.0.0"
 #load "testjobs.fsx"
 
 // Builds the one package of this repository, `Xake.Dotnet`: the assemblies Xake.Dotnet

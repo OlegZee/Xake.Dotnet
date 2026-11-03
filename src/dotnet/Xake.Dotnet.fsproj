@@ -8,7 +8,7 @@
          package (XakeVersion, a range: its floor is the version this repository builds against,
          moved by `build.fsc.fsx bump-base`; -p:XakeVersion=... overrides it, CI's xake-latest). -->
     <PackageId>Xake.Dotnet</PackageId>
-    <XakeVersion Condition="'$(XakeVersion)' == ''">[4.0.0-preview.3, 5.0)</XakeVersion>
+    <XakeVersion Condition="'$(XakeVersion)' == ''">[4.0.0, 5.0)</XakeVersion>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeHermeticOutput</TargetsForTfmSpecificBuildOutput>
     <OutputType>Library</OutputType>
     <!-- The SDK would otherwise reference its own FSharp.Core, see the pin below. -->
@@ -26,6 +26,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>Icon.png</PackageIcon>
     <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <PackageReleaseNotes>https://github.com/OlegZee/Xake.Dotnet/blob/master/docs/release-notes.md</PackageReleaseNotes>
   </PropertyGroup>
 
   <!-- nuget.org renders these; they are packed, not referenced by path, so the files have to
