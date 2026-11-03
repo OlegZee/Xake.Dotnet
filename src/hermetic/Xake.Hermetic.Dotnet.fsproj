@@ -71,5 +71,4 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Core" Version="8.0.100" />
   </ItemGroup>
-  <Import Project="..\XakePackage.targets" />
 </Project>

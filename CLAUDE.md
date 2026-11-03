@@ -49,7 +49,6 @@ Requires .NET SDK 8.0+ (see `global.json`).
 - `src/dotnet/` — `Xake.Dotnet.fsproj`, the packable project (adds the hermetic assembly to its package)
 - `src/hermetic/` — `Xake.Hermetic.Dotnet.fsproj`, not packable on its own
 - `src/dotnet.tests/`, `src/hermetic.tests/` — NUnit tests, net8.0
-- `src/XakePackage.targets` — drops the `Xake.Dotnet.dll` that `Xake` packages up to the 4.0 split still carry
 - `build.fsx` — msbuild-driven build; `build.fsc.fsx` — the declarative fsc build (`locks/`, `xake.fingerprints`)
 - `testjobs.fsx` — the test slices both scripts run
 - `tools/import-from-xake.py` — the history import from Xake (do not change its path rules)

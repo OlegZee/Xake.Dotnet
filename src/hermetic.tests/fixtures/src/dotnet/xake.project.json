@@ -28,7 +28,7 @@
     "Dotnet.Msbuild.fs"
   ],
   "packages": [
-    { "id": "Xake", "version": "[4.0.0-preview.1, 5.0)" },
+    { "id": "Xake", "version": "[4.0.0-preview.2, 5.0)" },
     { "id": "System.Resources.Extensions", "version": "8.0.0" },
     { "id": "FSharp.Core", "version": "8.0.100" }
   ],
