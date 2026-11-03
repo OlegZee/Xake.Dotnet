@@ -35,7 +35,7 @@ Why this rule and no other in the pipeline is delegated:
   sign on another" is the recommended shape regardless of policy.
 - **It is I/O-bound waiting.** A sign call is a round trip to an HSM or a cloud service plus an
   RFC 3161 timestamp round trip. A delegated rule is run detached by the engine and is never
-  bounded by the local CPU pool ([docs/delegated.md](../delegated.md)); its concurrency is whatever dispatch
+  bounded by the local CPU pool ([docs/delegated.md](https://github.com/OlegZee/Xake/blob/dev/docs/delegated.md)); its concurrency is whatever dispatch
   `Resource` the executor applies — which matters, because signing services rate-limit.
 - **Its output is not deterministic in bytes.** The RFC 3161 timestamp countersignature
   embeds the signing moment, so signing the same input twice gives two different files. That

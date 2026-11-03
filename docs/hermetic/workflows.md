@@ -142,7 +142,7 @@ machine that does not have it restores it **(run)**:
 ```
 
 Precedence: `cscpath`, then the block's `toolset`, then `CSC_TOOLSET`, then the SDK
-([../tasks.md](../tasks.md#compiler-toolset-for-the-whole-script)). Set it in the script
+([../tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md#compiler-toolset-for-the-whole-script)). Set it in the script
 (`var "CSC_TOOLSET" "4.12.0"`) rather than on the command line, so every machine gets the
 same value.
 

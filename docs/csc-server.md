@@ -56,7 +56,7 @@ script that wants them says so: `var "CSC_JOBS" [Env "XAKE_CSC_JOBS"]`.
 A value that is not a non-negative integer is traced as a warning and taken as unlimited.
 The budget is taken inside the launcher that `Csc.run` and `Fsc.run` share, around the compiler
 process only: after every `needFiles` and the hash check, so it is never held across a `need`
-(wrapping a compile recipe in `withResource` is what deadlocks, [resources.md](resources.md)).
+(wrapping a compile recipe in `withResource` is what deadlocks, [resources.md](https://github.com/OlegZee/Xake/blob/dev/docs/resources.md)).
 One budget per tool for the whole process. Unlike `CSC_SERVER`, the value is **not** a
 dependency: concurrency changes no output, so changing it rebuilds nothing. With the server on,
 the throttled processes are the thin clients; the server compiles one request per client, so
@@ -73,7 +73,7 @@ units)` in `csc { }` / `fsc { }`, or `Throttle = Some (resource, units)` in `Run
 `FscRunOptions`. The launch then acquires that resource, at the same place (after every
 `needFiles`), and `CSC_JOBS`/`FSC_JOBS` are not read for that compilation. The launcher never
 `need`s while holding it; a script that also takes the same resource elsewhere must still not
-`need` inside that `withResource` ([resources.md](resources.md)).
+`need` inside that `withResource` ([resources.md](https://github.com/OlegZee/Xake/blob/dev/docs/resources.md)).
 
 ```fsharp
 let heavy = Resource.newResource "heavy" 4

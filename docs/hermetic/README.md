@@ -69,7 +69,7 @@ checkout gives the repository's files. No lock format change; existing locks sta
 ## 0.7.0
 
 `Locks.compile` builds the assembly and checks its target
-([design note](../features/hermetic-build/locks-compile-targets.md)). **Breaking: `compile`
+([design note](https://github.com/OlegZee/Xake/blob/dev/docs/features/hermetic-build/locks-compile-targets.md)). **Breaking: `compile`
 over an `.xml` target fails**; the `.xml` rule is the new `Locks.doc settings lockPath fwk`
 (`"out/(cfg:*)/(fwk:*)/(asm:*).xml" ..> doc`, `doc` a recipe calling it). No lock format change.
 
@@ -95,7 +95,7 @@ over an `.xml` target fails**; the `.xml` rule is the new `Locks.doc settings lo
 ## 0.6.0 (not released on its own, shipped in 0.7.0)
 
 The `dotnet-sdk` prerequisite of a recorded lock follows its content
-([sdk-free-locks agenda](../features/hermetic-build/sdk-free-locks.md), steps 1-3). **A
+([sdk-free-locks agenda](https://github.com/OlegZee/Xake/blob/dev/docs/features/hermetic-build/sdk-free-locks.md), steps 1-3). **A
 re-import drops the prerequisite** from the locks of a project that names nothing under
 `$(DotnetRoot)/sdk/<v>/`; every other lock is written as before. No API removed, no lock format
 change.
@@ -386,7 +386,7 @@ open Xake.Hermetic.Dotnet
 
 The compilation itself, `csc {}`/`fsc {}`, `Csc.ofSettings`/`Fsc.ofSettings` and the runners
 `Csc.run`/`Fsc.run`, stay in `Xake.Dotnet`:
-[../csc-syntax.md](../csc-syntax.md), [../tasks.md](../tasks.md).
+[../csc-syntax.md](../csc-syntax.md), [../tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md).
 
 - [Architecture](../hermetic-architecture.md): the design, where it meets `Xake`, the evidence
   and the known limits, for maintainers and reviewers.

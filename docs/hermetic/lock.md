@@ -1718,7 +1718,7 @@ What `Locks.generate lockOf outOf config descriptionPath` does for the descripti
   highest of the same family not above it; else the highest `netstandard` the target
   implements). The choice is recorded only as the reference path `outOf cfgB fwkB B` +
   `/<B's assembly>.dll`, **with an empty `Sha256`**, also when a build left the file on disk
-  (`Lock.recorded ... unhashed`; [roadmap](../roadmap.md): in-lock project references stay
+  (`Lock.recorded ... unhashed`; [roadmap](https://github.com/OlegZee/Xake/blob/dev/docs/roadmap.md): in-lock project references stay
   unhashed). `Evaluation.ProjectRefs` holds B's name, as the description names it. A reference
   without any lock fails, naming it and pointing at `update-locks`. B's own project references
   (the unhashed references of B's lock, so B's closure) are references of A too, after the
@@ -1866,7 +1866,7 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   then `XAKE_CSC_SERVER`, as before; one the script set is used as is and the variable is not
   read. `Locks.doc` takes `Roots` only. With a hermetic release built on Xake 3.10, a script
   caps its compiles with its own resource through `Lock.Run.Throttle` (and `Lock.FscRun.Throttle`)
-  here, in place of `CSC_JOBS`/`FSC_JOBS` ([../resources.md](../resources.md)); the current
+  here, in place of `CSC_JOBS`/`FSC_JOBS` ([../resources.md](https://github.com/OlegZee/Xake/blob/dev/docs/resources.md)); the current
   release builds on `[3.9.0.30, 3.10)`, whose runner options have no `Throttle`.
 - **Replay** is `Lock.compileFrom` (what `buildWith` does with a matching lock): prerequisites,
   the **HERMETIC=on gate** (a lock naming a path outside the roots is refused, message 10, before

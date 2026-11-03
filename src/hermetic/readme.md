@@ -3,21 +3,20 @@
 Reproducible .NET builds for [Xake](https://github.com/OlegZee/Xake): lock files, package
 restore, CycloneDX SBOMs, verification of built binaries, deterministic packing and signing.
 
-The package builds on the `csc {}` and `fsc {}` tasks of `Xake` (`Xake.Dotnet`; any Xake 3.x
-from the version its package dependency names) and adds what a build needs to be repeatable and auditable: a lock file that records
+The assembly ships in the package `Xake.Dotnet`, next to the `csc {}` and `fsc {}` tasks it
+builds on, and adds what a build needs to be repeatable and auditable: a lock file that records
 exactly what the compiler is handed, with the SHA-256 of every reference, analyzer and the
 compiler itself; a restore of the packages that lock names; an SBOM generated from the lock; and
 the release steps after the compile. C# and F# alike: 0.2 locks F# compilations, from `fsc {}`
 or from an imported `.fsproj`. With `HERMETIC=on` (the base's script variable) a lock that
 names anything outside the checkout and the build's package folder, other than an exactly
-pinned .NET SDK, is neither written nor replayed. It is a 0.x preview: names may still change between minor
-versions.
+pinned .NET SDK, is neither written nor replayed. Its API may change: an incompatible change
+is a minor version of `Xake.Dotnet`, with a release-notes line.
 
 ## Usage
 
 ```fsharp
-#r "nuget: Xake"                   // the newest Xake; without it, the oldest the package allows
-#r "nuget: Xake.Hermetic.Dotnet"   // pin both (`, X.Y.Z`) for a reproducible script
+#r "nuget: Xake.Dotnet"   // brings Xake; pin it (`, X.Y.Z`) for a reproducible script
 
 open Xake
 open Xake.Dotnet
@@ -71,6 +70,6 @@ sign {
 }
 ```
 
-See the [documentation](https://github.com/OlegZee/Xake/tree/dev/docs/hermetic) for the lock
+See the [documentation](../../docs/hermetic/README.md) for the lock
 format, `Project.import` (locks from existing `.csproj` and `.fsproj` files), verification and
 packing.

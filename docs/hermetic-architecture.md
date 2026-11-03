@@ -5,7 +5,7 @@ This document is for maintainers and reviewers of the pull requests that introdu
 meets the `Xake` package, and what is and is not proven. The user-facing reference lives in
 [hermetic/README.md](hermetic/README.md) and the pages next to it; the task-oriented guide is
 [hermetic-guide.md](hermetic-guide.md). The base task `csc {}` and its runner are described in
-[tasks.md](tasks.md), [csc-syntax.md](csc-syntax.md) and [csc-server.md](csc-server.md).
+[tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md), [csc-syntax.md](csc-syntax.md) and [csc-server.md](csc-server.md).
 
 Every name below was checked against the source on this branch (`src/hermetic/*.fs`,
 `src/dotnet/Csc.fs`, `src/dotnet/Dotnet.csc.fs`, `src/dotnet/DotNetFwk.fs`,

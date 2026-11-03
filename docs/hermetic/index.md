@@ -1,7 +1,7 @@
 # Xake.Hermetic.Dotnet docs: index
 
 Product reference of `Xake.Hermetic.Dotnet` (`src/hermetic/`), version 0.2.0.25 on Xake
-3.6.0.24. Up: [../index.md](../index.md). The maintainer view is
+3.6.0.24. Up: [../index.md](https://github.com/OlegZee/Xake/blob/dev/docs/index.md). The maintainer view is
 [../hermetic-architecture.md](../hermetic-architecture.md), the task-oriented guide
 [../hermetic-guide.md](../hermetic-guide.md). Lengths are approximate line counts.
 

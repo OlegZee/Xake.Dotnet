@@ -8,7 +8,7 @@ several ways to arrive at a `Csc` (compose one from settings with `csc { ...; re
 one thing that ever shells out to the compiler.
 
 The base reference for the settings, `Csc.compile`, `resolve`, `Csc.run` and `RunOptions` is
-[tasks.md](tasks.md); this file keeps the details behind them. Locks -- the file that records a
+[tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md); this file keeps the details behind them. Locks -- the file that records a
 `Csc` or `Fsc` with the hashes of everything it reads, `Lock.compile`, `Lock.build`,
 `csc { ...; lock }`, `fsc { ...; lock }` and `Project.import` -- are not part of `Xake.Dotnet`; they live in the package
 `Xake.Hermetic.Dotnet` and are described in [hermetic/lock.md](hermetic/lock.md).

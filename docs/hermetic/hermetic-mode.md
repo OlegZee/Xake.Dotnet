@@ -198,11 +198,11 @@ compilation.
 
 ## Pending
 
-- **SDK restore** ([../roadmap.md](../roadmap.md)): `dotnet-install --version <v>` into a
+- **SDK restore** ([../roadmap.md](https://github.com/OlegZee/Xake/blob/dev/docs/roadmap.md)): `dotnet-install --version <v>` into a
   project-owned `DOTNET_ROOT`, checked against Microsoft's release hashes, would turn the
   `dotnet-sdk` prerequisite into a restorable dependency. The `Prerequisite` record is shaped so
   that it can later carry a hash and become a restore request.
-- **An F# compiler toolset** ([../roadmap.md](../roadmap.md)): a small host over
+- **An F# compiler toolset** ([../roadmap.md](https://github.com/OlegZee/Xake/blob/dev/docs/roadmap.md)): a small host over
   `FSharp.Compiler.Service` would remove the fsc prerequisite altogether.
 - **Imports of `netN.0` projects** name `$(DotnetRoot)/packs/...` (references and the pack's
   analyzers), which the SDK prerequisite does not cover, so under `HERMETIC=on` such an import
