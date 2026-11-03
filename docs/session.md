@@ -40,9 +40,9 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 - The `Xake` package carries `Xake.dll` only from `4.0.0-preview.2` (Xake S-D14); earlier ones
   also carried an older `Xake.Dotnet.dll`. The hermetic code uses the pattern module (`PatternAst`,
   `MaskText`, Xake #131), first in `4.0.0-preview.3`; the `XakeVersion` floor is `4.0.0` (release 4.0.0).
-- Trap: `build.fsx`'s `test-build::<project>` is a phony rule with no file dependencies; an
-  old `.xake` database can skip it and run the tests of a stale build. Delete `.xake` (or
-  `clean`) after editing tests outside a full rebuild.
+- The test rules (`test`, `test-build::<project>`, `test::<project>/<slice>`) are typed
+  commands in `testjobs.fsx`, shared by both scripts; a command always runs, so `test` never
+  skips a stale `dotnet build` (the old `.xake` trap is gone).
 - The locks name the SDK compiler by version: SDK 10.0.403, pinned in `build.yml`'s `build-fsc`.
 - The hermetic tests that describe "the repository's own projects" (`DescriptionImportTests`,
   `DescribedTests`, `LocksTests`, `BuildFromLockTests`) use `src/dotnet` and `src/hermetic`

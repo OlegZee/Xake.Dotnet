@@ -16,6 +16,7 @@
 
 open Xake
 open Xake.Tasks
+open Xake.Typed
 open Testjobs
 
 let vars = {|
@@ -38,17 +39,14 @@ let libraries =
 
 let library name = libraries |> List.find (fun lib -> lib.Name = name)
 
-/// Assembly and doc file a library produces, for every target framework.
-let binaries name =
-    [ for fwk in frameworks do
-      for ext in ["dll"; "xml"]
-        -> $"out/%s{fwk}/%s{name}.%s{ext}"
-    ]
+/// Assembly and doc file of a library, per target framework.
+type LibG = { fwk: string; lib: string }
+let Lib = Target<LibG> ["out/(fwk:*)/(lib:*).dll"; "out/(fwk:*)/(lib:*).xml"]
 
 /// The package: packed from src/dotnet, which adds the hermetic assembly to the same nupkg (see
 /// src/dotnet/Xake.Dotnet.fsproj, IncludeHermeticOutput).
-let packageId = "Xake.Dotnet"
-let packagePath version = $"out/pkg/%s{packageId}.%s{version}.nupkg"
+let Package = Target<string> "out/pkg/Xake.Dotnet.(ver:*).nupkg"
+let TestProject = Command<string> "test-project::(project:*)"
 
 /// What the nuspec and the lib folders of the package must hold; returns the problems found (none
 /// means the package is right): a dependency on `Xake`, none on `Xake.Hermetic.Dotnet` (not a
@@ -87,58 +85,24 @@ do xakeScript {
     filelog "build.log" Diag
     varschema vars
 
+    // a test running longer than 10 minutes is a hang: the run is stopped and the
+    // test named (the sequence file in the job's folder) instead of waiting forever
+    rules (testRules xakeVersionArgs [ "--blame-hang"; "--blame-hang-timeout"; "10m"; "--blame-hang-dump-type"; "none" ] vars.TestFilter)
     rules [
+        // all jobs of one test project, e.g. `test-project::hermetic`
+        TestProject.Rule <| fun project -> recipe {
+            do! need (TestJob.For [ for j in testJobs do if j.Key.project = project then j.Key ])
+        }
         "main" <<< ["build"; "test"]
 
-        "build" <== List.collect (fun lib -> binaries lib.Name) libraries
+        "build" <== Lib.For [ for lib in libraries do for fwk in frameworks -> { fwk = fwk; lib = lib.Name } ]
         "clean" => rm {dir "out"}
-
-        "test" <== [ for j in testJobs -> $"test::{testJobName j}" ]
-
-        // all jobs of one test project, e.g. `test-project::hermetic`
-        "test-project::(project:*)" => recipe {
-            let! project = getRuleMatch "project"
-            do! need [ for j in testJobs do if j.Project = project then $"test::{testJobName j}" ]
-        }
-
-        // a test project, built once for all its jobs
-        "test-build::(project:*)" => recipe {
-            let! project = getRuleMatch "project"
-            let! xv = xakeVersionArgs
-            do! sh $"dotnet build {testProjectDir project} -c Release" {
-                args xv
-                logprefix $"[test-build {project}]"
-                stdoutlevel (fun l -> if l.Contains ": error " then Level.Error else Level.Info)
-                failonerror }
-        }
-
-        "test::(project:*)/(slice:*)" => recipe {
-            let! project = getRuleMatch "project"
-            let! slice = getRuleMatch "slice"
-            let job = testJob project slice
-            do! need [ $"test-build::{project}" ]
-            do! need (testJobNeeds job)   // the compiler server's users, one after another
-            let! testFilter = vars.TestFilter
-
-            // a test running longer than 10 minutes is a hang: the run is stopped and the
-            // test named (the sequence file in the job's folder) instead of waiting forever
-            let hang = [ "--blame-hang"; "--blame-hang-timeout"; "10m"; "--blame-hang-dump-type"; "none" ]
-            resetTestJobDir job
-            do! sh $"dotnet test {testProjectDir project} -c Release --no-build" {
-                args (hang @ testArgs job testFilter)
-                env (testJobEnv job)
-                logprefix $"[{testJobName job}]"
-                stdoutlevel (fun l -> if isTestSummary l then Level.Message else Level.Info)
-                captureOutput (ToFile (Both, testJobDir job + "/console.log"))
-                failonerror }
-        }
 
         // one rule compiles them all: which library and which framework is asked for
         // is read off the target being built
-        targets ["out/(fwk:*)/(lib:*).dll"; "out/(fwk:*)/(lib:*).xml"] {
-
-            let! framework = getRuleMatch "fwk"
-            let! lib = getRuleMatch "lib" |> Recipe.map library
+        Lib.rule {
+            let! m = matched
+            let lib = library m.lib
 
             let! allFiles = getFiles <| fileset {
                 basedir lib.Dir
@@ -147,7 +111,7 @@ do xakeScript {
             }
 
             do! needFiles allFiles
-            do! need [for dep in lib.Needs -> $"out/%s{framework}/%s{dep}.dll"]
+            do! need (Lib.For [ for dep in lib.Needs -> { m with lib = dep } ])
             let! version = vars.Version
             let! xv = xakeVersionArgs
 
@@ -155,8 +119,8 @@ do xakeScript {
                 "build"
                 lib.Dir
                 "--configuration"; "Release"
-                "--framework"; framework
-                "--output"; "./out/" + framework
+                "--framework"; m.fwk
+                "--output"; System.IO.Path.GetDirectoryName (Lib.Format m)
                 "/p:Version=" + version
               ] @ xv)
         }
@@ -164,17 +128,16 @@ do xakeScript {
         (* Nuget publishing rules *)
         command "pack" {
             let! version = vars.Version
-            do! need [packagePath version]
+            do! need [Package.Format version]
         }
 
-        target $"out/pkg/%s{packageId}.(ver:*).nupkg" {
-            let! ver = getRuleMatch "ver"
+        Package.Rule <| fun ver -> recipe {
             let! nupkg = getTargetFullName()
             do! dotnet [
                 "pack"; "src/dotnet"
                 "-c"; "Release"
                 $"/p:Version={ver}"
-                "--output"; "out/pkg/"
+                "--output"; System.IO.Path.GetDirectoryName nupkg
             ]
 
             match checkPackage nupkg with
@@ -189,7 +152,7 @@ do xakeScript {
             let! version = vars.Version
             let! nuget_key = vars.NUGET_KEY
             do! dotnet [
-                "nuget"; "push"; packagePath version
+                "nuget"; "push"; Package.Format version
                 "--source"; "https://www.nuget.org/api/v2/package"
                 "--api-key"; nuget_key
             ]
