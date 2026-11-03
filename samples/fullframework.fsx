@@ -8,7 +8,7 @@
 // * `dotnet fsi fullframework.fsx`
 
 #r "nuget: Xake, 4.0.0"
-#r "../out/netstandard2.0/Xake.Dotnet.dll"   // `dotnet fsi build.fsx -- -- build` first; or #r "nuget: Xake.Dotnet"
+#r "../out/netstandard2.0/Xake.Dotnet.dll"   // `dotnet fsi build.fsx -- -- build` first; or #r "nuget: Xake.Dotnet, 4.0.0"
 
 open Xake
 open Xake.Tasks

@@ -5,7 +5,7 @@ the script variables they read. The engine itself (rules, recipes, `sh`, copy an
 the variable model) is documented in [Xake's docs](https://github.com/OlegZee/Xake/blob/dev/docs/index.md).
 
 ```fsharp
-#r "nuget: Xake.Dotnet"   // brings the Xake package with it
+#r "nuget: Xake.Dotnet, 4.0.0"   // brings the Xake package with it
 
 open Xake
 open Xake.Dotnet

@@ -6,7 +6,7 @@ ship in this one package, which depends on the engine package `Xake`, so one ref
 enough:
 
 ```fsharp
-#r "nuget: Xake.Dotnet"   // brings Xake too; pin it (`, X.Y.Z`) for a reproducible script
+#r "nuget: Xake.Dotnet, 4.0.0"   // brings Xake too
 ```
 
 Until Xake 3.x the .NET tasks shipped inside the `Xake` package and the hermetic part was the

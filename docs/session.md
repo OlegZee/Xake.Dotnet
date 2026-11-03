@@ -31,9 +31,9 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Build facts
 
-- `build.fsx` bootstraps on `Xake 4.0.0`; `build.fsc.fsx` on `Xake 3.15.0` +
-  `Xake.Hermetic.Dotnet 0.10.0` until `Xake.Dotnet` 4.0.0 is published (then one
-  `#r "nuget: Xake.Dotnet, 4.0.0"`, split step S9).
+- `build.fsx` bootstraps on `Xake 4.0.0`; `build.fsc.fsx` on `Xake 4.0.0` +
+  `Xake.Dotnet 4.0.0-preview.1` (published 2026-11-03 to try the package before 4.0.0); moves to
+  `Xake.Dotnet 4.0.0` after the release (split step S9).
 - `src/hermetic` cannot be a project reference of `src/dotnet` (it references `src/dotnet`): the
   `IncludeHermeticOutput` target of `src/dotnet/Xake.Dotnet.fsproj` builds it with an explicit
   `MSBuild` call while packing and adds its dll and xml to `lib/<tfm>/`.
