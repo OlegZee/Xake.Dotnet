@@ -37,3 +37,8 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 - The hermetic tests that describe "the repository's own projects" (`DescriptionImportTests`,
   `DescribedTests`, `LocksTests`, `BuildFromLockTests`) use `src/dotnet` and `src/hermetic`
   with the engine as the package `Xake`; they need nuget.org (the `Xake` package) to restore.
+
+## Feature folders
+
+- `docs/features/hermetic-windows/`: the remaining work of the hermetic-on-Windows findings (moved from
+  Xake on 2026-11-03); start with its `session.md`, "Next step".
