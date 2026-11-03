@@ -6,7 +6,9 @@ fail when the lock is missing or stale, and a release build turns the result int
 packages. Each scenario says what happens, what to write in `build.fsx`, what to commit, what
 the machine needs, and what the failure messages look like.
 
-Versions: `Xake 3.4.0.21`, `Xake.Hermetic.Dotnet 0.1.0.22`.
+Versions: the snippets reference `Xake.Dotnet 4.0.0`, which carries `Xake.Hermetic.Dotnet` and
+brings `Xake`. The **(run)** marks below were made on the earlier separate packages
+`Xake 3.4.0.21` and `Xake.Hermetic.Dotnet 0.1.0.22`.
 
 Marks used below:
 
@@ -59,8 +61,7 @@ One recipe holds the settings, so the build, the update and the check use the sa
 **(run)**:
 
 ```fsharp
-#r "nuget: Xake, 3.4.0.21"
-#r "nuget: Xake.Hermetic.Dotnet, 0.1.0.22"
+#r "nuget: Xake.Dotnet, 4.0.0"   // brings Xake
 open Xake
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet
@@ -548,7 +549,7 @@ runner passes `-d XAKE_CSC_SERVER=off`); `CSC_SERVER` (`-d CSC_SERVER:off`) wins
 ### The package cache
 
 What to cache: the NuGet package folder. It holds the build's packages and also the
-`Xake`/`Xake.Hermetic.Dotnet` packages `dotnet fsi` restores for `#r "nuget:"`.
+`Xake`/`Xake.Dotnet` packages `dotnet fsi` restores for `#r "nuget:"`.
 
 | Question | Answer |
 |---|---|
@@ -712,7 +713,7 @@ What breaks offline:
 | `csc { toolset }` / `CSC_TOOLSET` on a folder without the package | resolved before any lock; with `NUGET_FETCH=off` it fails naming the package instead of restoring (`nofetch` does not reach it) |
 | composed reference assemblies missing | resolved before any lock; with `NUGET_FETCH=off` the build fails naming the package and saying fetching is off |
 | `csc { lock }` without `nofetch` or `NUGET_FETCH=off` | fetches what the folder lacks; add either (or use an offline NuGet config) |
-| `dotnet fsi` `#r "nuget:"` | needs `Xake` and `Xake.Hermetic.Dotnet` in the folder |
+| `dotnet fsi` `#r "nuget:"` | needs `Xake` and `Xake.Dotnet` in the folder |
 
 ## G. Troubleshooting
 

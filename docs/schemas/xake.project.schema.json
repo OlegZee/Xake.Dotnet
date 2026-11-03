@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/OlegZee/Xake/schemas/xake.project.json",
   "title": "Xake project description",
-  "description": "What a project is: data only, rarely changes; written by an explicit import or by hand, committed. `project` is relative to this file; every other path is relative to the project file's folder. No placeholders: a variant msbuild evaluates differently (a brand) is a separate description; configurations, output layout and versions are the script's knowledge. Read and written by `Xake.Dotnet.Description` in the Xake package (docs/description.md), composed into a compilation by csc/fsc { project }; properties are listed in the order the writer emits them.",
+  "description": "What a project is: data only, rarely changes; written by an explicit import or by hand, committed. `project` is relative to this file; every other path is relative to the project file's folder. No placeholders: a variant msbuild evaluates differently (a brand) is a separate description; configurations, output layout and versions are the script's knowledge. Read and written by `Xake.Dotnet.Description` in the Xake.Dotnet package (docs/description.md), composed into a compilation by csc/fsc { project }; properties are listed in the order the writer emits them.",
   "type": "object",
   "required": ["name", "project", "language", "frameworks", "sources"],
   "additionalProperties": false,

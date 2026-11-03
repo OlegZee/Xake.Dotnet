@@ -20,9 +20,9 @@ open Xake.Typed
 open Testjobs
 
 let vars = {|
-    // The env names are explicit: publish.yml exports VERSION; a field without `envVar` reads
-    // XAKE__<NAME> instead.
-    Version     = Var.create<string>(envVar = "VERSION", description = "Version number for the Xake.Dotnet package, e.g. 4.0.1") |> withDefault "0.0.1"
+    // The names are explicit: publish.yml exports VERSION, and `-d VERSION=` is the same name; a
+    // field without `cliArg` takes `-d <Key>=`, without `envVar` it reads XAKE__<NAME>.
+    Version     = Var.create<string>(cliArg = "VERSION", envVar = "VERSION", description = "Version number for the Xake.Dotnet package, e.g. 4.0.1") |> withDefault "0.0.1"
     NUGET_KEY   = Var.env<string>(envVar = "NUGET_KEY", description = "API key for NuGet.org, required for pushing the package") |> withDefault "" |> secret
     TestFilter  = Var.string(cliArg = "FILTER", envVar = "FILTER", description = "Runs only the tests whose name matches this regex, e.g. 'Rm'")
     XakeVersion = Var.string(cliArg = "XAKE_VERSION", envVar = "XAKE_VERSION", description = "The Xake package version (or range, e.g. 4.*-*) to build and test against instead of the project file's")
