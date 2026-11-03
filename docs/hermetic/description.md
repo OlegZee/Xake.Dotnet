@@ -7,7 +7,7 @@ There are no placeholders: a variant that msbuild evaluates differently (a brand
 gets its own description. Configurations, the output layout and versions belong to the build
 script, not to the description.
 
-The format is the core's since Xake 3.9: module `Xake.Dotnet.Description`
+The format belongs to the `Xake.Dotnet` assembly: module `Xake.Dotnet.Description`
 (`src/dotnet/Description.fs`), schema
 [../schemas/xake.project.schema.json](../schemas/xake.project.schema.json), every field, the
 fixed text format and the API on [../description.md](../description.md). This page is what

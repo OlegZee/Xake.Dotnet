@@ -27,30 +27,29 @@ do xakeScript {
 ```
 
 Schema: [schemas/xake.project.schema.json](schemas/xake.project.schema.json). Module:
-`Xake.Dotnet.Description` (`src/dotnet/Description.fs`), in the `Xake` package since 3.9. The
+`Xake.Dotnet.Description` (`src/dotnet/Description.fs`), in the `Xake.Dotnet` assembly. The
 composition is `Xake.Dotnet.ProjectPlan` (`src/dotnet/ProjectPlan.fs`).
 
 ## Status
 
-Xake 3.9 moves the description model from Xake.Hermetic.Dotnet into the Xake package so that the
-composed `csc {}` / `fsc {}` can be fed from a committed description. That is the whole move:
+The description model is in the `Xake.Dotnet` assembly (since Xake 3.9, when the .NET tasks
+were part of the `Xake` package) so that the composed `csc {}` / `fsc {}` can be fed from a
+committed description. Both assemblies ship in the `Xake.Dotnet` package; the split is:
 
-- **In the Xake package (this page):** the format (`Description`: parse, validate, format,
+- **In `Xake.Dotnet` (this page):** the format (`Description`: parse, validate, format,
   load/save/find, `beside`), the schema, and `csc { project }` / `fsc { project }` for what a
   description says by itself -- sources, resources, defines, options, assembly attributes,
   framework assemblies, shared frameworks of the SDK. No msbuild runs, no package is restored,
   nothing is locked.
-- **In Xake.Hermetic.Dotnet (unchanged):** the import from `.csproj`/`.fsproj` (`Import`), package
+- **In `Xake.Hermetic.Dotnet`:** the import from `.csproj`/`.fsproj` (`Import`), package
   restore (`Described.restore`, `packages`), locks (`lock`, `Lock`, `Locks`), configuration
   presets (`config`), SBOM, verification, packing and signing. A description that needs any of
-  that is rejected by the composed path with a message naming the package.
+  that is rejected by the composed path with a message naming `Xake.Hermetic.Dotnet`.
 - **Not built:** msbuild emulation. The composed path is for simple projects and ASP.NET Core
   projects whose only "package" is a shared framework (`Microsoft.AspNetCore.App`).
 
-The schema is the hermetic package's latest (0.3 on branch `pr/deploy`: `resources` with
-`byFramework` resources, `noWarn`, `assemblyAttributes`) plus one field, `frameworkReferences`.
-Xake.Hermetic.Dotnet 0.4 builds on Xake `[3.9.0.30, 3.10)` and uses the core module
-`Xake.Dotnet.Description` and the schema `docs/schemas/xake.project.schema.json`; it keeps no copy.
+There is one schema, `docs/schemas/xake.project.schema.json`, and one module,
+`Xake.Dotnet.Description`; `Xake.Hermetic.Dotnet` uses them and keeps no copy.
 
 ## Example
 

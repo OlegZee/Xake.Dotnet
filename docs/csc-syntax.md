@@ -10,8 +10,9 @@ one thing that ever shells out to the compiler.
 The base reference for the settings, `Csc.compile`, `resolve`, `Csc.run` and `RunOptions` is
 [tasks.md](tasks.md); this file keeps the details behind them. Locks -- the file that records a
 `Csc` or `Fsc` with the hashes of everything it reads, `Lock.compile`, `Lock.build`,
-`csc { ...; lock }`, `fsc { ...; lock }` and `Project.import` -- are not part of `Xake.Dotnet`; they live in the package
-`Xake.Hermetic.Dotnet` and are described in [hermetic/lock.md](hermetic/lock.md).
+`csc { ...; lock }`, `fsc { ...; lock }` and `Project.import` -- are not part of the `Xake.Dotnet`
+assembly; they live in the assembly `Xake.Hermetic.Dotnet` (`open Xake.Hermetic.Dotnet`), which
+ships in the same `Xake.Dotnet` package, and are described in [hermetic/lock.md](hermetic/lock.md).
 
 ## Composed mode
 
@@ -165,11 +166,11 @@ be determined (no SDK) does the compile fail with `csc needs a target framework`
   framework's pack always comes from NuGet, installed or not. See
   [dotnet-build.md](dotnet-build.md).
 
-## From a project description: `project` (Xake 3.9)
+## From a project description: `project`
 
 `project "path"` composes the compilation from a project description (`xake.project.json`,
 [description.md](description.md)) instead of listing sources, resources and defines in the
-script. It is an operation of the `Xake` package's own `csc {}` and `fsc {}`; nothing beyond the
+script. It is an operation of `csc {}` and `fsc {}` themselves (`Xake.Dotnet`); nothing beyond the
 description is read -- no msbuild, no restore, no lock. Code: `src/dotnet/ProjectPlan.fs`,
 `Csc.describedSettings`, `Fsc.describedSettings`.
 
@@ -194,17 +195,17 @@ description is read -- no msbuild, no restore, no lock. Code: `src/dotnet/Projec
 - **Rejected:** `packages` (F# `FSharp.Core` aside, which fsc composes itself), a `projectRefs`
   entry whose output is not among the block's `ref`, a culture-specific resource, a description
   of the other language. The messages name Xake.Hermetic.Dotnet where it is the way out.
-- **Not here:** `config` (the SDK's Debug/Release presets), `packages`, `lock`: Xake.Hermetic.Dotnet
-  (next section). Since 0.4 it builds on Xake 3.9 and adds them to this `project`.
+- **Not here:** `config` (the SDK's Debug/Release presets), `packages`, `lock`: the
+  `Xake.Hermetic.Dotnet` assembly (next section) adds them to this `project`.
 
 ## From a project description in Xake.Hermetic.Dotnet: `project`, `config`, `packages`
 
-`Xake.Hermetic.Dotnet` (0.4, on Xake 3.9) adds operations to the core's `project` (above) for a
+`Xake.Hermetic.Dotnet` adds operations to the `project` of `csc {}`/`fsc {}` (above) for a
 description with packages, a configuration or a lock
 ([hermetic/description.md](hermetic/description.md#the-composition-this-package-adds-config-packages-lock)).
-`project "path"` is the core's setting; `config`, `packages` and `lock` come after it, then only
+`project "path"` is the `Xake.Dotnet` setting; `config`, `packages` and `lock` come after it, then only
 `config`, `packages`, `lock`, `nofetch` and `resolve`; any of them makes the compilation the
-package's composition (below) instead of the core's. Code: `src/hermetic/Described.fs`.
+hermetic composition (below) instead of the plain one. Code: `src/hermetic/Described.fs`.
 
 ```fsharp
 open Xake.Dotnet

@@ -267,6 +267,8 @@ SDK 10.0.x), and fail asking for one only when that cannot be determined.
 | `NUGET_PACKAGES` | The build's package folder (relative to the project root, or absolute), overriding the environment variable; see [Where packages go](#where-packages-go). |
 | `NUGET_FETCH` | `off` stops Xake from downloading anything into the package folder; a missing package then fails the compile. Default `on`. |
 | `HERMETIC` | `on` checks that every composed compilation names only paths under the project root and the script variable `NUGET_PACKAGES`'s folder (plus fsc's compiler under an exactly pinned SDK); default `off`. See [Hermetic mode](#hermetic-mode). |
+| `CSC_SERVER` / `XAKE_CSC_SERVER` | The csc compiler server: `CSC_SERVER` is `on`, `off` or keepalive seconds; when it is unset, `XAKE_CSC_SERVER` (`on` or `off`, default `on`); see [csc-server.md](csc-server.md). |
+| `CSC_JOBS` / `FSC_JOBS` | At most this many `csc` / `fsc` processes at once (`0` or unset: unlimited); not a dependency; a target's `throttle` takes its place; see [csc-server.md](csc-server.md#limiting-concurrent-compiles-csc_jobs-fsc_jobs). |
 | `NETCORE_REF_VERSION` | Pins of the `Microsoft.NETCore.App.Ref` targeting pack, one per major.minor (`6.0.36;7.0.20`): a pinned `netN.0` framework always takes the NuGet package at that version, never an installed pack; see [the SDK provider](#1-sdkimpl--net-sdk-compilers-over-nuget-reference-assemblies-default). |
 
 Precedence inside a task: `targetfwk` → `NETFX-TARGET` → the SDK's own .NET framework. The toolchain is then
