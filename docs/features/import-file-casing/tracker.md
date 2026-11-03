@@ -6,10 +6,10 @@ One line per item. Status as of 2026-11-04.
 
 - [x] Research and `brief.md` (2026-11-04)
 - [x] Owner's answers 1-8 (2026-11-04, brief §7)
+- [x] `Casing`: the resolver (`Casing.read` runs `git ls-files -z --full-name` once per import; `Casing.resolve`, `Casing.Resolver`; a path not in the index or outside the root unchanged; two entries by case: exact wins, else fails), with its unit tests (`CasingTests.fs`)
 
 ## Open
 
-- [ ] `Casing.ofRepository`: the resolver (the git index read with `git ls-files`, cached per import; a path not in the index unchanged), with its unit tests. Next
 - [ ] `describe`: project path, F# sources, the literal part of C# masks and excludes, resource files (msbuild's names kept), `keyFile`, project refs, packed icon/readme
 - [ ] `record`: compiler arguments (`absolutize`), `Resources`, `Imports`/`Inputs`, `appOf` content and own config, `projectsOf` names, the project files the script names
 - [ ] Legacy `Project.import` route (decision 6)

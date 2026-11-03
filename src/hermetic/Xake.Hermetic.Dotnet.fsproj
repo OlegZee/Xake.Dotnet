@@ -21,7 +21,8 @@
   <!-- Order follows the dependencies: the json reader of tool output and the root tokens
        first (the project description is the core's, `Xake.Dotnet.Description`), then
        Nuget (assets, nuspec, cache) and Restore (which names no lock type), Git (revision
-       token), the lock format and the lock's side of a build (Lock.build/compile/record/verify),
+       token), Casing (the repository's spelling of a file, for the import), the lock format
+       and the lock's side of a build (Lock.build/compile/record/verify),
        a description as a compilation and the builder operations (Described.fs: config,
        packages, lock and nofetch on top of the core's `project`), the import (csproj and fsproj), and the release
        pipeline. Signing is the one delegated rule (signing.md); it uses Verify, StrongName
@@ -33,6 +34,7 @@
     <Compile Include="Nuget.fs" />
     <Compile Include="Restore.fs" />
     <Compile Include="Git.fs" />
+    <Compile Include="Casing.fs" />
     <Compile Include="Lock.fs" />
     <Compile Include="Described.fs" />
     <Compile Include="Apps.fs" />
