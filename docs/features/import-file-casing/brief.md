@@ -155,3 +155,19 @@ A `/resource:` without a name (csc, fsc) takes the file name: the resolver must 
    sources): out of scope, the consumer fixes the spelling in the sources (one-time, about a dozen
    references), or the import detects them and reports each one with both spellings? [report at
    import, Info, both spellings; the fix is the consumer's]
+
+## 7. Owner's answers (2026-11-04)
+
+Constraint: only **paths to files** change. A resource's name (msbuild's manifest name, the
+`/resource:path,name` name, a `<data name>` inside a `.resx`) is never touched, and no file content
+(resx, sources) is rewritten.
+
+1. Source of truth: the **git index**.
+2. Read it with `git ls-files` (or from files on disk); **never parse `.git/index` ourselves**.
+3. Yes: the import warns about **every** difference between a project's spelling and the repository's.
+4. No case-insensitive lookup at replay. An old miscased lock fails as today ("lock ... stale",
+   checked before anything is built); the fix is a re-import, not a fallback.
+5. Resource names are not touched (see the constraint).
+6. Yes: the legacy `Project.import` route too.
+7. (open)
+8. (open)
