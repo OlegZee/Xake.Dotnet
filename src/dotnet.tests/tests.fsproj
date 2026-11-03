@@ -1,0 +1,66 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Common.fs" />
+    <Compile Include="XakeTestBase.fs" />
+    <Compile Include="RecipeTests.fs" />
+    <Compile Include="PathTests.fs" />
+    <Compile Include="RuleMatchTests.fs" />
+    <Compile Include="RuleSpecificityTests.fs" />
+    <Compile Include="PatternAstTests.fs" />
+    <Compile Include="FilesetTests.fs" />
+    <Compile Include="ScriptErrorTests.fs" />
+    
+    <Compile Include="XakeScriptTests.fs" />
+    <Compile Include="StaleArtifactDepTests.fs" />
+    <Compile Include="MiscTests.fs" />
+    <Compile Include="StorageTests.fs" />
+    <Compile Include="AgentFailureTests.fs" />
+    <Compile Include="FileTasksCopy.fs" />
+    <Compile Include="FileTasksTests.fs" />
+    <Compile Include="FileTasksRm.fs" />
+    <Compile Include="ParentDirTargetTests.fs" />
+    <Compile Include="ProgressTests.fs" />
+    <Compile Include="CommandLineTests.fs" />
+    <Compile Include="SystemTaskTests.fs" />
+    <Compile Include="CommandTests.fs" />
+    <Compile Include="XakeEngineTests.fs" />
+    <Compile Include="VarsTests.fs" />
+    <Compile Include="SecretVarsTests.fs" />
+    <Compile Include="VarsConformanceTests.fs" />
+    <Compile Include="FingerprintsTests.fs" />
+    <Compile Include="DelegatedTests.fs" />
+    <Compile Include="ResourceGuardTests.fs" />
+    <Compile Include="FlatScriptTests.fs" />
+    <Compile Include="DotnetTasksTests.fs" />
+    <Compile Include="ToolsetTests.fs" />
+    <Compile Include="PackageRootTests.fs" />
+    <Compile Include="SdkProbeTests.fs" />
+    <Compile Include="CscServerTests.fs" />
+    <Compile Include="ResxTests.fs" />
+    <Compile Include="CompilerCrashTests.fs" />
+    <Compile Include="CompilerJobsTests.fs" />
+    <Compile Include="FscTests.fs" />
+    <Compile Include="PathSpacesTests.fs" />
+    <Compile Include="HermeticModeTests.fs" />
+    <Compile Include="LibraryVarsTests.fs" />
+    <Compile Include="DescriptionTests.fs" />
+    <Compile Include="ProjectPlanTests.fs" />
+    <Compile Include="RecordShapeTests.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\core\Xake.fsproj" />
+    <ProjectReference Include="..\dotnet\Xake.Dotnet.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.0" />
+    <PackageReference Include="NUnit" Version="3.13.3" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+    <PackageReference Include="NUnit.Analyzers" Version="3.6.1" />
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+  </ItemGroup>
+</Project>
