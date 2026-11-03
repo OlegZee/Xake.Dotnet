@@ -1,11 +1,13 @@
 # Xake.Hermetic.Dotnet
 
-## 0.11.0 (unreleased)
+## In `Xake.Dotnet` 4.0.0 (unreleased; planned as 0.11.0)
 
-- **Ships together with Xake 4.0.** Until then the package builds on the in-repo Xake (project
-  references; owner, 2026-10-31) and depends on package `Xake` at the version it was built with;
-  it reads its variables with `Var.read` and the remedies below (`var "CI" [Env "CI"]`) use the
-  `var` source lists, both new in that Xake. 0.10.0 keeps its range `[3.14.0.45, 4.0)`.
+- **Ships inside the package `Xake.Dotnet` 4.0.0**, on `Xake [4.0.0, 5.0)`; the package
+  `Xake.Hermetic.Dotnet` ends at 0.10.0 (range `[3.14.0.45, 4.0)`). Replace
+  `#r "nuget: Xake.Hermetic.Dotnet, 0.10.0"` with `#r "nuget: Xake.Dotnet, 4.0.0"`;
+  `open Xake.Hermetic.Dotnet` is unchanged. It reads its variables with `Var.read` and the
+  remedies below (`var "CI" [Env "CI"]`) use the `var` source lists, both new in Xake 4.0.
+  Later changes are in [docs/release-notes.md](../release-notes.md).
 - **Breaking: no environment fallback.** `CI`, `LOCK_REFRESH` and `SOURCE_DATE_EPOCH` are read from
   the build variables only (0.10 read the environment variable when the script variable was unset,
   `SOURCE_DATE_EPOCH` from the environment only). On CI add `var "CI" [Env "CI"]` (and the like),

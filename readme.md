@@ -6,10 +6,10 @@ utility that uses the full power of F#.
 [![Build and Test](https://github.com/OlegZee/Xake.Dotnet/actions/workflows/build.yml/badge.svg)](https://github.com/OlegZee/Xake.Dotnet/actions/workflows/build.yml)
 
 **From Xake 4.0 the .NET tasks are a package of their own.** A script that compiles with `csc`
-or `fsc` adds one line; it brings the engine too:
+or `fsc` adds one line; it brings the engine (`Xake [4.0.0, 5.0)`) too:
 
 ```fsharp
-#r "nuget: Xake.Dotnet"
+#r "nuget: Xake.Dotnet, 4.0.0"
 
 open Xake
 open Xake.Dotnet
@@ -28,8 +28,10 @@ The package `Xake.Dotnet` holds two assemblies:
 | `Xake.Hermetic.Dotnet` | `Xake.Hermetic.Dotnet` | lock files, restore, SBOM, verification, deterministic packing, signing (API may change) |
 
 Up to Xake 3.x the tasks shipped inside the `Xake` package and the hermetic part was the package
-`Xake.Hermetic.Dotnet` (ended at 0.10.0). A script that referenced `Xake.Hermetic.Dotnet`
-replaces that `#r` line with `#r "nuget: Xake.Dotnet"`; `open` lines are unchanged.
+`Xake.Hermetic.Dotnet` (ended at 0.10.0). A script on Xake 3.x that opens `Xake.Dotnet` adds
+`#r "nuget: Xake.Dotnet, 4.0.0"`; one that referenced `Xake.Hermetic.Dotnet` replaces that `#r`
+line with it; `open` lines are unchanged. What else changed:
+[docs/release-notes.md](docs/release-notes.md).
 
 Package readme with the task overview: [src/dotnet/readme.md](src/dotnet/readme.md). Docs:
 [docs/tasks.md](docs/tasks.md) (the task reference: `csc`, `fsc`, `msbuild`, `resgen`, script variables),
