@@ -22,6 +22,23 @@ locks. On Linux the same descriptions and locks fail:
 - a project reference spelled `..\foo\foo.csproj` names the project `foo`, and the lock of
   `Foo` is looked up as `lockOf "foo"` (`Locks.fs:948-961`): not found on Linux.
 
+### Evidence: the consumer's alias list (2026-11-04)
+
+The consumer's Linux CI works around this today with a scan and a list of 62 case aliases (real
+repository path -> the spelling something references), applied before the build. The aim of this
+feature is to retire that list. By kind (counts of the list's entries):
+- **resx file references** (`ResXFileRef` in a `.resx`): images, cursors, icons, 42 entries (the two `app.ico` may be `ApplicationIcon` instead)
+  (`resources/copy.png` referenced as `Copy.png`, `hand1.cur` as `Hand1.cur`), including
+  folder segments (`resources` vs `Resources`). The import records the resx; its content
+  names these files, and the resx compile (`ResxFormat.parseFileRef`) reads them at build time.
+- **doc-comment includes** in C# sources (`<include file='common.xml' .../>` for `Common.xml`,
+  folders `Docs` vs `docs`): 12 entries; csc reads them, the spelling is in the sources.
+- **msbuild-level paths**: `Directory.Build.props` imported as `Directory.build.props`,
+  `.editorconfig` as `.editorConfig` (4 projects), one C# source (`*.Blazor.cs` vs `*.blazor.cs`),
+  `readme.md`/`Readme.md` package files: what sections 2-3 cover.
+So the larger part is referenced from **file content the import does not rewrite** (resx, C#
+sources); decisions 7 and 8 below.
+
 ## 2. What the code does today
 
 Every path below is taken from msbuild (item identity, property, command line, `-pp` import
@@ -128,3 +145,13 @@ A `/resource:` without a name (csc, fsc) takes the file name: the resolver must 
    repository spelling? [keep msbuild's, written explicitly in the description when they differ]
 6. The legacy `Project.import` route (`Project.fs`): fix it too, or only `Import.record`/`project`?
    [both: one call at its `resolveAgainstProject` and args]
+7. References inside a `.resx` (`ResXFileRef`), the bulk of the consumer's list: (a) the import
+   resolves each referenced file to the repository's spelling and the lock records the pairs
+   (resx spelling -> repository path, hashed as the resx's inputs), the resx compile uses them;
+   (b) the resx compile itself looks the file up ignoring case (a replay-side fallback, against 4);
+   (c) out of scope, the consumer renames the files or fixes the resx. [(a): the resx compile is
+   ours, and the lock then names exact files]
+8. Doc-comment `<include file=...>` in C# sources (csc reads them; the import cannot rewrite
+   sources): out of scope, the consumer fixes the spelling in the sources (one-time, about a dozen
+   references), or the import detects them and reports each one with both spellings? [report at
+   import, Info, both spellings; the fix is the consumer's]
