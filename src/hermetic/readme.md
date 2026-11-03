@@ -16,7 +16,7 @@ is a minor version of `Xake.Dotnet`, with a release-notes line.
 ## Usage
 
 ```fsharp
-#r "nuget: Xake.Dotnet"   // brings Xake; pin it (`, X.Y.Z`) for a reproducible script
+#r "nuget: Xake.Dotnet, 4.0.0"   // brings Xake
 
 open Xake
 open Xake.Dotnet
