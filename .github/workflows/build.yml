@@ -1,0 +1,103 @@
+# Builds and tests Xake.Dotnet (both assemblies, one package) on the published `Xake` package.
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: Build and test
+
+on:
+  push:
+    branches: [ "dev" ]
+  pull_request:
+    branches: [ "dev" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # a normal run takes under 15 minutes; a hang fails here instead of at the 6-hour limit
+    # (the tests themselves are killed after 10 minutes each, build.fsx `test`)
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        # one SDK: global.json rolls forward (latestMajor) to the newest installed SDK
+        dotnet-version: '10.0.x'
+    # `test` runs both test projects, src/dotnet.tests and src/hermetic.tests; `pack` builds the
+    # one package and fails unless it depends on `Xake` and carries both assemblies per framework
+    - name: Build, test & pack
+      run: dotnet fsi build.fsx -- -- build test pack
+    - name: Upload build log
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: build-log-${{ github.run_number }}
+        path: build.log
+        retention-days: 5
+
+  # The declarative self-build (build.fsc.fsx): both libraries compiled by fsc from the committed
+  # descriptions and locks, no msbuild for them; the engine from the package `Xake` the locks
+  # name. Fails on a stale fingerprint (`check`). The script itself bootstraps from published
+  # packages (its first lines). The locks name the SDK compiler by the SDK version (prerequisite
+  # `dotnet-sdk` 10.0.403): they hold for SDK 10.0.403 on any OS. Re-run `update-locks` when the
+  # SDK changes, and move this pin with it.
+  build-fsc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.403'
+    - name: Build from the committed locks
+      run: dotnet fsi build.fsc.fsx -- -- build check -d NUGET_FETCH=on
+    - name: Upload build log
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: build-fsc-log-${{ github.run_number }}
+        path: build.log
+        retention-days: 5
+
+  # The newest published Xake 4.x, previews included, instead of the floor of the range in
+  # src/dotnet/Xake.Dotnet.fsproj: an engine release that breaks Xake.Dotnet shows here before
+  # anyone bumps the floor. `4.*` once 4.0.0 is out.
+  xake-latest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+    - name: Build & test on the newest Xake 4.x
+      run: dotnet fsi build.fsx -- -- build test -d "XAKE_VERSION=4.*-*"
+    - name: Upload build log
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: xake-latest-log-${{ github.run_number }}
+        path: build.log
+        retention-days: 5
+
+  # All of src/dotnet.tests on Windows (paths with spaces, the SDK probe, registry lookups are
+  # where Windows differs). Unfiltered for now; narrow with -d FILTER=... only if it is slow.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.0.x'
+    - name: Build & test src/dotnet.tests
+      run: dotnet fsi build.fsx -- -- build test-project::dotnet
+    - name: Upload build log
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: windows-log-${{ github.run_number }}
+        path: build.log
+        retention-days: 5

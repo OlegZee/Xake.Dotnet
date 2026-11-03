@@ -1,0 +1,59 @@
+# Publishes the one package of this repository, Xake.Dotnet (Xake.Dotnet.dll and
+# Xake.Hermetic.Dotnet.dll), to nuget.org on a tag `v<X.Y.Z>` (docs/devprocess.md). Inert until a
+# tag is pushed and the repository secret NUGET_API_KEY (a nuget.org key scoped to Xake.Dotnet)
+# exists.
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: Publish package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # a hang fails here instead of at the 6-hour limit (see build.yml)
+    timeout-minutes: 40
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    # The tag is the published version, exactly (`v4.0.1` -> 4.0.1; `v4.0.0-preview.2` ->
+    # 4.0.0-preview.2). A re-run of the same tag is a no-op push (--skip-duplicate); a broken
+    # release is replaced by the next patch, never re-published.
+    - name: Version from tag
+      id: release
+      run: |
+        TAG_NAME="${{ github.ref_name }}"
+        case "$TAG_NAME" in
+          v*) VERSION="${TAG_NAME#v}" ;;
+          *) echo "::error::tag '$TAG_NAME' is not v*"; exit 1 ;;
+        esac
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+    - name: Build, test and pack
+      run: |
+        export VERSION=${{ steps.release.outputs.version }}
+        dotnet fsi build.fsx -- -- build test pack
+
+    - name: Publish
+      run: >
+        dotnet nuget push
+        out/pkg/Xake.Dotnet.${{ steps.release.outputs.version }}.nupkg
+        --api-key ${{ secrets.NUGET_API_KEY }}
+        --source https://api.nuget.org/v3/index.json
+        --skip-duplicate
+
+    - name: Upload build log
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: build-log-${{ github.run_number }}
+        path: build.log
+        retention-days: 5
