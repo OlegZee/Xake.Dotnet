@@ -5,7 +5,7 @@
 // USAGE:
 // * `dotnet fsi toolset.fsx`
 
-#r "nuget: Xake, 4.0.0-preview.2"
+#r "nuget: Xake, 4.0.0-preview.3"
 #r "../out/netstandard2.0/Xake.Dotnet.dll"   // `dotnet fsi build.fsx -- -- build` first; or #r "nuget: Xake.Dotnet"
 
 open Xake
