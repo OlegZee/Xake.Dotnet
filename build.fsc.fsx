@@ -8,6 +8,7 @@
 
 open Xake
 open Xake.Tasks
+open Xake.Typed
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet
 open Testjobs
@@ -28,6 +29,10 @@ let lockOf name cfg = $"locks/{name}/{cfg}.json"
 let outOf cfg fwk (_: string) = $"out/{cfg}/{fwk}"
 let versions = [ ("**", vars.Version) ]   // one package, one version
 let fingerprints = "xake.fingerprints"
+type LockG = { name: string; cfg: string }
+let Lock = Command<LockG> "lock::(name:*)::(cfg:*)"
+type DllG = { cfg: string; fwk: string; name: string }
+let Dll = Target<DllG> "out/(cfg:*)/(fwk:*)/(name:*).dll"
 
 /// bump-base's view of the engine version: the versions nuget.org lists and the floor of the
 /// `XakeVersion` range in src/dotnet/Xake.Dotnet.fsproj (the one place it is written).
@@ -70,6 +75,9 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
     varschema vars
     var "NUGET_PACKAGES" ".packages"   // a default: -d NUGET_PACKAGES=<dir> (from Xake 4.0 also $XAKE__NUGET_PACKAGES) overrides it
 
+    // as build.fsx: the jobs of testjobs.fsx in parallel, the test projects built once by
+    // msbuild (`dotnet build`); no --blame-hang here
+    rules (testRules (recipe { return [] }) [] vars.TestFilter)
     rules [
         "main" <<< ["build"; "test"]
         "clean" => rm { dir "out/Release" }   // out/netstandard2.0 is build.fsx's
@@ -81,16 +89,13 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
         }
         // (b) description -> lock, referenced projects first; `-d LOCK_REFRESH=FSharp.Core` (or `*`) re-resolves.
         // Lock rules run one at a time (`for`): each records its line into the one fingerprint file.
-        "lock::(name:*)::(cfg:*)" => recipe {
-            let! name = getRuleMatch "name"
-            let! cfg  = getRuleMatch "cfg"
+        Lock.Rule <| fun { name = name; cfg = cfg } -> recipe {
             let! d = Description.load (descriptionOf name)
-            for r in d.ProjectRefs do do! need [ $"lock::{r}::{cfg}" ]
-            do! alwaysRerun ()
+            for r in d.ProjectRefs do do! need [ Lock.Format { name = r; cfg = cfg } ]
             do! Locks.generate lockOf outOf cfg (descriptionOf name)
             do! Fingerprints.record fingerprints (lockOf name cfg) (descriptionOf name :: [ for r in d.ProjectRefs -> lockOf r cfg ])
         }
-        command "update-locks" { for name, _ in projects do do! need [ $"lock::{name}::Release" ] }
+        command "update-locks" { for name, _ in projects do do! need [ Lock.Format { name = name; cfg = "Release" } ] }
 
         // Moves the Xake floor (release-process E1): -d XAKE_FLOOR=<v> (default: the newest Xake on
         // nuget.org; previews count while no 4.x release exists) becomes the floor of
@@ -123,39 +128,7 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
             do! Fingerprints.warn fingerprints
             do! Locks.needAll descriptions "Release" lockOf outOf
         }
-        target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
-            do! Locks.compileAs (lockOf name cfg) fwk versions
-        }
-
-        // as build.fsx: the jobs of testjobs.fsx in parallel, the test projects built once by
-        // msbuild (`dotnet build`); no --blame-hang here
-        "test" <== [ for j in testJobs -> $"test::{testJobName j}" ]
-        "test-build::(project:*)" => recipe {
-            let! project = getRuleMatch "project"
-            do! sh $"dotnet build {testProjectDir project} -c Release" {
-                logprefix $"[test-build {project}]"
-                stdoutlevel (fun l -> if l.Contains ": error " then Level.Error else Level.Info)
-                failonerror }
-        }
-        "test::(project:*)/(slice:*)" => recipe {
-            let! project = getRuleMatch "project"
-            let! slice = getRuleMatch "slice"
-            let job = testJob project slice
-            do! need [ $"test-build::{project}" ]
-            do! need (testJobNeeds job)   // the compiler server's users, one after another
-            let! filter = vars.TestFilter
-            resetTestJobDir job
-            do! sh $"dotnet test {testProjectDir project} -c Release --no-build" {
-                args (testArgs job filter)
-                env (testJobEnv job)
-                logprefix $"[{testJobName job}]"
-                stdoutlevel (fun l -> if isTestSummary l then Level.Message else Level.Info)
-                captureOutput (ToFile (Both, testJobDir job + "/console.log"))
-                failonerror }
-        }
+        Dll.Rule <| fun m -> Locks.compileAs (lockOf m.name m.cfg) m.fwk versions
         // pack (nupkg from out/Release, no second msbuild run) comes with Package.nupkg (fsc-rework PR 8)
     ]
 }

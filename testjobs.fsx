@@ -1,5 +1,6 @@
 // The test jobs of `test`, loaded by build.fsx and build.fsc.fsx so both run the same slices.
-// Plain data and string functions only: the two scripts bootstrap on different Xake versions.
+// The jobs are plain data; `testRules` turns them into the rules (`test`, `test-build::<project>`,
+// `test::<project>/<slice>`), which differ in the scripts by their arguments only.
 //
 // A job is a test project and a slice of its fixtures (`dotnet/jobs`, `hermetic/run`, ...); the
 // slices of a project are made of whole fixture classes, since each fixture owns its working
@@ -14,6 +15,10 @@
 // `Server = true` jobs, run one after another in list order; every other job runs with
 // XAKE_CSC_SERVER=off (csc in-process), so it never touches the server; XakeTestBase passes the
 // environment variable to the test scripts as -d (Xake.Dotnet reads build variables only).
+
+open Xake
+open Xake.Tasks
+open Xake.Typed
 
 type Slice =
     /// these fixture classes (full names, namespace included)
@@ -44,7 +49,11 @@ let testJobs = [
     job "hermetic" "rest" Rest                                                                                // ~18 s
 ]
 
+type JobG = { project: string; slice: string }
+let TestJob = Command<JobG> "test::(project:*)/(slice:*)"
+let TestBuild = Command<string> "test-build::(project:*)"
 let testJobName job = $"{job.Project}/{job.Name}"
+let testJobTarget job = TestJob.Format { project = job.Project; slice = job.Name }
 let testJob project name = testJobs |> List.find (fun j -> j.Project = project && j.Name = name)
 let testProjectDir project = testProjects |> List.find (fst >> (=) project) |> snd
 
@@ -52,7 +61,7 @@ let testProjectDir project = testProjects |> List.find (fst >> (=) project) |> s
 let testJobNeeds job =
     if not job.Server then [] else
     testJobs |> List.filter (fun j -> j.Server) |> List.takeWhile ((<>) job) |> List.rev |> List.truncate 1
-    |> List.map (fun j -> $"test::{testJobName j}")
+    |> List.map testJobTarget
 
 /// The compiler server switch of a job's `dotnet test`: on for the server jobs (their tests
 /// need it), off for every other job (it never touches the server).
@@ -96,3 +105,31 @@ let testArgs job filter =
 let isTestSummary (line: string) =
     let l = line.TrimStart()
     l.StartsWith "Passed!" || l.StartsWith "Failed!" || l.StartsWith "Skipped!" || l.StartsWith "Failed "
+
+/// The test rules. The test projects are built once by msbuild (`buildArgs` are added to `dotnet
+/// build`), each job runs `dotnet test --no-build` with `testExtra` before its own arguments.
+let testRules (buildArgs: Recipe<ExecContext, string list>) (testExtra: string list) (filter: OptionalVar<string>) = [
+    "test" <== [ for j in testJobs -> testJobTarget j ]
+    TestBuild.Rule <| fun project -> recipe {
+        let! extra = buildArgs
+        do! sh $"dotnet build {testProjectDir project} -c Release" {
+            args extra
+            logprefix $"[test-build {project}]"
+            stdoutlevel (fun l -> if l.Contains ": error " then Level.Error else Level.Info)
+            failonerror }
+    }
+    TestJob.Rule <| fun m -> recipe {
+        let job = testJob m.project m.slice
+        do! need [ TestBuild.Format m.project ]
+        do! need (testJobNeeds job)   // the compiler server's users, one after another
+        let! filter = filter
+        resetTestJobDir job
+        do! sh $"dotnet test {testProjectDir m.project} -c Release --no-build" {
+            args (testExtra @ testArgs job filter)
+            env (testJobEnv job)
+            logprefix $"[{testJobName job}]"
+            stdoutlevel (fun l -> if isTestSummary l then Level.Message else Level.Info)
+            captureOutput (ToFile (Both, testJobDir job + "/console.log"))
+            failonerror }
+    }
+]
