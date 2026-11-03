@@ -30,7 +30,6 @@ let LockFile = Target<LockG> "locks/(name:*)/(cfg:*).json"
 type DllG = { cfg: string; fwk: string; name: string }
 let Dll = Target<DllG> "out/(cfg:*)/(fwk:*)/(name:*).dll"
 let projects = [ { dir = "dotnet"; name = "Xake.Dotnet" }; { dir = "hermetic"; name = "Xake.Hermetic.Dotnet" } ]
-let descriptionOf name = Desc.Format (projects |> List.find (fun p -> p.name = name)).dir
 let lockOf name cfg = LockFile.Format { name = name; cfg = cfg }
 let outOf cfg fwk name = System.IO.Path.GetDirectoryName (Dll.Format { cfg = cfg; fwk = fwk; name = name })
 let versions = [ ("**", vars.Version) ]   // one package, one version
@@ -92,10 +91,11 @@ do xake { ExecOptions.Default with DbFileName = ".xake.fsc" } {
         // (b) description -> lock, referenced projects first; `-d LOCK_REFRESH=FSharp.Core` (or `*`) re-resolves.
         // Lock rules run one at a time (`for`): each records its line into the one fingerprint file.
         Lock.Rule <| fun m -> recipe {
-            let! d = Description.load (descriptionOf m.name)
+            let desc = Desc.Format (projects |> List.find (fun p -> p.name = m.name)).dir
+            let! d = Description.load desc
             for r in d.ProjectRefs do do! need [ Lock.Format { m with name = r } ]
-            do! Locks.generate lockOf outOf m.cfg (descriptionOf m.name)
-            do! Fingerprints.record fingerprints (LockFile.Format m) (descriptionOf m.name :: LockFile.For [ for r in d.ProjectRefs -> { m with name = r } ])
+            do! Locks.generate lockOf outOf m.cfg desc
+            do! Fingerprints.record fingerprints (LockFile.Format m) (desc :: LockFile.For [ for r in d.ProjectRefs -> { m with name = r } ])
         }
         command "update-locks" { for p in projects do do! need [ Lock.Format { name = p.name; cfg = "Release" } ] }
 
