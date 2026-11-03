@@ -15,7 +15,7 @@ script that referenced `Xake.Hermetic.Dotnet` replaces that line with it. `open 
 and `open Xake.Hermetic.Dotnet` are unchanged.
 
 See [Xake documentation](https://github.com/OlegZee/Xake/wiki/Introduction) for the engine and
-[Dotnet tasks](https://github.com/OlegZee/Xake/wiki/Tasks-%7C-Dotnet) for the full set of options.
+[the task reference](https://github.com/OlegZee/Xake.Dotnet/blob/dev/docs/tasks.md) for the full set of options.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ how to switch between the SDK, a Framework installation and Mono.
 [samples/toolset.fsx](../../samples/toolset.fsx)), `noserver`/`keepalive` (compiler server; the
 script variable `CSC_SERVER` sets it for the whole script) and `resolve` (returns the resolved
 `Csc` for `Csc.run` instead of compiling). From record syntax use `Csc.compile settings`. All of
-it is in [docs/tasks.md](https://github.com/OlegZee/Xake/blob/dev/docs/tasks.md).
+it is in [docs/tasks.md](https://github.com/OlegZee/Xake.Dotnet/blob/dev/docs/tasks.md).
 
 ## Reproducible builds (`Xake.Hermetic.Dotnet`)
 

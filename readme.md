@@ -32,6 +32,7 @@ Up to Xake 3.x the tasks shipped inside the `Xake` package and the hermetic part
 replaces that `#r` line with `#r "nuget: Xake.Dotnet"`; `open` lines are unchanged.
 
 Package readme with the task overview: [src/dotnet/readme.md](src/dotnet/readme.md). Docs:
+[docs/tasks.md](docs/tasks.md) (the task reference: `csc`, `fsc`, `msbuild`, `resgen`, script variables),
 [docs/dotnet-build.md](docs/dotnet-build.md) (toolchain discovery),
 [docs/description.md](docs/description.md) (project descriptions),
 [docs/hermetic/README.md](docs/hermetic/README.md) (reproducible builds). The engine, its
