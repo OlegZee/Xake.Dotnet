@@ -15,8 +15,8 @@ One line per item. Status as of 2026-11-04.
 - [x] `ResXFileRef` files resolved at import and recorded in the lock (decision 7), with an Info line per miscased one
 - [x] `<include file=...>` in C# doc comments: an Info line per miscased one with both spellings (decision 8)
 - [x] Fixture import test (`Import casing`: an fsproj and a csproj, run where the folder ignores case, ignored elsewhere)
+- [x] Docs: `docs/hermetic/description.md` "The repository's spelling of a file", `lock.md` (`ResxFiles`), the release notes ("Unreleased": one re-import of miscased projects)
 
 ## Open
 
-- [ ] Docs: the hermetic import doc and the release notes (one re-import of miscased projects)
 - [ ] Consumer re-import on macOS or Windows, then the build on Linux (the owner's)

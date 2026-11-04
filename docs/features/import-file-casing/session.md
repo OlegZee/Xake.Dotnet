@@ -20,6 +20,31 @@ content; every difference is warned at import; the replay is unchanged (an old m
 as stale; the fix is a re-import); `ResXFileRef` files are recorded in the lock; doc `<include>`
 references are warned only.
 
+## State at 2026-11-04 (implementation)
+
+Implemented on the branch (see `tracker.md`): `src/hermetic/Casing.fs` (the index from
+`git ls-files -z --full-name`, read once per import; `Casing.resolve`, `Casing.Resolver`,
+`Casing.argument`, `Casing.line`), wired into `Import.describe`/`writeDescription`/`record`/
+`entryOf`/`appOf`/`projectsOf` and the legacy `Project.parseImportWith`/`Project.import`.
+The lock field for resx file references is `Compilation.ResxFiles` (a list of
+`{ Resx; Ref; Path; Sha256 }`, `Csc.ResxFiles`/`Fsc.ResxFiles` in `src/dotnet`), written only
+when non-empty, read as empty when absent; format stays 2. The runner reads each recorded file
+for its spelling (`ResxFormat.readWith`). Tests: `src/hermetic.tests/CasingTests.fs` (fixtures
+`Casing`, `Resx file references`, `Import casing`).
+
+Choices made inside the binding decisions (for the owner to confirm or change):
+- `ResxFiles` records every `ResXFileRef` file under the project root, not only miscased ones
+  (the owner's "the pairs"); its hash is not checked at build (a repository file, as a source or
+  the resx itself): the build `needFiles` it, so an edit rebuilds; `Lock.diff` shows a change.
+- The legacy `Project.import` lock (format 1) does not get `ResxFiles`: decision 6 asked for the
+  resolver at `resolveAgainstProject` and the arguments.
+- A miscased `ProjectReference` whose assembly is named after the project file: the recorded
+  output is named after the repository's project name (`Lib.dll`, not msbuild's `lib.dll`). An
+  application's `deps.json` written by the app run still names msbuild's spelling for such a
+  reference (the stand-in is named after `ReferencePath`): not handled, open.
+
 ## Next step
 
-Implementation, in the tracker's order, starting with the resolver.
+The owner's review of the branch (no PR opened yet); then the consumer re-imports on macOS or
+Windows and builds on Linux (the last tracker item). Open: the `deps.json` spelling of a
+miscased project reference of an application (above), if the consumer has one.

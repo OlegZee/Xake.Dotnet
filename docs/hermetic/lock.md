@@ -191,8 +191,18 @@ condition the masks do not know, the two can drift; the import checks them only 
      analyzer config) moves to `obj/xake/<key>/<tfm>/<cfg>/` and goes into `Generated` as text:
      LF line ends, the commit as `$(SourceRevisionId)`, paths under a root tokenized. A source
      from a package (Test.Sdk's entry point) is recorded the same way.
+   - Every repository file is written in the repository's spelling (the git index), its
+     resource names kept as msbuild gives them
+     ([description.md](description.md#the-repositorys-spelling-of-a-file)).
    - The `.resx` msbuild compiles go into `Resources`; their `/resource:` switches name the
-     moved `.resources`, which the build compiles again.
+     moved `.resources`, which the build compiles again. The files a `.resx` names
+     (`ResXFileRef`, under the project root) go into `ResxFiles`: the resx, the reference as the
+     resx spells it (`Ref`), the file in the repository's spelling (`Path`) and its sha256. The
+     resx compile reads `Path` for `Ref` and needs it as it needs the resx (an edit rebuilds;
+     the hash is what the import read, for `Lock.diff`, not a gate); the `.resx` is never
+     rewritten, and a reference with no record is read as spelled. The key is written only
+     when there are such files: every other lock is byte-identical, a lock without it reads as
+     none, and the format stays 2.
    - Any other generated file (a WinForms `.licenses`, a WPF `g.resources`, a `.res`) is copied
      byte for byte beside the lock, to `<lock without .json>.files/<tfm>/`
      (`locks/app/Release.files/net8.0/app.g.resources`), and the switch names the copy. Commit
@@ -1267,7 +1277,8 @@ item per line; `Alias` only on a reference that has one; each package one inline
         "Defines": [ "TRACE", ... ],
         "Sources": [ "$(ProjectRoot)/src/CoreLib/A.cs", ... ],
         "Generated": { "<path>": "<content>", ... },
-        "Resources": { "<resx path>": "<.resources path>", ... }
+        "Resources": { "<resx path>": "<.resources path>", ... },
+        "ResxFiles": [ { "Resx": "<resx path>", "Ref": "..\\Images\\Copy.png", "Path": "<file path>", "Sha256": "..." } ]
       },
       "Dependencies": {
         "Compiler": { "Tool": "csc", "Path": "$(DotnetRoot)/sdk/8.0.425/Roslyn/bincore/csc.dll", "Sha256": "", "Version": "4.11.0-3.25569.22" },
@@ -1293,7 +1304,8 @@ in msbuild's positions), 12 `Defines`, 113-115 `References`, 4 `Packages`.
 
 `Lock.diff a b` covers every section: `Framework`, `Options` and `Sources` as ordered lists, `Defines`,
 `ProjectRefs` as sets, `Compiler` incl. `Version`, `Evaluation.Sdk`, the hashed lists,
-`Generated`/`Resources` pairs, `Packages` (added, removed, version changed, sha512 changed).
+`Generated`/`Resources` pairs, `ResxFiles` by resx and spelling, `Packages` (added, removed,
+version changed, sha512 changed).
 `Lock.mapPaths f` rewrites `Options` (markers left alone), `Sources`, `References` and
 `Analyzers` (each dropping its hash when the path changed), `Generated` keys and both paths of
 `Resources`; `Lock.mapText f`

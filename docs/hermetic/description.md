@@ -96,9 +96,56 @@ run, nothing is restored, and a file is rewritten only when its content changes 
 
 Each result (`Import.Imported`) names the project and description files, whether it was
 written, `Inputs` (the msbuild files read: the project, `Directory.Build.props`/`.targets` and
-other repository imports; not the SDK's, package or `obj/` files) and `Dropped` (what msbuild
+other repository imports; not the SDK's, package or `obj/` files), `Dropped` (what msbuild
 knows that the description has no field for: other properties and item types of the repository
-files, targets, attribute arguments it cannot write, the SDK's implicit packages).
+files, targets, attribute arguments it cannot write, the SDK's implicit packages) and `Casing`
+(the files the project spells otherwise than the repository, below).
+
+### The repository's spelling of a file
+
+A project file may name a file in another case than the repository has it (`Src\A.FS` for
+`src/A.fs`): msbuild accepts that where the file system ignores case (macOS, Windows) and the
+import would write that spelling, which a build on Linux does not find. Every import
+(`Import.descriptions`, `Import.record`, `Project.import`) therefore writes the **repository's
+spelling** of each file, taken from the git index: `git ls-files -z --full-name`, run once per
+import in the project root (`Casing.read`; the index is never parsed by Xake). A path outside
+the project root, or one the index does not have (an untracked or generated file), is written as
+msbuild spells it. Without git, or outside a repository, nothing changes and one line at Info
+says so.
+
+- What changes is only the **path** of a file: the project files the script names (msbuild then
+  evaluates them so spelled), the description's `project`, `sources` (the F# list; for C# the
+  literal part of each mask, wildcards kept), `resources[].file`, `keyFile`, `projectRefs` (a
+  reference's name is the repository's name of the project file), the packed icon and readme,
+  and in a lock the compiler's command line, `Resources`, `Evaluation.Imports`, an application's
+  files and the referenced projects.
+- A **resource keeps the name msbuild gives it** from the project's spelling: where the
+  repository's spelling would derive another default name, the description writes msbuild's as
+  `name` (`Resources\Strings.RESX` -> file `resources/Strings.resx`, name
+  `App.Resources.Strings.resources`); a lock's `/resource:<file>,<name>` keeps its name, and a
+  `/resource:<file>` without one (named after its file name) gets the project's file name as its
+  name.
+- **No file's content is rewritten.** A `.resx` naming a file (`ResXFileRef`) in another case is
+  left as it is; `Import.record` records the repository's file for that spelling in the lock
+  (`ResxFiles`, [lock.md](lock.md#recorded-locks-importrecord)), and the resx compile reads it
+  from there. A C# doc comment's `<include file='...'>` in another case (csc reads it relative to
+  the source) is reported; the fix is the source's.
+- Two entries of the index that differ only by case (`Docs/a.xml`, `docs/A.xml`): the one spelled
+  exactly as the project spells it is taken, else the import fails naming both.
+
+Every difference is a line at Info in the import log, once per import, with both spellings, and
+is in `Imported.Casing`:
+
+```
+  casing (App.csproj): 'app/Code/Program.CS' is 'app/code/Program.cs' in the repository (git index): recorded so
+  casing (App.csproj): 'app/Images/Copy.TXT' (ResXFileRef '..\Images\Copy.TXT' in 'app/resources/Strings.resx') is 'app/images/copy.txt' in the repository (git index): a lock records that file for it, the .resx is not changed
+  casing (App.csproj): 'app/code/Docs/Common.XML' (<include file='Docs\Common.XML'> in 'app/code/Program.cs') is 'app/code/docs/common.xml' in the repository (git index): csc reads it as the source spells it; fix the spelling in the source
+```
+
+The build and the replay of a lock read exactly the paths it names, on every operating system:
+there is no case-insensitive lookup. A lock or description recorded before this (by
+`Xake.Dotnet` 4.0.0) with a miscased path keeps failing on Linux (a miscased `Imports` path
+makes the lock stale); import it again once, on macOS or Windows.
 
 ### What an import needs, and how it fails
 
