@@ -67,6 +67,9 @@ module internal CompilerRunner =
         Generated: (string * string) list
         /// (resx, .resources) pairs; the output is compiled again on every run, written when it changes
         Resources: (string * string) list
+        /// (resx, a `ResXFileRef` as the resx spells it, the file it is read from) as an import
+        /// recorded them (`Csc.ResxFiles`); a reference without one is read as the resx spells it
+        ResxFiles: (string * string * string) list
         /// (path, content) of the `.runtimeconfig.json` the rule declares; written after a
         /// successful compile when missing or different
         RuntimeConfig: (string * string) option
@@ -270,9 +273,13 @@ module internal CompilerRunner =
             // runs, every `.resources` is compiled again from its resx (no timestamp
             // comparison, so `run` is not a second rebuilder next to the engine's,
             // conceptual-review.md 2.3) and written only when its bytes change.
+            // a file a resx names as recorded (its `ResXFileRef` in the repository's spelling) is
+            // needed as the resx is, and read where the record says
             do! needFiles (Filelist (plan.Resources |> List.map (fst >> File.make)))
+            do! needFiles (Filelist (plan.ResxFiles |> List.map (fun (_, _, path) -> File.make path)))
             for (resx, resourcesFile) in plan.Resources do
-                Resx.refresh resx resourcesFile |> ignore
+                let files = [ for r, spelled, path in plan.ResxFiles do if r = resx then yield spelled, path ]
+                Resx.refreshWith files resx resourcesFile |> ignore
 
             // everything that carries a hash has to be exactly what was recorded, or the
             // compilation is not the one described

@@ -152,7 +152,7 @@ type ``Hermetic lock``() =
         let compiler = (nuget ()).Replace('\\', '/').TrimEnd '/' + "/microsoft.net.compilers.toolset/4.12.0/tasks/netcore/bincore/csc.dll"
         let c : Csc =
             { Name = "P"; Framework = "net8.0"; Directory = root
-              Options = []; Defines = []; Sources = [ root </> "p.cs" ]; Generated = []; Resources = []; RuntimeConfig = None
+              Options = []; Defines = []; Sources = [ root </> "p.cs" ]; Generated = []; Resources = []; ResxFiles = []; RuntimeConfig = None
               Dependencies =
                 { Compiler = { Tool = "csc"; Path = compiler; Sha256 = ""; Version = "4.12.0" }
                   References = [ { Path = packRef; Sha256 = ""; Alias = "" } ]

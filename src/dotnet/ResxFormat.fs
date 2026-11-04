@@ -110,9 +110,18 @@ module ResxFormat =
         | parts when parts.Length > 1 -> fileName, parts.[0], Some parts.[1]
         | parts -> fileName, parts.[0], None
 
-    /// The entries of a `.resx`, in document order, a repeated name keeping the first. A
-    /// `ResXFileRef` names a file relative to the resx's folder; it is read here.
-    let read (resxFile: string) : Entry list =
+    /// The file a `ResXFileRef` of `resxFile` names (`file`, as the resx spells it): the one
+    /// `files` records for that spelling ((the resx's spelling, the file), an import's
+    /// `Csc.ResxFiles`), else `file` relative to the resx's folder, exactly as spelled.
+    let private fileOf (files: (string * string) list) (resxFile: string) (file: string) =
+        match files |> List.tryFind (fst >> (=) file) with
+        | Some (_, path) -> path
+        | None -> Path.Combine (Path.GetDirectoryName (Path.GetFullPath resxFile), file.Replace ('\\', '/'))
+
+    /// `read`, a `ResXFileRef` read from the file `files` records for its spelling ((the resx's
+    /// spelling, the file); an import records the repository's path, `Csc.ResxFiles`), else
+    /// relative to the resx's folder as spelled. The resx itself is never rewritten.
+    let readWith (files: (string * string) list) (resxFile: string) : Entry list =
         let aliases = Collections.Generic.Dictionary<string, string> ()
         let doc =
             use stream = new IO.FileStream (resxFile, FileMode.Open, FileAccess.Read, FileShare.Read)
@@ -120,7 +129,6 @@ module ResxFormat =
             reader.WhitespaceHandling <- WhitespaceHandling.All
             XDocument.Load (reader, LoadOptions.PreserveWhitespace)
         let attr (e: XElement) (name: string) = match e.Attribute (XName.Get name) with null -> null | a -> a.Value
-        let baseDir = Path.GetDirectoryName (Path.GetFullPath resxFile)
         let entries = ResizeArray<Entry> ()
         let seen = Collections.Generic.HashSet<string> ()
         let add (e: Entry) = if seen.Add (entryName e) then entries.Add e
@@ -147,7 +155,7 @@ module ResxFormat =
                 if isString typeName && isNull mimeType then add (Text (name, value))
                 elif typeName.StartsWith ("System.Resources.ResXFileRef", StringComparison.Ordinal) then
                     let file, refType, encoding = parseFileRef value
-                    let path = Path.Combine (baseDir, file.Replace ('\\', '/'))
+                    let path = fileOf files resxFile file
                     if isString refType then
                         let enc = match encoding with Some e -> encodingOf e | None -> (UTF8Encoding (false) :> Encoding)
                         use sr = new StreamReader (path, enc)
@@ -170,6 +178,10 @@ module ResxFormat =
                     | m -> failwithf "%s: entry '%s' has mimetype '%s', which the .NET SDK's GenerateResource does not support" resxFile name m
             | _ -> ()
         List.ofSeq entries
+
+    /// The entries of a `.resx`, in document order, a repeated name keeping the first. A
+    /// `ResXFileRef` names a file relative to the resx's folder; it is read here.
+    let read (resxFile: string) : Entry list = readWith [] resxFile
 
     /// The `.resources` bytes of `entries`, as `PreserializedResourceWriter` writes them.
     let generate (entries: Entry list) : byte[] =
@@ -215,13 +227,15 @@ module ResxFormat =
     let needsExtensions (resources: byte[]) : bool =
         (readerTypeOf resources).StartsWith ("System.Resources.Extensions.", StringComparison.Ordinal)
 
-    /// The `.resources` bytes of a `.resx` (`read`, then `generate`).
-    let compileBytes (resxFile: string) : byte[] = generate (read resxFile)
+    /// The `.resources` bytes of a `.resx` (`readWith files`, then `generate`).
+    let compileBytesWith (files: (string * string) list) (resxFile: string) : byte[] = generate (readWith files resxFile)
 
-    /// Writes the `.resources` of `resxFile` to `resourcesFile` when it is missing or its bytes
-    /// differ, so an unchanged one keeps its timestamp; creates the folder. Whether it wrote.
-    let refresh (resxFile: string) (resourcesFile: string) : bool =
-        let bytes = compileBytes resxFile
+    /// The `.resources` bytes of a `.resx` (`read`, then `generate`).
+    let compileBytes (resxFile: string) : byte[] = compileBytesWith [] resxFile
+
+    /// `refresh`, each `ResXFileRef` read from the file `files` records for its spelling (`readWith`).
+    let refreshWith (files: (string * string) list) (resxFile: string) (resourcesFile: string) : bool =
+        let bytes = compileBytesWith files resxFile
         if File.Exists resourcesFile && File.ReadAllBytes resourcesFile = bytes then false
         else
             let dir = Path.GetDirectoryName resourcesFile
@@ -229,8 +243,13 @@ module ResxFormat =
             File.WriteAllBytes (resourcesFile, bytes)
             true
 
-    /// The files a `.resx` reads besides itself: its `ResXFileRef` targets (absolute), in order.
-    let fileRefs (resxFile: string) : string list =
+    /// Writes the `.resources` of `resxFile` to `resourcesFile` when it is missing or its bytes
+    /// differ, so an unchanged one keeps its timestamp; creates the folder. Whether it wrote.
+    let refresh (resxFile: string) (resourcesFile: string) : bool = refreshWith [] resxFile resourcesFile
+
+    /// The `ResXFileRef` entries of a `.resx`: (the file as the resx spells it, that file
+    /// relative to the resx's folder, absolute), in order, each spelling once.
+    let fileRefNames (resxFile: string) : (string * string) list =
         try
             let doc = XDocument.Load resxFile
             let baseDir = Path.GetDirectoryName (Path.GetFullPath resxFile)
@@ -239,6 +258,10 @@ module ResxFormat =
                 | null, _ | _, null -> ()
                 | t, v when t.Value.StartsWith ("System.Resources.ResXFileRef", StringComparison.Ordinal) ->
                     let file, _, _ = parseFileRef v.Value
-                    yield Path.GetFullPath (Path.Combine (baseDir, file.Replace ('\\', '/')))
+                    yield file, Path.GetFullPath (Path.Combine (baseDir, file.Replace ('\\', '/')))
                 | _ -> () ]
+            |> List.distinctBy fst
         with _ -> []
+
+    /// The files a `.resx` reads besides itself: its `ResXFileRef` targets (absolute), in order.
+    let fileRefs (resxFile: string) : string list = fileRefNames resxFile |> List.map snd |> List.distinct

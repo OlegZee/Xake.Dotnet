@@ -237,6 +237,8 @@ module Lock =
         member this.Sources = match this with Compilation.Csc c -> c.Sources | Compilation.Fsc f -> f.Sources
         member this.Generated = match this with Compilation.Csc c -> c.Generated | Compilation.Fsc f -> f.Generated
         member this.Resources = match this with Compilation.Csc c -> c.Resources | Compilation.Fsc f -> f.Resources
+        /// The files the `.resx` of `Resources` name, as the import recorded them (`ResxFile`)
+        member this.ResxFiles = match this with Compilation.Csc c -> c.ResxFiles | Compilation.Fsc f -> f.ResxFiles
         /// The `.runtimeconfig.json` the rule declares next to the output, if any
         member this.RuntimeConfig = match this with Compilation.Csc c -> c.RuntimeConfig | Compilation.Fsc f -> f.RuntimeConfig
         member this.Dependencies = match this with Compilation.Csc c -> c.Dependencies | Compilation.Fsc f -> f.Dependencies
@@ -631,6 +633,21 @@ module Lock =
             | Some va, Some vb when va <> vb -> Some (sprintf "~ %s %s: content changed" label key)
             | _ -> None)
 
+    /// `ResxFile` lines for the files the `.resx` name, keyed by (resx, the resx's spelling):
+    /// added, removed, another file or another hash. Sorted.
+    let private diffResxFiles (a: ResxFile list) (b: ResxFile list) : string list =
+        let ofList (items: ResxFile list) = items |> List.map (fun r -> (r.Resx, r.Ref), r) |> Map.ofList
+        let mapA, mapB = ofList a, ofList b
+        let keys = (a @ b) |> List.map (fun r -> r.Resx, r.Ref) |> List.distinct |> List.sort
+        keys |> List.choose (fun ((resx, spelled) as key) ->
+            match Map.tryFind key mapA, Map.tryFind key mapB with
+            | Some _, None -> Some (sprintf "- ResxFile %s %s" resx spelled)
+            | None, Some _ -> Some (sprintf "+ ResxFile %s %s" resx spelled)
+            | Some ra, Some rb when ra.Path <> rb.Path -> Some (sprintf "~ ResxFile %s %s: %s -> %s" resx spelled ra.Path rb.Path)
+            | Some ra, Some rb when ra.Sha256 <> rb.Sha256 && ra.Sha256 <> "" && rb.Sha256 <> "" ->
+                Some (sprintf "~ ResxFile %s %s: %s -> %s" resx spelled ra.Sha256 rb.Sha256)
+            | _ -> None)
+
     /// `label`-prefixed added/removed lines for a plain string list compared as a set
     /// (`Defines`, `ProjectRefs`), sorted for determinism.
     let private diffStringSet (label: string) (a: string list) (b: string list) : string list =
@@ -682,7 +699,8 @@ module Lock =
     /// `Options` and
     /// `Sources` as ordered lists (`diffList`, bare `+`/`-` lines), `Defines` as a set,
     /// `Compiler` (path, hash, version), `Evaluation.Sdk`, each hashed list (`References`,
-    /// `Analyzers`, `Imports`) by path, `Generated`/`Resources` by key, `ProjectRefs` as a
+    /// `Analyzers`, `Imports`) by path, `Generated`/`Resources` by key, `ResxFiles` by resx and
+    /// spelling, `ProjectRefs` as a
     /// set, `Packages` by id, `Prerequisites` by kind and version. Empty list means identical. Pure, deterministic order (fixed
     /// section order, sorted within each section save the two ordered ones).
     let diff (a: Entry) (b: Entry) : string list =
@@ -698,6 +716,7 @@ module Lock =
           yield! diffHashed "Import" a.Evaluation.Imports b.Evaluation.Imports
           yield! diffPairs "Generated" ca.Generated cb.Generated
           yield! diffPairs "Resources" ca.Resources cb.Resources
+          yield! diffResxFiles ca.ResxFiles cb.ResxFiles
           if ca.RuntimeConfig <> cb.RuntimeConfig then
               let text = Option.defaultValue "none"
               yield sprintf "~ RuntimeConfig: %s -> %s" (text ca.RuntimeConfig) (text cb.RuntimeConfig)
@@ -966,6 +985,14 @@ module Lock =
               // the content of a generated source is text, not a path: its `\` stay
               pairsWith (Roots.tokenizeText roots >> escape) "Generated" c.Generated
               pairs "Resources" c.Resources
+              // only when an import recorded the files a resx names: every other lock stays
+              // byte-identical to what was written before the key existed
+              if not (List.isEmpty c.ResxFiles) then
+                  c.ResxFiles
+                  |> List.map (fun r ->
+                      sprintf "%s  { \"Resx\": %s, \"Ref\": %s, \"Path\": %s, \"Sha256\": %s }" indent (str r.Resx) (escape r.Ref) (str r.Path) (escape r.Sha256))
+                  |> String.concat ",\n"
+                  |> fun body -> sprintf "%s\"ResxFiles\": [\n%s\n%s]" indent body indent
               // only when the rule declares one: every other lock stays byte-identical to what
               // was written before the key existed
               if c.RuntimeConfig.IsSome then
@@ -1128,6 +1155,10 @@ module Lock =
         // absent in every lock written before the key existed, and whenever the rule declares
         // no runtimeconfig
         let runtimeConfig = field "RuntimeConfig" c |> Option.bind asString |> Option.filter ((<>) "") |> Option.map expand
+        // absent in every lock written before the key existed, and wherever no resx names a file
+        let resxFiles =
+            field "ResxFiles" c |> Option.map asArray |> Option.defaultValue []
+            |> List.map (fun r -> ({ Resx = str "Resx" r |> expand; Ref = str "Ref" r; Path = str "Path" r |> expand; Sha256 = str "Sha256" r } : ResxFile))
         // the case is the compiler's tool: "fsc" is F#, anything else (every lock written
         // before F# entries existed says "csc") is C#
         let compilation =
@@ -1144,6 +1175,7 @@ module Lock =
                       Fsc.Sources = strings "Sources" c
                       Fsc.Generated = pairs "Generated" c
                       Fsc.Resources = pairs "Resources" c
+                      Fsc.ResxFiles = resxFiles
                       Fsc.RuntimeConfig = runtimeConfig
                       Fsc.Dependencies = dependencies }
             | _ ->
@@ -1156,6 +1188,7 @@ module Lock =
                       Sources = strings "Sources" c
                       Generated = pairs "Generated" c
                       Resources = pairs "Resources" c
+                      ResxFiles = resxFiles
                       RuntimeConfig = runtimeConfig
                       Dependencies = dependencies }
         {

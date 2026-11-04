@@ -217,6 +217,20 @@ type Hashed = {
     Sha256: string
 }
 
+/// <summary>
+/// A file a `.resx` of a compilation's `Resources` names (`ResXFileRef`), as an import recorded
+/// it: the resx (absolute), the file as the resx spells it (`Ref`, relative to the resx's
+/// folder), and that file in the repository's spelling (`Path`, absolute) with its SHA-256. The
+/// resx compile reads `Path` for `Ref`; the `.resx` itself is never rewritten, and a reference
+/// the compilation records none for is read as the resx spells it.
+/// </summary>
+type ResxFile = {
+    Resx: string
+    Ref: string
+    Path: string
+    Sha256: string
+}
+
 /// One `/reference:` item: a hashed assembly with the `alias=` prefix it carried, if any
 /// (`extern alias`; empty for the ordinary case).
 type Reference = {
@@ -306,6 +320,10 @@ type Csc = {
     /// whenever it is missing, so the exact input the `/resource:` switch names can always be
     /// reproduced.
     Resources: (string * string) list
+    /// The files the `.resx` of `Resources` name (`ResXFileRef`), as an import recorded them
+    /// (`ResxFile`: the resx's spelling read from the repository's); empty for a composed
+    /// compilation, whose resx names its files as they are
+    ResxFiles: ResxFile list
     /// The `<output>.runtimeconfig.json` the rule declares as a target next to the output
     /// (absolute), `None` when it declares none; `run` writes it after a successful compile,
     /// with the content `dotnet build` writes for `Framework`
@@ -413,6 +431,7 @@ module Csc =
           Sources = List.ofSeq sources
           Generated = []
           Resources = []
+          ResxFiles = []
           RuntimeConfig = None
           Dependencies =
             { Compiler = { Tool = "csc"; Path = ""; Sha256 = ""; Version = "" }
@@ -455,6 +474,7 @@ module Csc =
             Sources = c.Sources |> List.map f
             Generated = c.Generated |> List.map (fun (path, content) -> f path, content)
             Resources = c.Resources |> List.map (fun (resx, resources) -> f resx, f resources)
+            ResxFiles = c.ResxFiles |> List.map (fun r -> let path = f r.Path in { r with Resx = f r.Resx; Path = path; Sha256 = (if path = r.Path then r.Sha256 else "") })
             RuntimeConfig = c.RuntimeConfig |> Option.map f
             Dependencies =
                 { c.Dependencies with
@@ -541,6 +561,7 @@ module Csc =
           for (resx, resources) in c.Resources do
               yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = resx }
               yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = resources }
+          for r in c.ResxFiles do yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = r.Path }
           for p in Option.toList c.RuntimeConfig do yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = p } ]
         |> List.distinctBy (fun i -> i.Path)
 
@@ -853,6 +874,7 @@ module Csc =
                       yield compiler.Path, compiler.Sha256 ]
                   Generated = c.Generated
                   Resources = c.Resources
+                  ResxFiles = c.ResxFiles |> List.map (fun r -> r.Resx, r.Ref, r.Path)
                   RuntimeConfig = c.RuntimeConfig |> Option.map (fun path -> path, CompilerRunner.runtimeConfigContent c.Name c.Framework)
                   Environment = options.Environment
                   Directory = c.Directory
