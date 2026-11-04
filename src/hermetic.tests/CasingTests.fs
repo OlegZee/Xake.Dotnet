@@ -5,6 +5,7 @@ open System.IO
 open System.Diagnostics
 open NUnit.Framework
 
+open Xake.Dotnet
 open Xake.Hermetic.Dotnet
 
 /// What the casing tests share: a temporary git repository (outside this one) and git itself.
@@ -137,3 +138,238 @@ type ``Casing``() =
                                      root + "/LIB/strings.RESX", root + "/lib/Strings.resx"
                                      root + "/app/key.SNK", root + "/app/Key.snk" ])
         finally Directory.Delete (root, true)
+
+    [<Test>]
+    member x.``a command line takes the repository's paths; an unnamed resource keeps its file name as its name``() =
+        let root = CasingKit.repository "casing-args" [ "app/code/Program.cs", ""; "app/res/logo.png", ""; "app/keys/app.snk", "" ]
+        try
+            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let csc = Casing.argument false r
+            Assert.That(csc (root + "/app/Code/program.CS"), Is.EqualTo (root + "/app/code/Program.cs"))
+            Assert.That(csc ("/keyfile:" + root + "/app/Keys/App.SNK"), Is.EqualTo ("/keyfile:" + root + "/app/keys/app.snk"))
+            // a name given: kept as it is; none: the project's file name becomes the name
+            Assert.That(csc ("/resource:" + root + "/app/Res/Logo.PNG,App.Res.Logo.PNG"), Is.EqualTo ("/resource:" + root + "/app/res/logo.png,App.Res.Logo.PNG"))
+            Assert.That(csc ("/resource:" + root + "/app/Res/Logo.PNG"), Is.EqualTo ("/resource:" + root + "/app/res/logo.png,Logo.PNG"))
+            // only the folder differs: the file name, hence the name, is the same
+            Assert.That(csc ("/resource:" + root + "/app/RES/logo.png"), Is.EqualTo ("/resource:" + root + "/app/res/logo.png"))
+            Assert.That(csc "/optimize+", Is.EqualTo "/optimize+")
+            Assert.That(csc ("/resource:" + root + "/obj/X.resources"), Is.EqualTo ("/resource:" + root + "/obj/X.resources"))
+            let fsc = Casing.argument true r
+            Assert.That(fsc ("--resource:" + root + "/app/Res/Logo.PNG"), Is.EqualTo ("--resource:" + root + "/app/res/logo.png,Logo.PNG"))
+            Assert.That(fsc (root + "/app/CODE/Program.cs"), Is.EqualTo (root + "/app/code/Program.cs"))
+        finally Directory.Delete (root, true)
+
+    [<Test>]
+    member x.``a mask's literal part takes the repository's spelling, its wildcards stay``() =
+        let root = CasingKit.repository "casing-masks" [ "app/src/Sub/A.cs", ""; "app/Gen (x86)/B.cs", "" ]
+        try
+            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let fix = Import.repositoryMask r (root + "/app")
+            Assert.That(fix "SRC/sub/a.CS", Is.EqualTo "src/Sub/A.cs")
+            Assert.That(fix "Src/**/*.cs", Is.EqualTo "src/**/*.cs")
+            Assert.That(fix "!SRC/SUB/*.cs", Is.EqualTo "!src/Sub/*.cs")
+            Assert.That(fix "**/*.cs", Is.EqualTo "**/*.cs")
+            Assert.That(fix "src/**/*.cs", Is.EqualTo "src/**/*.cs")
+            Assert.That(fix "Missing/*.cs", Is.EqualTo "Missing/*.cs")
+            // escapes (D45) read and written back
+            Assert.That(fix @"gen \(X86\)/*.cs", Is.EqualTo @"Gen \(x86\)/*.cs")
+        finally Directory.Delete (root, true)
+
+    [<Test>]
+    member x.``a ResXFileRef and a doc comment include spelled otherwise are reported, with both spellings``() =
+        let resx =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n"
+            + "  <data name=\"Copy\" type=\"System.Resources.ResXFileRef, System.Windows.Forms\"><value>..\\Images\\Copy.TXT;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></data>\n"
+            + "  <data name=\"Same\" type=\"System.Resources.ResXFileRef, System.Windows.Forms\"><value>..\\images\\same.txt;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></data>\n"
+            + "</root>\n"
+        let source =
+            "namespace App {\n"
+            + "  /// <include file='Docs\\Common.XML' path='doc/member[@name=\"C\"]/*'/>\n"
+            + "  /// <include file=\"docs/common.xml\" path='doc/member[@name=\"D\"]/*'/>\n"
+            + "  // <include file='Docs\\Other.XML' path='x'/> is no doc comment\n"
+            + "  public class C { }\n}\n"
+        let root =
+            CasingKit.repository "casing-content"
+                [ "app/resources/Strings.resx", resx; "app/images/copy.txt", "copy"; "app/images/same.txt", "same"
+                  "app/code/C.cs", source; "app/code/docs/common.xml", "<doc/>"; "app/code/docs/other.xml", "<doc/>" ]
+        try
+            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let lines = Import.contentLines root r (root + "/app") [ "resources/Strings.resx" ] [ root + "/app/code/C.cs" ]
+            Assert.That(lines, Has.Length.EqualTo 2)
+            Assert.That(lines.[0], Does.StartWith "'app/Images/Copy.TXT' (ResXFileRef '..\\Images\\Copy.TXT' in 'app/resources/Strings.resx') is 'app/images/copy.txt' in the repository")
+            Assert.That(lines.[1], Does.StartWith "'app/code/Docs/Common.XML' (<include file='Docs\\Common.XML'> in 'app/code/C.cs') is 'app/code/docs/common.xml' in the repository")
+            Assert.That(lines.[1], Does.Contain "fix the spelling in the source")
+            // reported, not noted as a recorded difference
+            Assert.That(r.Differences, Is.Empty)
+        finally Directory.Delete (root, true)
+
+
+/// The files a `.resx` names, as an import records them (`Csc.ResxFiles`): the lock's
+/// `ResxFiles` and the resx compile that reads them.
+[<TestFixture>]
+type ``Resx file references``() =
+
+    let roots = [ "$(NuGetPackageRoot)", "/r/pkgs"; "$(ProjectRoot)", "/r/proj"; "$(DotnetRoot)", "/r/dotnet" ]
+
+    let entry (files: ResxFile list) : Lock.Entry =
+        let c =
+            { Csc.ofArgs [ "/noconfig"; "/target:library"; "/resource:/r/proj/obj/App.Strings.resources"; "/r/proj/app/A.cs" ] with
+                Name = "App"; Framework = "net8.0"; Directory = "/r/proj/app"
+                Resources = [ "/r/proj/app/resources/Strings.resx", "/r/proj/obj/App.Strings.resources" ]
+                ResxFiles = files }
+        { Lock.ofCsc c with Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/app/App.csproj"; Sdk = "8.0.425" } }
+
+    [<Test>]
+    member x.``the lock writes ResxFiles only when there are, and reads a lock without the key``() =
+        let file : ResxFile =
+            { Resx = "/r/proj/app/resources/Strings.resx"; Ref = "..\\Images\\Copy.TXT"; Path = "/r/proj/app/images/copy.txt"; Sha256 = "ab" }
+        let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry [ file ] ] }
+        Assert.That(text, Does.Contain "\"ResxFiles\": [")
+        Assert.That(text, Does.Contain "{ \"Resx\": \"$(ProjectRoot)/app/resources/Strings.resx\", \"Ref\": \"..\\\\Images\\\\Copy.TXT\", \"Path\": \"$(ProjectRoot)/app/images/copy.txt\", \"Sha256\": \"ab\" }")
+        Assert.That(text, Does.StartWith "{\n  \"Format\": 1,\n")
+        let back = Lock.parse roots text
+        Assert.That(back.Entries.Head.Compilation.ResxFiles, Is.EqualTo [ file ])
+        Assert.That(Lock.format roots back, Is.EqualTo text)
+        // without: no key (the text of every other lock as before), and such a text reads as none
+        let plain = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry [] ] }
+        Assert.That(plain, Does.Not.Contain "ResxFiles")
+        Assert.That((Lock.parse roots plain).Entries.Head.Compilation.ResxFiles, Is.Empty)
+        // a lock diff names the file
+        Assert.That(Lock.diff (entry []) (entry [ file ]), Is.EqualTo [ "+ ResxFile /r/proj/app/resources/Strings.resx ..\\Images\\Copy.TXT" ])
+        Assert.That(Lock.diff (entry [ file ]) (entry [ { file with Path = "/r/proj/app/Images/Copy.TXT" } ]),
+                    Is.EqualTo [ "~ ResxFile /r/proj/app/resources/Strings.resx ..\\Images\\Copy.TXT: /r/proj/app/images/copy.txt -> /r/proj/app/Images/Copy.TXT" ])
+
+    [<Test>]
+    member x.``the resx compile reads a ResXFileRef from the file recorded for its spelling``() =
+        let dir = CasingKit.tempFolder "resx-files"
+        try
+            Directory.CreateDirectory (dir + "/resources") |> ignore
+            Directory.CreateDirectory (dir + "/stored") |> ignore
+            let resx = dir + "/resources/Strings.resx"
+            File.WriteAllText (resx,
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n"
+                + "  <data name=\"Copy\" type=\"System.Resources.ResXFileRef, System.Windows.Forms\"><value>..\\Nowhere\\Copy.TXT;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></data>\n"
+                + "</root>\n")
+            File.WriteAllText (dir + "/stored/copy.txt", "the recorded file")
+            // as spelled the file is not there: the resx alone does not compile
+            Assert.Catch(fun () -> ResxFormat.read resx |> ignore) |> ignore
+            let entries = ResxFormat.readWith [ "..\\Nowhere\\Copy.TXT", dir + "/stored/copy.txt" ] resx
+            Assert.That(entries, Is.EqualTo [ ResxFormat.Text ("Copy", "the recorded file") ])
+            let output = dir + "/out/App.Strings.resources"
+            Assert.That(Resx.refreshWith [ "..\\Nowhere\\Copy.TXT", dir + "/stored/copy.txt" ] resx output, Is.True)
+            use reader = new System.Resources.Extensions.DeserializingResourceReader (output)
+            let values = [ for e in reader |> Seq.cast<System.Collections.DictionaryEntry> -> string e.Key, string e.Value ]
+            Assert.That(values, Is.EqualTo [ "Copy", "the recorded file" ])
+        finally Directory.Delete (dir, true)
+
+
+/// `Import.record` of projects that spell their files otherwise than the repository: an fsproj
+/// and a csproj naming a source, resources, a key file, an `<Import>` and a project reference in
+/// another case, a `.resx` naming a file and a source including a doc file in another case. The
+/// description and the lock name the repository's files (`git ls-files`), the resources keep
+/// msbuild's names, and the import log names every difference. msbuild accepts such a project
+/// only where the file system ignores case (macOS, the Windows leg): ignored elsewhere.
+[<TestFixture>]
+type ``Import casing``() =
+    inherit XakeTestBase("import-casing")
+
+    let resx =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n"
+        + "  <resheader name=\"resmimetype\"><value>text/microsoft-resx</value></resheader>\n"
+        + "  <resheader name=\"version\"><value>2.0</value></resheader>\n"
+        + "  <data name=\"Greeting\" xml:space=\"preserve\"><value>Hello</value></data>\n"
+        + "  <data name=\"Copy\" type=\"System.Resources.ResXFileRef, System.Windows.Forms\"><value>..\\Images\\Copy.TXT;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></data>\n"
+        + "</root>\n"
+
+    let files =
+        [ "shared.props", "<Project>\n  <PropertyGroup><Deterministic>true</Deterministic></PropertyGroup>\n</Project>\n"
+          "lib/Lib.fsproj",
+            RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>" "<Compile Include=\"Src\\A.FS\" />"
+          "lib/src/A.fs", "module Lib.A\nlet x = 1\n"
+          "app/App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n"
+            + "  <Import Project=\"..\\Shared.PROPS\" />\n"
+            + "  <PropertyGroup><TargetFramework>net8.0</TargetFramework><EnableDefaultItems>false</EnableDefaultItems>"
+            + "<SignAssembly>true</SignAssembly><AssemblyOriginatorKeyFile>Keys\\App.SNK</AssemblyOriginatorKeyFile></PropertyGroup>\n"
+            + "  <ItemGroup>\n"
+            + "    <Compile Include=\"Code\\Program.CS\" />\n"
+            + "    <EmbeddedResource Include=\"Resources\\Strings.RESX\" />\n"
+            + "    <EmbeddedResource Include=\"Data\\Logo.TXT\" />\n"
+            + "    <ProjectReference Include=\"..\\LIB\\lib.fsproj\" />\n"
+            + "  </ItemGroup>\n</Project>\n"
+          "app/code/Program.cs",
+            "namespace App {\n  /// <include file='Docs\\Common.XML' path='doc/member[@name=\"C\"]/*'/>\n  public class C { }\n}\n"
+          "app/code/docs/common.xml", "<doc><member name=\"C\"><summary>C</summary></member></doc>\n"
+          "app/resources/Strings.resx", resx
+          "app/images/copy.txt", "copied\n"
+          "app/data/logo.txt", "logo\n"
+          "app/keys/app.snk", "not a key: the design-time build does not read it\n" ]
+
+    [<Test; Category("Integration")>]
+    member x.``the description and the lock name the repository's files; names stay msbuild's; every difference is logged``() =
+        // the probe: msbuild cannot evaluate these projects where case matters
+        File.WriteAllText ("case-probe.txt", "")
+        let ignoresCase = File.Exists "CASE-PROBE.TXT"
+        File.Delete "case-probe.txt"
+        if not ignoresCase then Assert.Ignore "the file system here does not ignore case: msbuild cannot evaluate a miscased project"
+        if Directory.Exists ".git" then Directory.Delete (".git", true)
+        RecordKit.write [ "app"; "lib"; "locks" ] files
+        let here = (Directory.GetCurrentDirectory ()).Replace ('\\', '/')
+        CasingKit.git here [ "init"; "-q" ] |> ignore
+        CasingKit.git here ([ "add"; "--" ] @ List.map fst files) |> ignore
+        let tracked = (CasingKit.git here [ "ls-files"; "-z" ]).Split ([| '\000' |], StringSplitOptions.RemoveEmptyEntries) |> set
+
+        let imported = RecordKit.import x.TestOptions "import-casing" RecordKit.recordDefault [ "app/App.csproj"; "LIB/lib.fsproj" ]
+
+        // the descriptions: every file the repository's
+        let app = Description.read "app/xake.project.json"
+        let lib = Description.read "lib/xake.project.json"
+        Assert.That(lib.Sources, Is.EqualTo [ "src/A.fs" ])
+        Assert.That(lib.Name, Is.EqualTo "Lib")
+        Assert.That(app.Sources, Is.EqualTo [ "code/Program.cs" ])
+        Assert.That(app.ProjectRefs, Is.EqualTo [ "Lib" ])
+        Assert.That(app.Options.KeyFile, Is.EqualTo (Some "keys/app.snk"))
+        // the resources keep the names msbuild gives them from the project's spelling
+        Assert.That(app.Resources |> List.map (fun r -> r.File, r.Name),
+                    Is.EquivalentTo [ "resources/Strings.resx", Some "App.Resources.Strings.resources"; "data/logo.txt", Some "App.Data.Logo.TXT" ])
+        for file in [ "app/App.csproj"; "lib/Lib.fsproj" ] @ (lib.Sources |> List.map ((+) "lib/"))
+                    @ (app.Sources |> List.map ((+) "app/")) @ (app.Resources |> List.map (fun r -> "app/" + r.File)) @ [ "app/" + app.Options.KeyFile.Value ] do
+            Assert.That(tracked.Contains file, Is.True, sprintf "the description names '%s', which git does not track" file)
+
+        // the locks: every file of the repository they name is one git tracks
+        for name in [ "App"; "Lib" ] do
+            let lock = File.ReadAllText (RecordKit.lockOf name "Release")
+            let named =
+                [ for m in Text.RegularExpressions.Regex.Matches (lock, "\\$\\(ProjectRoot\\)/([^\",\\\\\\s]+)") -> m.Groups.[1].Value.TrimEnd '/' ]
+                |> List.filter (fun p -> not (p.Contains "/obj/" || p.StartsWith "obj/" || p.StartsWith "out/" || p.StartsWith "locks/" || p.StartsWith ".packages/"))
+                |> List.distinct
+            Assert.That(named, Is.Not.Empty)
+            for p in named do
+                // a file git tracks, or a folder of one (the compiler's directory)
+                Assert.That(tracked.Contains p || tracked |> Set.exists (fun t -> t.StartsWith (p + "/")), Is.True,
+                            sprintf "the lock of %s names '%s', which git does not track" name p)
+        let appLock = File.ReadAllText (RecordKit.lockOf "App" "Release")
+        // the resources: msbuild's names; the resx's file reference recorded as the repository's file
+        Assert.That(appLock, Does.Contain "\"/resource:$(ProjectRoot)/app/data/logo.txt,App.Data.Logo.TXT\"")
+        Assert.That(appLock, Does.Contain "App.Resources.Strings.resources")
+        Assert.That(appLock, Does.Contain "\"Ref\": \"..\\\\Images\\\\Copy.TXT\", \"Path\": \"$(ProjectRoot)/app/images/copy.txt\"")
+        Assert.That(appLock, Does.Contain "\"/keyfile:$(ProjectRoot)/app/keys/app.snk\"")
+        // the referenced project's output by the repository's name
+        Assert.That(appLock, Does.Contain "\"Path\": \"$(ProjectRoot)/out/Release/net8.0/Lib/Lib.dll\"")
+        Assert.That((File.ReadAllText "app/resources/Strings.resx"), Is.EqualTo resx)
+
+        // the import log (`Imported.Casing`, traced at Info): every difference, once, with both spellings
+        let lines = imported |> List.collect (fun i -> i.Casing)
+        let expected =
+            [ "'LIB/lib.fsproj' is 'lib/Lib.fsproj'"
+              "'lib/Src/A.FS' is 'lib/src/A.fs'"
+              "'Shared.PROPS' is 'shared.props'"
+              "'app/Code/Program.CS' is 'app/code/Program.cs'"
+              "'app/Resources/Strings.RESX' is 'app/resources/Strings.resx'"
+              "'app/Data/Logo.TXT' is 'app/data/logo.txt'"
+              "'app/Keys/App.SNK' is 'app/keys/app.snk'"
+              "'app/Images/Copy.TXT' (ResXFileRef '..\\Images\\Copy.TXT' in 'app/resources/Strings.resx') is 'app/images/copy.txt'"
+              "'app/code/Docs/Common.XML' (<include file='Docs\\Common.XML'> in 'app/code/Program.cs') is 'app/code/docs/common.xml'" ]
+        for e in expected do
+            Assert.That(lines |> List.exists (fun l -> l.StartsWith e), Is.True, sprintf "no casing line '%s' in:\n%s" e (String.concat "\n" lines))
+        Assert.That(List.distinct lines, Has.Length.EqualTo expected.Length)

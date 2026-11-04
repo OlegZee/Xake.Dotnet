@@ -30,6 +30,10 @@ module Import =
           /// what msbuild knows that the description does not carry (no schema field for it),
           /// one line each, e.g. `Xake.fsproj: property PackageIconUrl`
           Dropped: string list
+          /// the files the project spells otherwise than the repository (the git index), one
+          /// line each with both spellings (`Casing`): the description and the locks record the
+          /// repository's; a `ResXFileRef` or a doc comment's `<include file>` is not rewritten
+          Casing: string list
           /// the locks written (`record`), relative to the project root; empty for `project`
           Locks: string list }
 
@@ -330,14 +334,28 @@ module Import =
         let (Filelist files) = Fileset ({ Xake.Fileset.DefaultOptions with BaseDir = Some dir }, elements) |> Fileset.toFileList dir
         files |> List.map (fun f -> slash f.FullName)
 
+    /// A mask relative to the folder `dir` (`csharpMasks`) with its wildcard-free part in the
+    /// repository's spelling (`casing`); a mask the repository spells so (or that has no such
+    /// part) unchanged.
+    let internal repositoryMask (casing: Casing.Resolver) (dir: string) (mask: string) =
+        let exclude, body = if mask.StartsWith "!" then "!", mask.Substring 1 else "", mask
+        match MaskText.splitFixed body with
+        | "", _ -> mask
+        | fixedPart, rest ->
+            match casing.Relative dir fixedPart with
+            | r when r = fixedPart -> mask
+            | r -> exclude + (match rest with "" -> MaskText.ofPath r | rest -> (MaskText.ofPath r).TrimEnd '/' + "/" + rest)
+
     /// The description of one project from its evaluations: `outer` (no `TargetFramework`) and
     /// one per framework, in `frameworks` order. Pure but for `expandMasks` reading the folder.
     /// `targets` are the design-time builds of the frameworks (`record`), when there are: the
     /// embedded resources then take the names and cultures msbuild gave them
-    /// (`ManifestResourceName`, `LogicalName`, `WithCulture`), per framework.
+    /// (`ManifestResourceName`, `LogicalName`, `WithCulture`), per framework. Every file is in
+    /// the repository's spelling (`casing`); a resource keeps the name msbuild gives it from the
+    /// project's spelling (written as `name` where the repository's would derive another).
     let internal describe (descriptionDir: string) (outer: Dump) (inner: (string * Dump) list)
                           (isSdkFile: string -> bool) (xmlFiles: (string * XDocument) list) (previous: Description.Project option)
-                          (targets: (string * Dump) list) =
+                          (targets: (string * Dump) list) (casing: Casing.Resolver) =
         let dropped = ResizeArray<string> ()
         let drop s = if not (dropped.Contains s) then dropped.Add s
         let p = prop outer
@@ -349,9 +367,14 @@ module Import =
             | ".csproj" -> Description.CSharp
             | ext -> failwithf "'%s': %s is neither an fsproj nor a csproj" name ext
         let inRepo (m: Map<string, string>) = not (isTrue (meta "IsImplicitlyDefined" m)) && not (isSdkFile (meta "DefiningProjectFullPath" m))
-        let relative (path: string) =
+        // a file of the project relative to its folder: as the project spells it, and in the
+        // repository's spelling (what the description records)
+        let spelled (path: string) =
             let full = if Path.IsPathRooted path then path else Path.Combine (projectDir, path)
             relativeTo projectDir full
+        let relative (path: string) =
+            let full = if Path.IsPathRooted path then path else Path.Combine (projectDir, path)
+            relativeTo projectDir (casing.Path (slash full))
         let first = snd (List.head inner)
         // the properties a repository file sets; a value the SDK defaults (LangVersion by the
         // framework, Authors to the assembly name, ...) is not the project's
@@ -411,7 +434,10 @@ module Import =
                 // a shared project's (`.projitems`) item is an absolute path: relative to the project
                 let file = relative (slash id)
                 let isResx = file.EndsWith (".resx", StringComparison.OrdinalIgnoreCase)
-                let byDefault = ProjectPlan.manifestName rootNs file
+                // msbuild's default name is the project's spelling of the file; the description
+                // derives it from the repository's, so it names the other one where they differ
+                let byDefault = ProjectPlan.manifestName rootNs (spelled (slash id))
+                let named (given: string) = if given = ProjectPlan.manifestName rootNs file then None else Some given
                 match fromTargets with
                 | Some _ ->
                     if isTrue (meta "WithCulture" m) then
@@ -424,7 +450,7 @@ module Import =
                             | "", "" -> byDefault
                             | "", manifest -> if isResx then manifest + ".resources" else manifest
                             | logical, _ -> logical
-                        Some ({ File = file; Name = if given = byDefault then None else Some given } : Description.Resource)
+                        Some ({ File = file; Name = named given } : Description.Resource)
                 | None ->
                     // the evaluation alone (`project`, the composed route): what the project
                     // states. A culture is the suffix of the file name, as msbuild's
@@ -459,7 +485,7 @@ module Import =
                         if logical = "" && (dependentUpon <> "" || besideSource) then
                             drop (sprintf "%s: EmbeddedResource %s is named after the class of %s (DependentUpon); the description takes the default name, set its `name`"
                                       name file (if dependentUpon <> "" then dependentUpon else Path.ChangeExtension (Path.GetFileName file, ".cs")))
-                        Some ({ File = file; Name = match logical with "" -> None | n -> Some n } : Description.Resource))
+                        Some ({ File = file; Name = match logical with "" -> named byDefault | n -> Some n } : Description.Resource))
         let perFramework = inner |> List.map (fun (tfm, d) -> tfm, (definesOf d, referencesOf d, packagesOf tfm d, resourcesOf tfm d, frameworkRefsOf d))
         let common pick = perFramework |> List.map (snd >> pick) |> List.reduce (fun a b -> a |> List.filter (fun x -> List.contains x b))
         let defines, references, packages = common (fun (d, _, _, _, _) -> d), common (fun (_, r, _, _, _) -> r), common (fun (_, _, p, _, _) -> p)
@@ -479,14 +505,14 @@ module Import =
         let sources =
             match language with
             | Description.FSharp ->
-                let ofDump d = items d "Compile" |> List.map (fst >> slash)
+                let ofDump d = items d "Compile" |> List.map (fun (id, _) -> slash (casing.Relative projectDir (slash id)))
                 for tfm, d in List.tail inner do
                     if ofDump d <> ofDump first then drop (sprintf "%s: the Compile list for %s differs from %s's (only the first is kept)" name tfm (fst inner.Head))
                 ofDump first
             | Description.CSharp ->
-                let masks = csharpMasks first xmlFiles drop
-                let expanded = expandMasks projectDir masks |> Set.ofList
-                let msbuild = items first "Compile" |> List.map (fun (id, _) -> slash (Path.GetFullPath (Path.Combine (projectDir, id)))) |> Set.ofList
+                let masks = csharpMasks first xmlFiles drop |> List.map (repositoryMask casing projectDir)
+                let expanded = expandMasks projectDir masks |> List.map casing.Path |> Set.ofList
+                let msbuild = items first "Compile" |> List.map (fun (id, _) -> casing.Path (slash (Path.GetFullPath (Path.Combine (projectDir, id))))) |> Set.ofList
                 for f in Set.difference msbuild expanded do drop (sprintf "%s: msbuild compiles %s, the masks miss it" name (relative f))
                 for f in Set.difference expanded msbuild do drop (sprintf "%s: the masks take %s, msbuild does not compile it" name (relative f))
                 masks
@@ -529,7 +555,7 @@ module Import =
               Args = (fp "OtherFlags").Split ([| ' '; '\t'; '\n'; '\r' |], StringSplitOptions.RemoveEmptyEntries) |> List.ofArray }
 
         // ---- project references and the package
-        let projectRefs = items first "ProjectReference" |> List.map (fun (id, m) -> Path.GetFileNameWithoutExtension (slash id), m)
+        let projectRefs = items first "ProjectReference" |> List.map (fun (id, m) -> Path.GetFileNameWithoutExtension (relative (slash id)), m)
         let assemblyName = p "AssemblyName"
         let packed (file: string) =
             // `PackageIcon`/`PackageReadmeFile` name the file inside the package; the project
@@ -578,7 +604,7 @@ module Import =
         let project : Description.Project =
             { Schema = previous |> Option.bind (fun d -> d.Schema)
               Name = name
-              Project = relativeTo descriptionDir (p "MSBuildProjectDirectory" </> name + p "MSBuildProjectExtension")
+              Project = relativeTo descriptionDir (casing.Path (slash (p "MSBuildProjectDirectory" </> name + p "MSBuildProjectExtension")))
               AssemblyName = if assemblyName = name then None else Some assemblyName
               RootNamespace = match p "RootNamespace" with r when r = "" || r = name -> None | r -> Some r
               Language = language
@@ -691,27 +717,115 @@ module Import =
         let files = imports |> List.map slash |> List.distinct |> List.filter (fun f -> not (isSdkFile f) && not (under [ obj ] f))
         files, isSdkFile
 
+    // ---- the repository's spelling ----------------------------------------------------------
+
+    /// The git index of the import's project root (`Casing.read`), once per import; without
+    /// git or outside a repository none, and one Info line says that nothing is checked.
+    let private repositoryIndex (root: string) : Recipe<ExecContext, Casing.Index option> =
+        recipe {
+            match Casing.read root with
+            | Result.Ok index -> return Some index
+            | Result.Error reason ->
+                do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
+                return None
+        }
+
+    /// <summary>
+    /// The lines for what a project's files name in their content, which the import does not
+    /// rewrite, in another spelling than the repository's: each `ResXFileRef` of a `.resx` of
+    /// `resources` (relative to `projectDir`; a lock, `record`, records the repository's file
+    /// for it) and each `&lt;include file&gt;` of a doc comment (`///`) in the C# `sources`
+    /// (absolute), resolved against the source's folder as csc does (the fix is the source's).
+    /// </summary>
+    let internal contentLines (root: string) (casing: Casing.Resolver) (projectDir: string) (resources: string list) (sources: string list) =
+        let differs (path: string) = let r = casing.Peek path in if slash r <> slash path then Some r else None
+        let includeTag = Text.RegularExpressions.Regex ("<include\\s[^>]*?file\\s*=\\s*([\"'])(.*?)\\1")
+        [ for file in resources do
+            if file.EndsWith (".resx", StringComparison.OrdinalIgnoreCase) then
+                let resx = slash (Path.GetFullPath (Path.Combine (projectDir, file)))
+                for spelledRef, path in ResxFormat.fileRefNames resx do
+                    match differs path with
+                    | Some r ->
+                        yield sprintf "'%s' (ResXFileRef '%s' in '%s') is '%s' in the repository (git index): a lock records that file for it, the .resx is not changed"
+                                  (relativeTo root path) spelledRef (relativeTo root resx) (relativeTo root r)
+                    | None -> ()
+          for source in sources do
+            if source.EndsWith (".cs", StringComparison.OrdinalIgnoreCase) && File.Exists source then
+                let dir = Path.GetDirectoryName source
+                for line in File.ReadLines source do
+                    if line.TrimStart().StartsWith "///" then
+                        for m in includeTag.Matches line do
+                            let path = slash (Path.GetFullPath (Path.Combine (dir, m.Groups.[2].Value.Replace ('\\', '/'))))
+                            match differs path with
+                            | Some r ->
+                                yield sprintf "'%s' (<include file='%s'> in '%s') is '%s' in the repository (git index): csc reads it as the source spells it; fix the spelling in the source"
+                                          (relativeTo root path) m.Groups.[2].Value (relativeTo root source) (relativeTo root r)
+                            | None -> () ]
+        |> List.distinct
+
+    /// The casing lines of a project (`Casing.line` for each difference `casing` found, then
+    /// `notes`), traced at Info under the project's name once per import (`printed`).
+    let private traceCasing (root: string) (projectFile: string) (casing: Casing.Resolver) (notes: string list)
+                            (printed: Collections.Concurrent.ConcurrentDictionary<string, unit>) =
+        recipe {
+            let lines = (casing.Differences |> List.map (Casing.line root)) @ notes |> List.distinct
+            for l in lines do
+                if printed.TryAdd (l, ()) then do! trace Info "  casing (%s): %s" (Path.GetFileName projectFile) l
+            return lines
+        }
+
     /// Writes the description of an evaluated project (`describe`; `targets`, the design-time
-    /// builds of `record`, may be empty) when its content changes; the import's result and
-    /// the description.
+    /// builds of `record`, may be empty) when its content changes, its files in the repository's
+    /// spelling (`casing`); the import's result, the description, the repository's msbuild
+    /// files it read and the casing lines of what the project's files name (`contentLines`).
     let private writeDescription (root: string) (projectFile: string) (descriptionFile: string) (packageRoot: string)
-                                 (ev: Evaluated) (targets: (string * Dump) list) =
+                                 (ev: Evaluated) (targets: (string * Dump) list) (casing: Casing.Resolver) =
         recipe {
             let repoFiles, isSdkFile = repositoryFiles ev.Outer packageRoot ev.Imports
+            let repoFiles = repoFiles |> List.map casing.Path |> List.distinct
             let xmlFiles = repoFiles |> List.map (fun f -> relativeTo root f, XDocument.Load (f, LoadOptions.SetBaseUri))
             let previous = if File.Exists descriptionFile then Some (Description.read descriptionFile) else None
-            let description, dropped = describe (Path.GetDirectoryName descriptionFile) ev.Outer ev.Inner isSdkFile xmlFiles previous targets
+            let description, dropped = describe (Path.GetDirectoryName descriptionFile) ev.Outer ev.Inner isSdkFile xmlFiles previous targets casing
             let written = Description.write descriptionFile description
             do! trace Info "%s '%s'" (if written then "wrote" else "unchanged:") (relativeTo root descriptionFile)
             for d in dropped do do! trace Info "  not in the description (%s): %s" (Path.GetFileName projectFile) d
+            let projectDir = slash (Path.GetDirectoryName projectFile)
+            let notes =
+                let resources = description.Resources @ (description.ByFramework |> List.collect (fun (_, i) -> i.Resources)) |> List.map (fun r -> r.File)
+                let sources = if description.Language = Description.CSharp then expandMasks projectDir description.Sources else []
+                contentLines root casing projectDir (List.distinct resources) sources
             let imported : Imported =
                 { Project = relativeTo root projectFile
                   Description = relativeTo root descriptionFile
                   Written = written
                   Inputs = repoFiles |> List.map (relativeTo root) |> List.sortWith (fun a b -> String.CompareOrdinal (a, b))
                   Dropped = dropped
+                  Casing = []
                   Locks = [] }
-            return imported, description, repoFiles
+            return imported, description, repoFiles, notes
+        }
+
+    /// `project` with the repository's index read already, the casing lines traced once per
+    /// import (`printed`). The project file is the repository's spelling of `project`.
+    let private projectWith (index: Casing.Index option) (printed: Collections.Concurrent.ConcurrentDictionary<string, unit>)
+                            (project: string) (descriptionOf: string -> string) (globals: (string * string) list) : Recipe<ExecContext, Imported> =
+        recipe {
+            let! options = getCtxOptions ()
+            let root = slash (Path.GetFullPath options.ProjectRoot)
+            let full (p: string) = slash (Path.GetFullPath (if Path.IsPathRooted p then p else root </> p))
+            let casing = Casing.Resolver index
+            let projectFile = casing.Path (full project)
+            let descriptionFile =
+                full (descriptionOf (if projectFile = full project then project elif Path.IsPathRooted project then projectFile else relativeTo root projectFile))
+            let! packageRoot = DotNetFwk.packageRoot ()
+            let switches = [ for k, v in globals -> sprintf "-p:%s=%s" k v ]
+            let temp = Path.Combine (Path.GetTempPath (), "xake-import-" + Guid.NewGuid().ToString "N")
+            Directory.CreateDirectory temp |> ignore
+            let! ev = evaluate [] projectFile switches temp
+            Directory.Delete (temp, true)
+            let! imported, _, _, notes = writeDescription root projectFile descriptionFile packageRoot ev [] casing
+            let! lines = traceCasing root projectFile casing notes printed
+            return { imported with Casing = lines }
         }
 
     /// Imports `project` (a csproj or fsproj, relative to the project root or absolute) into
@@ -724,17 +838,8 @@ module Import =
         recipe {
             do! Project.requireImportMsbuild ()
             let! options = getCtxOptions ()
-            let root = options.ProjectRoot
-            let full (p: string) = Path.GetFullPath (if Path.IsPathRooted p then p else root </> p)
-            let projectFile = full project
-            let descriptionFile = full (descriptionOf project)
-            let! packageRoot = DotNetFwk.packageRoot ()
-            let switches = [ for k, v in globals -> sprintf "-p:%s=%s" k v ]
-            let temp = Path.Combine (Path.GetTempPath (), "xake-import-" + Guid.NewGuid().ToString "N")
-            Directory.CreateDirectory temp |> ignore
-            let! ev = evaluate [] projectFile switches temp
-            Directory.Delete (temp, true)
-            let! imported, _, _ = writeDescription root projectFile descriptionFile packageRoot ev []
+            let! index = repositoryIndex options.ProjectRoot
+            let! imported = projectWith index (Collections.Concurrent.ConcurrentDictionary ()) project descriptionOf globals
             return imported
         }
 
@@ -744,7 +849,10 @@ module Import =
         recipe {
             // the MSBuild the evaluations need, checked once for all of them
             do! Project.requireImportMsbuild ()
-            let! imported = projects |> List.map (fun p -> project p descriptionOf globals) |> concurrently
+            let! options = getCtxOptions ()
+            let! index = repositoryIndex options.ProjectRoot
+            let printed = Collections.Concurrent.ConcurrentDictionary ()
+            let! imported = projects |> List.map (fun p -> projectWith index printed p descriptionOf globals) |> concurrently
             return imported
         }
 
@@ -1004,6 +1112,8 @@ module Import =
         /// the project files this import records (absolute, '/'): a project reference must be one
         Imported: string list
         OutOf: string -> string -> string -> string
+        /// the repository's spelling of the project's files (`Casing`), the differences noted
+        Casing: Casing.Resolver
     }
 
     /// The file a design-time build reported, absolute, '/'.
@@ -1036,7 +1146,8 @@ module Import =
           [ for id, m in items d "ReferencePath" do
             let source = meta "MSBuildSourceProjectFile" m
             if meta "ReferenceSourceTarget" m = "ProjectReference" || source <> "" then
-                let projectFile = absoluteIn ctx.ProjectDir (match source with "" -> meta "OriginalProjectReferenceItemSpec" m | s -> s)
+                let spelled = absoluteIn ctx.ProjectDir (match source with "" -> meta "OriginalProjectReferenceItemSpec" m | s -> s)
+                let projectFile = ctx.Casing.Path spelled
                 let name = Path.GetFileNameWithoutExtension projectFile
                 // its output is found by the lock of that project, which this import must write
                 // (ignoring case: a reference may spell a folder otherwise on a file system that
@@ -1049,7 +1160,12 @@ module Import =
                     | "", set when set.StartsWith "TargetFramework=" -> set.Substring 16
                     | "", _ -> prop d "TargetFramework"
                     | f, _ -> f
-                let output = absoluteIn ctx.Root (ctx.OutOf cfg framework name </> Path.GetFileName (slash id))
+                // an assembly named after its project file (msbuild's default) is named after the
+                // reference's spelling of it here: the build names it after the repository's
+                let file =
+                    let f = Path.GetFileName (slash id)
+                    if Path.GetFileNameWithoutExtension f = Path.GetFileNameWithoutExtension spelled then name + Path.GetExtension f else f
+                let output = absoluteIn ctx.Root (ctx.OutOf cfg framework name </> file)
                 let names = [ id; meta "ReferenceAssembly" m ] |> List.filter ((<>) "") |> List.map (absoluteIn ctx.ProjectDir)
                 yield projectFile, (({ Name = name; Configuration = cfg; Framework = framework; Path = output } : Lock.ProjectOutput), names) ]
         // a project is `project:<name>`: two project files of one name cannot both be
@@ -1261,7 +1377,7 @@ module Import =
             |> List.filter ((<>) "")
         let content =
             [ for id, m in items d "_XakeCopyItem" do
-                let path = absoluteIn ctx.ProjectDir id
+                let path = ctx.Casing.Path (absoluteIn ctx.ProjectDir id)
                 let target = (slash (meta "TargetPath" m)).TrimStart '/'
                 let target = if target = "" then Path.GetFileName path else target
                 if generatedDirs |> List.exists (fun g -> path.StartsWith (g, comparison)) || not (File.Exists path) then ()
@@ -1281,7 +1397,7 @@ module Import =
             let candidates =
                 [ if runtime || redirects then yield finished, p "TargetFileName" + ".config"
                   for id, m in items d "_XakeAppConfig" @ items d "_XakeOwnAppConfig" do
-                    yield absoluteIn ctx.ProjectDir id, (match meta "TargetPath" m with "" -> p "TargetFileName" + ".config" | t -> Path.GetFileName t) ]
+                    yield ctx.Casing.Path (absoluteIn ctx.ProjectDir id), (match meta "TargetPath" m with "" -> p "TargetFileName" + ".config" | t -> Path.GetFileName t) ]
             match candidates |> List.tryFind (fst >> File.Exists) with
             | None -> None, None
             | Some _ when not (runtime || redirects) -> None, None
@@ -1365,6 +1481,7 @@ module Import =
         let args =
             if isFSharp then fscArgs |> List.filter (parked >> not) |> List.map unquote |> FscArgs.absolutize ctx.ProjectDir
             else items d "CscCommandLineArgs" |> List.map fst |> List.filter (parked >> not) |> List.map unquote |> CscArgs.absolutize ctx.ProjectDir
+            |> List.map (Casing.argument isFSharp ctx.Casing)
         if List.isEmpty args then
             failwithf "'%s' (%s|%s): the design-time build reported no compiler command line -- CoreCompile did not run" ctx.ProjectFile cfg framework
         let packageRoots =
@@ -1441,7 +1558,7 @@ module Import =
             match ctx.Description.Language with
             | Description.CSharp ->
                 let masks = ctx.Description.Sources
-                let expanded = expandMasks ctx.ProjectDir masks |> Set.ofList
+                let expanded = expandMasks ctx.ProjectDir masks |> List.map ctx.Casing.Path |> Set.ofList
                 let compiled = user |> List.map slash |> Set.ofList
                 if expanded = compiled then
                     // absolute masks: the project folder (a real path) escaped (D45)
@@ -1465,8 +1582,18 @@ module Import =
             [ for id, m in items d "EmbeddedResource" do
                 if meta "OutputResource" m <> "" && not (isTrue (meta "WithCulture" m)) then
                     let compiled = moved (absoluteIn ctx.ProjectDir (meta "OutputResource" m))
-                    if named compiled then yield absoluteIn ctx.ProjectDir id, compiled ]
+                    if named compiled then yield ctx.Casing.Path (absoluteIn ctx.ProjectDir id), compiled ]
             |> List.distinct
+        // the files those .resx name (`ResXFileRef`, in the repository: the resx's own spelling
+        // is not rewritten), each in the repository's spelling with its hash: the resx compile
+        // reads that file for the spelling (`ResxFormat.readWith`)
+        let resxFiles =
+            let under = ctx.Root.TrimEnd '/' + "/"
+            [ for resx, _ in resources do
+                for spelledRef, file in ResxFormat.fileRefNames resx do
+                    let path = slash (ctx.Casing.Peek file)
+                    if path.StartsWith (under, comparison) && File.Exists path then
+                        yield ({ Resx = resx; Ref = spelledRef; Path = path; Sha256 = FileHash.sha256 path } : ResxFile) ]
 
         // the hashes: a project's output and the SDK's own files carry none
         let isProjectOutput (path: string) = projects |> List.exists (fun (o, _) -> o.Path = path)
@@ -1486,14 +1613,14 @@ module Import =
                     { x with
                         Name = assemblyName; Framework = framework; Directory = ctx.ProjectDir
                         Options = x.Options |> List.filter (isOutput >> not)
-                        Sources = sources; Generated = generated; Resources = resources
+                        Sources = sources; Generated = generated; Resources = resources; ResxFiles = resxFiles
                         Dependencies = dependencies x.Dependencies }
             | Lock.Compilation.Fsc x ->
                 Lock.Compilation.Fsc
                     { x with
                         Fsc.Name = assemblyName; Fsc.Framework = framework; Fsc.Directory = ctx.ProjectDir
                         Fsc.Options = x.Options |> List.filter (isOutput >> not)
-                        Fsc.Sources = sources; Fsc.Generated = generated; Fsc.Resources = resources
+                        Fsc.Sources = sources; Fsc.Generated = generated; Fsc.Resources = resources; Fsc.ResxFiles = resxFiles
                         Fsc.Dependencies = dependencies x.Dependencies }
 
         // the restore graph of this framework, for the SBOM and the package hashes
@@ -1536,7 +1663,7 @@ module Import =
             | Some _ when isTrue (p "HasRuntimeOutput") ->
                 [ p "AppConfig"; p "UserRuntimeConfig" ]
                 |> List.filter ((<>) "")
-                |> List.map (absoluteIn ctx.ProjectDir)
+                |> List.map (absoluteIn ctx.ProjectDir >> ctx.Casing.Path)
                 |> List.filter (fun f -> File.Exists f && not (f.StartsWith (scratch, comparison)))
             | _ -> []
         let entry : Lock.Entry =
@@ -1698,7 +1825,12 @@ module Import =
             let temp = root </> "obj" </> "xake" </> "import" </> Guid.NewGuid().ToString "N"
             Directory.CreateDirectory temp |> ignore
             try
-                let projectFiles = projects |> List.map full |> List.distinct
+                // the repository's spelling of every file the import records (the git index, read
+                // once), the project files first: msbuild evaluates them so spelled
+                let! index = repositoryIndex root
+                let printed = Collections.Concurrent.ConcurrentDictionary ()
+                let named = Casing.Resolver index
+                let projectFiles = projects |> List.map (full >> named.Path) |> List.distinct
                 // the restore and the design-time builds write what they generate (the assets
                 // file and nuget.g.props/.targets; AssemblyInfo, the compiled resources) into
                 // folders of their own, keyed by the configuration and the properties: two
@@ -1913,13 +2045,14 @@ module Import =
                 for pf, ev, runs in evaluated do
                     let descriptionFile = full (options.DescriptionOf pf)
                     let targets = [ for cfg, f, _, d in runs do if cfg = primary then yield f, d ]
-                    let! imported, description, inputs = writeDescription root pf descriptionFile packageRoot ev targets
+                    let casing = Casing.Resolver index
+                    let! imported, description, inputs, notes = writeDescription root pf descriptionFile packageRoot ev targets casing
                     let pinFile, pin = Lock.sdkPinAt (Path.GetDirectoryName pf)
                     let ctx : RecordContext =
                         { Root = root; ProjectFile = slash pf; ProjectDir = slash (Path.GetDirectoryName pf)
                           Description = description; DescriptionFile = descriptionFile; PackageRoot = packageRoot
                           Pin = pin; PinFile = pinFile; Inputs = inputs; OutOf = options.OutOf
-                          Imported = projectFiles |> List.map slash
+                          Imported = projectFiles |> List.map slash; Casing = casing
                           Pin' =
                             match pinFile |> Option.map (Roots.tokenize roots) with
                             | Some t when t.StartsWith "$(" -> t
@@ -1988,7 +2121,9 @@ module Import =
                             File.WriteAllText (lockFull, text)
                             do! trace Info "'%s': wrote the lock '%s'" description.Name lockPath
                         locks.Add lockPath
-                    results.Add { imported with Locks = List.ofSeq locks }
+                    let spelled = named.Differences |> List.filter (snd >> (=) pf) |> List.map (Casing.line root)
+                    let! lines = traceCasing root pf casing (spelled @ notes) printed
+                    results.Add { imported with Locks = List.ofSeq locks; Casing = lines }
                 for KeyValue ((sdk, pin, _), names) in pinWarnings do
                     do! trace Warning "%s" (sdkPinWarning (List.ofSeq names) sdk pin)
                 do! trace Info "imported %d project(s) for %s in %.1f s" projectFiles.Length (String.concat ", " options.Configurations)

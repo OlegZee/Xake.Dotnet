@@ -6,6 +6,8 @@ open System.Diagnostics
 open System.IO
 open System.Text
 
+open Xake.Dotnet
+
 /// <summary>
 /// The repository's own spelling of a file: what the import records in place of the project
 /// file's (`Foo\Bar.CS` for `foo/Bar.cs`), so that a description or a lock recorded on a file
@@ -142,8 +144,17 @@ module Casing =
             | None -> path
             | Some i ->
                 let r = resolve i path
-                if slash r <> slash path then found.TryAdd (slash path, r) |> ignore
+                if slash r <> slash path then
+                    let p = slash path
+                    found.TryAdd ((if p.Contains "/../" || p.Contains "/./" then slash (Path.GetFullPath p) else p), r) |> ignore
                 r
+
+        /// `path` (absolute) in the repository's spelling (`resolve`), the difference not noted:
+        /// what the caller reports in a line of its own (a reference the import does not rewrite).
+        member _.Peek (path: string) : string =
+            match index with
+            | None -> path
+            | Some i -> resolve i path
 
         /// `path` relative to the folder `dir` (absolute), or absolute, in the repository's
         /// spelling (`Path`); in the form it was given -- relative to `dir` with `/` when it
@@ -168,6 +179,42 @@ module Casing =
         member _.Differences : (string * string) list =
             found |> Seq.map (fun kv -> kv.Key, kv.Value) |> Seq.sortWith (fun (a, _) (b, _) -> String.CompareOrdinal (a, b)) |> List.ofSeq
 
-        /// The line the import log gets for one difference.
-        static member Line (project: string, spelling: string) =
-            sprintf "'%s' is '%s' in the repository (git index): recorded so; the project file spells it otherwise" project spelling
+    /// The line of an import's log for a file a project spells otherwise than the repository
+    /// (`Resolver.Differences`): both spellings, relative to `root` when under it.
+    let line (root: string) (spelled: string, repository: string) =
+        let under = (slash root).TrimEnd '/' + "/"
+        let rel (p: string) = if p.StartsWith (under, StringComparison.OrdinalIgnoreCase) then p.Substring under.Length else p
+        sprintf "'%s' is '%s' in the repository (git index): recorded so" (rel spelled) (rel repository)
+
+    /// <summary>
+    /// An argument of a compiler's command line (paths absolute) with every path it names in the
+    /// repository's spelling (`casing`). The resource a `/resource:` or `/linkresource:` without
+    /// a name embeds is named by the compiler after its file name, as the project spells it:
+    /// where the repository spells the file name otherwise, that name follows the path
+    /// (`path,name`), so the resource keeps the name msbuild gives it.
+    /// </summary>
+    let argument (isFSharp: bool) (casing: Resolver) (arg: string) =
+        let named (canonical: string) (value: string) =
+            match canonical, CscArgs.splitList value with
+            | ("resource" | "linkresource"), [ path ] ->
+                let r = casing.Path path
+                if Path.GetFileName r = Path.GetFileName path then None
+                else Some (CscArgs.quoteIfNeeded r + "," + Path.GetFileName path)
+            | _ -> None
+        if arg.StartsWith "@" then arg
+        elif isFSharp then
+            let a = FscArgs.parse arg
+            match a with
+            | FscArgs.Switch (prefix, name, value) ->
+                match named (FscArgs.canonical name) value with
+                | Some v -> FscArgs.format (FscArgs.Switch (prefix, name, v))
+                | None -> FscArgs.mapPaths casing.Path a |> FscArgs.format
+            | _ -> FscArgs.mapPaths casing.Path a |> FscArgs.format
+        else
+            let a = CscArgs.parse arg
+            match a with
+            | CscArgs.Switch (name, value) ->
+                match named (CscArgs.canonical name) value with
+                | Some v -> CscArgs.format (CscArgs.Switch (name, v))
+                | None -> CscArgs.mapPaths casing.Path a |> CscArgs.format
+            | _ -> CscArgs.mapPaths casing.Path a |> CscArgs.format

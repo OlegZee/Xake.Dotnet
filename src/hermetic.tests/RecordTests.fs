@@ -943,7 +943,8 @@ type ``Record entry``() =
                                    (masks |> List.map (sprintf "\"%s\"") |> String.concat ", "))
         { Root = here (); ProjectFile = dir + "/X.csproj"; ProjectDir = dir; Description = description
           DescriptionFile = dir + "/xake.project.json"; PackageRoot = here () + "/pkgs"
-          Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf; Imported = [ dir + "/X.csproj" ] }
+          Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf; Imported = [ dir + "/X.csproj" ]
+          Casing = Casing.Resolver.Unchanged }
     let context = contextIn "proj"
     let dumpIn (proj: string) (references: string list) (preserialized: bool) : Import.Dump =
         let dir = here () + "/" + proj
