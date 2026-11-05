@@ -1,6 +1,6 @@
 # Tracker: import-file-casing
 
-One line per item. Status as of 2026-11-04.
+One line per item. Status as of 2026-11-05.
 
 ## Done
 
@@ -16,6 +16,9 @@ One line per item. Status as of 2026-11-04.
 - [x] `<include file=...>` in C# doc comments: an Info line per miscased one with both spellings (decision 8)
 - [x] Fixture import test (`Import casing`: an fsproj and a csproj, run where the folder ignores case, ignored elsewhere)
 - [x] Docs: `docs/hermetic/description.md` "The repository's spelling of a file", `lock.md` (`ResxFiles`), the release notes ("Unreleased": one re-import of miscased projects)
+- [x] Owner's answers 9-12 (2026-11-05, brief §7)
+- [x] Answer 9: an application's recorded `deps.json` names a miscased project reference's runtime file as the build writes it (`Import.depsFileNames`; library and assembly names kept); fixture test (exe app, run folder, the app runs) and a pure test
+- [x] Answers 10-12: release notes as `4.1.0 (unreleased)` (the `Csc/Fsc.ResxFiles` record change, the one re-import, resx-referenced files rebuild the resources); `ResxFiles` hashes recorded, not checked; every `ResXFileRef` file recorded (as implemented)
 
 ## Open
 

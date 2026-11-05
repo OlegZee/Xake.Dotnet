@@ -32,19 +32,22 @@ when non-empty, read as empty when absent; format stays 2. The runner reads each
 for its spelling (`ResxFormat.readWith`). Tests: `src/hermetic.tests/CasingTests.fs` (fixtures
 `Casing`, `Resx file references`, `Import casing`).
 
-Choices made inside the binding decisions (for the owner to confirm or change):
-- `ResxFiles` records every `ResXFileRef` file under the project root, not only miscased ones
-  (the owner's "the pairs"); its hash is not checked at build (a repository file, as a source or
-  the resx itself): the build `needFiles` it, so an edit rebuilds; `Lock.diff` shows a change.
-- The legacy `Project.import` lock (format 1) does not get `ResxFiles`: decision 6 asked for the
-  resolver at `resolveAgainstProject` and the arguments.
-- A miscased `ProjectReference` whose assembly is named after the project file: the recorded
-  output is named after the repository's project name (`Lib.dll`, not msbuild's `lib.dll`). An
-  application's `deps.json` written by the app run still names msbuild's spelling for such a
-  reference (the stand-in is named after `ReferencePath`): not handled, open.
+The owner confirmed the choices (brief §7, answers 9-12, 2026-11-05): `ResxFiles` records every
+`ResXFileRef` file, its hash is recorded and not checked; the release is 4.1.0. Answer 9 is done:
+`Import.depsFileNames` renames a referenced project's runtime file in an application's recorded
+`deps.json` (`core.dll` -> `Core.dll`, and the file of a `$(AssemblyVersion:...)` token); the
+library and assembly names stay msbuild's (the host finds the file by the asset path, the runtime
+binds by the assembly's own name, so they need not match). The fixture `Import casing` has an
+exe referencing a miscased library: the recorded deps.json, the run folder from the locks, and
+the app runs.
+
+The flake `imports the toolset compiler from the project` (hermetic/rest): 3 full runs of
+`origin/dev` in a temporary worktree all passed; on this branch it failed once in 3 full runs
+(the lock named `~/.nuget/packages` files untokenized: msbuild restored outside the test's
+package folder) and passed alone and in every run since. Not reproduced on dev, not explained;
+the casing resolver is a no-op for that test (its folder is in no git index). Not fixed.
 
 ## Next step
 
-The owner's review of the branch (no PR opened yet); then the consumer re-imports on macOS or
-Windows and builds on Linux (the last tracker item). Open: the `deps.json` spelling of a
-miscased project reference of an application (above), if the consumer has one.
+The owner's review and PR to `dev` (none opened); then the consumer re-imports on macOS or
+Windows and builds on Linux (the last tracker item).

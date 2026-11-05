@@ -6,7 +6,7 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
-## Unreleased
+## 4.1.0 (unreleased)
 
 ### The import records the repository's spelling of each file
 
@@ -15,18 +15,26 @@ A project file that names a file in another case than the repository has it (`Sr
 The imports (`Import.record`, `Import.descriptions`/`project`, `Project.import`) now write every
 repository file as the git index spells it (`git ls-files`, once per import; without git nothing
 changes), log each difference at Info with both spellings (`Imported.Casing`), and keep
-msbuild's resource names. A `.resx`'s `ResXFileRef` files are recorded in the lock
-(`ResxFiles`, optional; the lock format stays 2) and the resx compile reads them from there; a
-miscased doc comment `<include file>` is reported. See
+msbuild's resource names. A miscased doc comment `<include file>` is reported, not changed. A
+project reference spelled otherwise than its project file is the repository-spelled output
+(`Lib.dll`), and an application's recorded `deps.json` names that file. See
 [description.md](hermetic/description.md#the-repositorys-spelling-of-a-file).
 
 - **Import a miscased project again, once, on macOS or Windows.** Its description and locks
   then change (paths, and a resource `name` where the repository's spelling would derive
-  another); a correctly spelled project gets the same files as before, except a lock whose
-  `.resx` names files, which gains `ResxFiles`. A lock recorded before keeps failing on Linux as
-  stale: the build looks nothing up ignoring case.
-- API: `Import.Imported` has the field `Casing`; `Csc`, `Fsc` and the runner's plan have
-  `ResxFiles` (a record expression of them needs `ResxFiles = []`).
+  another). A lock recorded before keeps failing on Linux as stale: the build looks nothing up
+  ignoring case.
+- **The files a `.resx` names are inputs of the resources.** `Import.record` records every
+  `ResXFileRef` file under the project root in the lock (`ResxFiles`: the resx's spelling, the
+  repository's file, its hash; written only when there are, so the lock format stays 2 and an
+  older lock reads as before), and the resx compile reads them from there. An image (or any
+  file) a resx references now rebuilds the resources when it is edited, which it did not
+  before; its hash is recorded, not checked (the edit does not make the lock stale). A lock
+  whose `.resx` names files gains `ResxFiles` at the next import; a correctly spelled project
+  gets the same files otherwise.
+- **API: `Csc` and `Fsc` (`Xake.Dotnet`) have a new field `ResxFiles`**: code that builds a
+  `Csc` or an `Fsc` record in full (not with `{ c with ... }` or `Csc.ofArgs`) adds
+  `ResxFiles = []`. `Import.Imported` has the field `Casing`.
 
 ## 4.0.0 (2026-11-03)
 
