@@ -74,4 +74,5 @@ No lock format change is needed.
 - **Ordering in a consumer script.** The markup run needs the referenced outputs, so a script
   imports the other projects, builds them, then imports the WPF ones (two `Import.record` calls),
   or `record` itself `need`s the `OutOf` outputs (the rules that build them read locks the same
-  call has to write first). The two-call form is the first step.
+  call has to write first). The two-call form is the first step. **Done (2026-11-05):** the
+  two-call form, with a reference to a project whose lock exists allowed (`projectsOf`).

@@ -1,18 +1,25 @@
 # Session: wpf-record
 
-Branch `feature/wpf-record` from `dev` at `v4.0.0` (2026-11-05). Goal and design: `brief.md`;
-items: `tracker.md`.
+Branch `feature/wpf-record` from `dev` at `v4.0.0`. Goal and design: `brief.md`; items:
+`tracker.md`.
 
 ## State at 2026-11-05
 
-- Nothing in `src/` changed yet. The refusal is at `src/hermetic/Import.fs` ("WPF is not supported
-  by the import yet"), its test at `src/hermetic.tests/RecordTests.fs`.
-- The application run in `Import.record` (search `appRuns`, `stubAssembly`) is the model for the
-  markup run; `entryOf` already records `*.g.cs` as `Generated` and `*.g.resources` beside the
-  lock.
-- A consumer script on Xake 4.0.0 / Xake.Dotnet 4.0.0 is ready to try the branch: it excludes its
-  WPF projects today and builds byte-identically to 3.14.
+- Implemented in `src/hermetic/Import.fs` (`record`: `markupProjects`, the markup run after the
+  design-time traversal of the other projects; `referencedProject`; `projectsOf` accepts a
+  project whose lock exists; `entryOf`: `markupSources`, `.resx`-only resources; `restoreProps`:
+  `_wpftmp`). Tests in `src/hermetic.tests/RecordTests.fs` (`Import record WPF`, its own
+  folder: `RecordKit.build` takes every description of the folder).
+- Packed locally as `4.1.0-wpf.2` (`dotnet fsi build.fsx -- -- pack -d VERSION=4.1.0-wpf.2`);
+  a consumer script took it through `#i "nuget: <out/pkg>"`: two brands recorded (the WPF
+  projects after building the others), built, packed with obfuscation; a second import
+  changed no file.
+- Traps found on the way: WinFX hands the `_wpftmp` project the parent's
+  `MSBuildProjectExtensionsPath` but copies its NuGet props into `BaseIntermediateOutputPath`;
+  the referenced projects' reference assemblies (`obj/.../ref/`) are not built, hence
+  `ProduceReferenceAssembly=false`; with `SkipCompilerExecution=true` pass two fails (MC3074)
+  even with the references in place.
 
 ## Next step
 
-Write the fixture (tracker, first item) and a failing record test against it, then the markup run.
+Decide the referenced-identities question (brief), then the PR to `dev` and the 4.1.0 release.
