@@ -1580,6 +1580,16 @@ module Import =
                 for id, _ in items d kind do
                     let f = absoluteIn ctx.ProjectDir id
                     if File.Exists f && not (f.StartsWith (scratch, comparison)) then yield f ]
+        // the referenced projects' assemblies its BAML names, with the version the markup
+        // compiler loaded: the build checks them against the outputs it references
+        let markup =
+            if not (isTrue (p "UseWPF")) then [] else
+            let outputs = set [ for o, _ in projects -> (Path.GetFileNameWithoutExtension o.Path).ToLowerInvariant () ]
+            [ for path, _ in binaries do
+                if path.EndsWith (".g.resources", StringComparison.OrdinalIgnoreCase) then
+                    for name in Baml.ofResources path do
+                        if outputs.Contains ((Reflection.AssemblyName name).Name.ToLowerInvariant ()) then yield name ]
+            |> List.distinct |> List.sort
         let entry : Lock.Entry =
             { Compilation = compilation
               Evaluation =
@@ -1592,7 +1602,7 @@ module Import =
                   Properties = d.Props |> Map.filter (fun k v -> List.contains k keptProperties && v <> "") }
               Packages = packages
               Prerequisites = []
-              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app } }
+              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup } }
         // the SDK the entry was recorded with, when it names a file of that SDK (its compiler,
         // analyzers, shims, its apphost): the prerequisite follows the content
         let entry =

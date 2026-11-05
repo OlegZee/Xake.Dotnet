@@ -70,7 +70,15 @@ No lock format change is needed.
   assembly. A build whose referenced project changed version without a new import compiles, but
   XAML may fail to load at run time (strictly on .NET Framework with strong names). Options: record
   the referenced identities in the entry and verify them at build time (a new lock field); or
-  document it and rely on the version source being an import input.
+  document it and rely on the version source being an import input. **Decided (2026-11-06):**
+  record and verify. The record reads the identities the BAML names and keeps those of the
+  referenced projects (`Recorded.Markup`; framework assemblies are pinned by the targeting pack
+  already); the build compares each with the built output it references and fails with "run the
+  import again" on a mismatch (`Locks.staleMarkup`). **Done (2026-11-06).** A consumer
+  whose versions are stable within a release (the build number only in `FileVersion`,
+  `InformationalVersion` and the package version) never trips it; a version that changes per build
+  is a separate feature (the version as a build-time value, not a lock value, the BAML rewritten or
+  the markup compiled per build), out of 4.1.0.
 - **Ordering in a consumer script.** The markup run needs the referenced outputs, so a script
   imports the other projects, builds them, then imports the WPF ones (two `Import.record` calls),
   or `record` itself `need`s the `OutOf` outputs (the rules that build them read locks the same

@@ -4,7 +4,8 @@ One line per item. Status as of 2026-11-05.
 
 ## Open
 
-- [ ] Decide: referenced identities pinned by the BAML (brief, "Open decisions"); today documented only
+- [x] Decide: referenced identities pinned by the BAML -> record and verify (brief, "Open decisions", 2026-11-06)
+- [x] Implement: BAML identities in the entry (`Recorded.Markup`, `Baml`), verified at build time (`Locks.staleMarkup`)
 - [ ] Run a consumer's WPF output on Windows (the build is verified on macOS; a WPF window is not)
 - [ ] PR `feature/wpf-record` -> `dev`; release 4.1.0
 

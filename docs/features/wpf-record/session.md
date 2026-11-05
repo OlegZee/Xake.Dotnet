@@ -20,6 +20,14 @@ Branch `feature/wpf-record` from `dev` at `v4.0.0`. Goal and design: `brief.md`;
   `ProduceReferenceAssembly=false`; with `SkipCompilerExecution=true` pass two fails (MC3074)
   even with the references in place.
 
+## State at 2026-11-06
+
+- Referenced identities: recorded and verified (brief, "Open decisions"). `Baml.ofResources`
+  reads the `AssemblyInfo` records of the recorded `g.resources`; those of referenced projects go
+  into `Recorded.Markup`; `Locks.staleMarkup` compares them with the built outputs. Full suite
+  green (478), fsc `build check` green. Packed as `4.1.0-wpf.3`; a consumer's re-import changed
+  no lock (its XAML names no referenced project, so no `Markup` key).
+
 ## Next step
 
-Decide the referenced-identities question (brief), then the PR to `dev` and the 4.1.0 release.
+The PR to `dev` and the 4.1.0 release. Open: a WPF window from a consumer's output on Windows.

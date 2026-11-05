@@ -15,6 +15,10 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
   temporary assembly). Its generated sources go into the lock, its `g.resources` beside it, its
   XAML and `Resource` files into `Evaluation.Imports`. Record the WPF projects after building
   their references ([workflows](hermetic/workflows.md#wpf-projects)).
+- **The recorded BAML's references are checked** (`Recorded.Markup`, a new optional key): the
+  referenced projects' assemblies the BAML names, with the version the markup compiler loaded.
+  A build whose referenced output has another identity fails with "run the import again"
+  instead of producing XAML that fails to load at run time. Locks without XAML do not change.
 - **A project reference may name a project an earlier import recorded** (its lock exists), not
   only one of the same `Import.record` call.
 - `Compilation.Resources` holds the `.resources` compiled from a `.resx` only; another

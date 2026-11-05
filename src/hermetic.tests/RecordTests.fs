@@ -62,7 +62,7 @@ type ``Recorded lock identities``() =
         { Lock.ofCsc c with
             Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/src/App.csproj"; ProjectRefs = [ "Lib" ]; Sdk = "8.0.425" }
             Prerequisites = [ { Kind = Lock.DotnetSdk; Version = "8.0.425"; Pin = "$(ProjectRoot)/global.json" } ]
-            Recorded = Some { Projects = [ lib ]; Masks = [ "/r/proj/src/**/*.cs"; "!/r/proj/src/obj/**/*" ]; Placed = None; App = None } }
+            Recorded = Some { Projects = [ lib ]; Masks = [ "/r/proj/src/**/*.cs"; "!/r/proj/src/obj/**/*" ]; Placed = None; App = None; Markup = [] } }
 
     [<Test>]
     member x.``a recorded entry is written with identities and the Recorded section, and reads back to paths``() =
@@ -89,6 +89,45 @@ type ``Recorded lock identities``() =
         Assert.That(e.Dependencies.Analyzers.Head.Path, Is.EqualTo "/r/pkgs/microsoft.netcore.app.ref/8.0.11/analyzers/dotnet/cs/Gen.dll")
         // read on a machine without the pack, written again: the same text
         Assert.That(Lock.format roots back, Is.EqualTo text)
+        // no XAML: no `Markup` key, as before it existed
+        Assert.That(text, Does.Not.Contain "\"Markup\"")
+        Assert.That(e.Recorded.Value.Markup, Is.Empty)
+
+    [<Test>]
+    member x.``a WPF entry's Markup is written in the Recorded section and reads back``() =
+        let entry = x.Recorded [ lib.Path ]
+        let markup = [ "Lib, Version=1.2.0.0, Culture=neutral, PublicKeyToken=null" ]
+        let entry = { entry with Recorded = Some { entry.Recorded.Value with Markup = markup } }
+        let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
+        Assert.That(text, Does.Contain "\"Markup\": [\n          \"Lib, Version=1.2.0.0, Culture=neutral, PublicKeyToken=null\"\n        ]")
+        let back = Lock.parse roots text
+        Assert.That(back.Entries.Head.Recorded.Value.Markup, Is.EqualTo markup)
+        Assert.That(Lock.format roots back, Is.EqualTo text)
+
+    [<Test>]
+    member x.``the BAML's AssemblyInfo records are its assembly names; a byte 0x1C elsewhere is not``() =
+        let record (id: int16) (name: string) =
+            let text = Text.Encoding.UTF8.GetBytes name
+            // the size counts its own byte, the id and the length-prefixed name
+            let size = 1 + 2 + 1 + text.Length
+            [| yield 0x1Cuy; yield byte size; yield! BitConverter.GetBytes id; yield byte text.Length; yield! text |]
+        let header = [| yield! BitConverter.GetBytes 12; yield! Text.Encoding.Unicode.GetBytes "MSBAML"; yield! Array.create 12 0uy |]
+        let baml =
+            Array.concat
+                [ header
+                  [| 0x01uy; 0uy; 0xFFuy; 0xFFuy; 0xFFuy; 0xFFuy; 0uy |]
+                  record 0s "Wpf, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+                  // a 0x1C inside another record, its "size" not what follows
+                  [| 0x1Cuy; 0x05uy; 0uy; 0uy; 0x02uy; 0x41uy; 0x42uy |]
+                  record 1s "Lib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=0123456789abcdef"
+                  // a name without a version is no assembly reference
+                  record 2s "NotAnAssembly"
+                  record 0s "Wpf, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" ]
+        Assert.That(Baml.assemblyNames baml,
+                    Is.EqualTo [ "Wpf, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+                                 "Lib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=0123456789abcdef" ])
+        Assert.That(Baml.sameIdentity "Lib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null" "lib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null", Is.True)
+        Assert.That(Baml.sameIdentity "Lib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null" "Lib, Version=2.1.0.0, Culture=neutral, PublicKeyToken=null", Is.False)
 
     [<Test>]
     member x.``a recorded entry's SDK prerequisite follows its content``() =
@@ -182,7 +221,7 @@ type ``Recorded lock identities``() =
             Assert.That(resolve "00", Is.EqualTo package)
             let c = { Csc.ofArgs [ "/noconfig"; "/reference:" + package; "/r/proj/A.cs" ] with Name = "App"; Framework = "net8.0"; Directory = "/r/proj" }
             let c = { c with Dependencies = { c.Dependencies with References = c.Dependencies.References |> List.map (fun r -> { r with Sha256 = "00" }) } }
-            let entry = { Lock.ofCsc c with Recorded = Some { Projects = []; Masks = []; Placed = None; App = None } }
+            let entry = { Lock.ofCsc c with Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = [] } }
             match Lock.packMismatches (Some dotnet) pkgs entry with
             | [ message ] ->
                 Assert.That(message, Does.Contain identity)
@@ -218,7 +257,7 @@ type ``Recorded lock identities``() =
         let entry =
             { Lock.ofCsc c with
                 Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/App.csproj"; Sdk = "8.0.425" }
-                Recorded = Some { Projects = []; Masks = masks; Placed = None; App = None } }
+                Recorded = Some { Projects = []; Masks = masks; Placed = None; App = None; Markup = [] } }
         let rootsHere = [ "$(ProjectRoot)", "/r/proj"; "$(Shared)", "/r/shared"; "$(DotnetRoot)", "/r/dotnet"; "$(NuGetPackageRoot)", "/r/pkgs" ]
         let text = Lock.format rootsHere { Configuration = "Release"; Properties = []; Entries = [ entry ] }
         Assert.That(text, Does.Contain "\"Sources\": [\n          \"$(ProjectRoot)/Z.cs\",\n          \"$(ProjectRoot)/obj/xake/App.AssemblyInfo.cs\"\n        ]")
@@ -870,11 +909,25 @@ type ``Import record WPF``() =
         Assert.That(lock, Does.Contain "\"project:lib\"")
         for input in [ "wpf/MainWindow.xaml"; "wpf/Local.xaml"; "wpf/data.txt" ] do
             Assert.That(lock, Does.Contain input, sprintf "an input of the import: %s" input)
+        // the BAML names the referenced project's assembly with the version the markup compiler loaded
+        Assert.That(lock, Does.Contain "\"lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null\"")
         RecordKit.build x.TestOptions "build-wpf" "Release"
         for fwk in [ "net8.0-windows"; "net472" ] do
             Assert.That(File.Exists (sprintf "locks/wpf/Release.files/%s/wpf.g.resources" fwk), Is.True, fwk)
             let _, _, resources = RecordKit.metadata (sprintf "out/Release/%s/wpf/wpf.dll" fwk)
             Assert.That(resources, Does.Contain "wpf.g.resources", fwk)
+        // the referenced project's version changed and only it imported again: the recorded BAML
+        // names the old one, the build says so; the WPF project imported again builds
+        File.WriteAllText ("lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>netstandard2.0</TargetFramework><Version>2.0.0</Version>" "")
+        RecordKit.import x.TestOptions "import-lib-2" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
+        // the build takes every description: lib first, then wpf against its new output
+        let older = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-wpf-older" "Release")
+        Assert.That(string older, Does.Contain "names 'lib, Version=1.0.0.0")
+        Assert.That(string older, Does.Contain "the build references 'lib, Version=2.0.0.0")
+        Assert.That(string older, Does.Contain "run the import again")
+        RecordKit.import x.TestOptions "import-wpf-2" RecordKit.recordDefault [ "wpf/wpf.csproj" ] |> ignore
+        Assert.That(File.ReadAllText (RecordKit.lockOf "wpf" "Release"), Does.Contain "\"lib, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null\"")
+        RecordKit.build x.TestOptions "build-wpf-2" "Release"
         // an edited XAML: the recorded g.resources is stale, the build says so
         File.AppendAllText ("wpf/Local.xaml", "<!-- edited -->\n")
         let stale = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-wpf-stale" "Release")
@@ -960,7 +1013,7 @@ type ``Import record switch files``() =
         let c =
             { Csc.ofArgs [ "/noconfig"; "/keyfile:/opt/keys/k.snk"; "/analyzerconfig:/r/dotnet/sdk/8.0.425/x.globalconfig"; "/ruleset:/r/proj/a.ruleset"
                            "/pathmap:/r/proj/=/_/,/opt/src/=/_2/"; "/r/proj/A.cs" ] with Name = "A"; Framework = "net8.0" }
-        let entry = { Lock.ofCsc c with Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/A.csproj"; Sdk = "8.0.425" }; Recorded = Some { Projects = []; Masks = []; Placed = None; App = None } }
+        let entry = { Lock.ofCsc c with Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/A.csproj"; Sdk = "8.0.425" }; Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = [] } }
         let problems = Import.unportablePaths roots entry
         Assert.That(problems, Has.Length.EqualTo 2)
         Assert.That(problems.[0], Does.Contain "'/opt/keys/k.snk'")
