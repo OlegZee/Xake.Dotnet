@@ -832,16 +832,17 @@ type ``Import record project chain``() =
 type ``Import record WPF``() =
     inherit XakeTestBase("import-record-wpf")
 
-    /// A library and a WPF library referencing it: a window with code-behind (`x:Class`, pass
-    /// one) holding an object of the library, a page whose root is the project's own type (pass
-    /// two, the temporary assembly) and a `Resource` file
+    /// A library and a WPF library referencing it, for .NET and .NET Framework (whose temporary
+    /// assembly project needs the reference assemblies package): a window with code-behind
+    /// (`x:Class`, pass one) holding an object of the library, a page whose root is the
+    /// project's own type (pass two, the temporary assembly) and a `Resource` file
     let wpfFixture () =
         let presentation = "xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\""
         RecordKit.write [ "lib"; "wpf"; "out"; "locks"; "obj" ]
-            [ "lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>" ""
+            [ "lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>netstandard2.0</TargetFramework>" ""
               "lib/Greeter.cs", "namespace Lib { public class Greeter { public string Name { get; set; } = \"lib\"; } }\n"
               "wpf/wpf.csproj",
-                RecordKit.sdkProject "<TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>"
+                RecordKit.sdkProject "<TargetFrameworks>net8.0-windows;net472</TargetFrameworks><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>"
                     "<ProjectReference Include=\"../lib/lib.csproj\" /><Resource Include=\"data.txt\" />"
               "wpf/MainWindow.xaml",
                 sprintf "<Window x:Class=\"Wpf.MainWindow\" %s xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" xmlns:lib=\"clr-namespace:Lib;assembly=lib\">\n  <Window.Resources><lib:Greeter x:Key=\"greeter\" Name=\"xaml\" /></Window.Resources>\n</Window>\n" presentation
@@ -869,10 +870,11 @@ type ``Import record WPF``() =
         Assert.That(lock, Does.Contain "\"project:lib\"")
         for input in [ "wpf/MainWindow.xaml"; "wpf/Local.xaml"; "wpf/data.txt" ] do
             Assert.That(lock, Does.Contain input, sprintf "an input of the import: %s" input)
-        Assert.That(File.Exists "locks/wpf/Release.files/net8.0-windows/wpf.g.resources", Is.True)
         RecordKit.build x.TestOptions "build-wpf" "Release"
-        let _, _, resources = RecordKit.metadata "out/Release/net8.0-windows/wpf/wpf.dll"
-        Assert.That(resources, Does.Contain "wpf.g.resources")
+        for fwk in [ "net8.0-windows"; "net472" ] do
+            Assert.That(File.Exists (sprintf "locks/wpf/Release.files/%s/wpf.g.resources" fwk), Is.True, fwk)
+            let _, _, resources = RecordKit.metadata (sprintf "out/Release/%s/wpf/wpf.dll" fwk)
+            Assert.That(resources, Does.Contain "wpf.g.resources", fwk)
         // an edited XAML: the recorded g.resources is stale, the build says so
         File.AppendAllText ("wpf/Local.xaml", "<!-- edited -->\n")
         let stale = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-wpf-stale" "Release")

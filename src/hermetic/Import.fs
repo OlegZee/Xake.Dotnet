@@ -929,6 +929,14 @@ module Import =
               // already under `xake-record/<key>/`
               "    <MSBuildProjectExtensionsPath Condition=\"!$(_XakeProjectExtensionsBase.Replace('\\', '/').EndsWith('xake-record/$(XakeRecordKey)/'))\">$(_XakeProjectExtensionsBase)xake-record/$(XakeRecordKey)/</MSBuildProjectExtensionsPath>"
               "    <MSBuildProjectExtensionsPath Condition=\"$(_XakeProjectExtensionsBase.Replace('\\', '/').EndsWith('xake-record/$(XakeRecordKey)/'))\">$(_XakeProjectExtensionsBase)</MSBuildProjectExtensionsPath>"
+              // that project reads the parent's assets file, but its own nuget.g.props/.targets, which WinFX
+              // copies into `BaseIntermediateOutputPath` (for .NET Framework they bring the reference
+              // assemblies package: without them MSB3644)
+              "    <_XakeWpfTemporary>$(MSBuildProjectName.EndsWith('_wpftmp'))</_XakeWpfTemporary>"
+              "    <ProjectAssetsFile Condition=\"'$(_XakeWpfTemporary)' == 'true' and '$(ProjectAssetsFile)' == ''\">$(MSBuildProjectExtensionsPath)project.assets.json</ProjectAssetsFile>"
+              "    <_XakeWpfTemporaryBase>$(BaseIntermediateOutputPath)</_XakeWpfTemporaryBase>"
+              "    <_XakeWpfTemporaryBase Condition=\"'$(_XakeWpfTemporaryBase)' == ''\">obj/</_XakeWpfTemporaryBase>"
+              "    <MSBuildProjectExtensionsPath Condition=\"'$(_XakeWpfTemporary)' == 'true'\">$([MSBuild]::EnsureTrailingSlash('$(_XakeWpfTemporaryBase)'))</MSBuildProjectExtensionsPath>"
               "  </PropertyGroup>"
               "</Project>"
               "" ]
