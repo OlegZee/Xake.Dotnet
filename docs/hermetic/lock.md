@@ -203,7 +203,15 @@ condition the masks do not know, the two can drift; the import checks them only 
      `Sources` keeps msbuild's whole list). With masks, the lock writes in `Sources` only the
      files the masks do not put in place, and `Recorded.Placed` says where each goes (below).
    - A project reference is the referenced project's output in the build's layout
-     (`OutOf cfg <NearestTargetFramework> <name>`), in `Recorded.Projects`.
+     (`OutOf cfg <NearestTargetFramework> <name>`), in `Recorded.Projects`. The referenced
+     project is one this import records or one an earlier import recorded (its lock exists).
+   - A WPF project (`UseWPF` with `Page`/`ApplicationDefinition` items) is recorded by a run of
+     its own in which the markup compiler runs: the referenced projects' outputs (built from
+     their locks, `OutOf`) are placed in the run's `OutDir`, and the compiler runs, as the
+     second markup pass (the temporary assembly) needs. Its `*.g.cs` go into `Generated`, its
+     `<assembly>.g.resources` beside the lock (above), and its `Page`,
+     `ApplicationDefinition` and `Resource` files into `Evaluation.Imports`: an edited XAML
+     fails the build with "run the import again".
    - Every reference and analyzer is hashed, except a project's output (unhashed, as in every
      lock) and a file of the SDK (identified by the SDK version).
    - `Prerequisites` has `dotnet-sdk <NETCoreSdkVersion>` when the entry names a file of that

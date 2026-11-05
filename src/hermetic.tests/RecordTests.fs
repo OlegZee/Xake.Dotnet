@@ -824,31 +824,79 @@ type ``Import record project chain``() =
         Assert.That(File.Exists (RecordKit.lockOf "c" "Release"), Is.False)
 
 
-/// `Import.record` refuses a WPF project up front (S69) and writes no host path into a
-/// description whose output folder lies outside the project (S70).
+/// `Import.record` of a WPF project (S69): its markup compiler runs against the referenced
+/// projects' outputs built from their locks; the generated sources and `g.resources` go into
+/// its lock, the XAML into its inputs. A folder of its own: the build takes every description
+/// in it.
 [<TestFixture>]
-type ``Import record refusals and descriptions``() =
+type ``Import record WPF``() =
+    inherit XakeTestBase("import-record-wpf")
+
+    /// A library and a WPF library referencing it: a window with code-behind (`x:Class`, pass
+    /// one) holding an object of the library, a page whose root is the project's own type (pass
+    /// two, the temporary assembly) and a `Resource` file
+    let wpfFixture () =
+        let presentation = "xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\""
+        RecordKit.write [ "lib"; "wpf"; "out"; "locks"; "obj" ]
+            [ "lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>" ""
+              "lib/Greeter.cs", "namespace Lib { public class Greeter { public string Name { get; set; } = \"lib\"; } }\n"
+              "wpf/wpf.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>"
+                    "<ProjectReference Include=\"../lib/lib.csproj\" /><Resource Include=\"data.txt\" />"
+              "wpf/MainWindow.xaml",
+                sprintf "<Window x:Class=\"Wpf.MainWindow\" %s xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" xmlns:lib=\"clr-namespace:Lib;assembly=lib\">\n  <Window.Resources><lib:Greeter x:Key=\"greeter\" Name=\"xaml\" /></Window.Resources>\n</Window>\n" presentation
+              "wpf/MainWindow.xaml.cs", "namespace Wpf { public partial class MainWindow : System.Windows.Window { public MainWindow() { InitializeComponent(); } } }\n"
+              "wpf/Panel.cs", "namespace Wpf { public class Panel : System.Windows.Controls.StackPanel { } }\n"
+              "wpf/Local.xaml", sprintf "<local:Panel %s xmlns:local=\"clr-namespace:Wpf\" />\n" presentation
+              "wpf/data.txt", "a resource\n" ]
+
+    [<Test>]
+    member x.``a WPF project records after its references are built, and builds from its lock``() =
+        wpfFixture ()
+        RecordKit.import x.TestOptions "import-lib" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
+        // the markup compiler loads the referenced assembly: not built yet, the import says so
+        let e = Assert.Catch(fun () -> RecordKit.import x.TestOptions "import-wpf-early" RecordKit.recordDefault [ "wpf/wpf.csproj" ] |> ignore)
+        Assert.That(string e, Does.Contain "compiles XAML")
+        Assert.That(string e, Does.Contain "/lib/lib.csproj'")
+        Assert.That(string e, Does.Contain "is not built")
+        Assert.That(File.Exists (RecordKit.lockOf "wpf" "Release"), Is.False)
+        RecordKit.build x.TestOptions "build-lib" "Release"
+        // a reference to a project an earlier import recorded (its lock exists)
+        RecordKit.import x.TestOptions "import-wpf" RecordKit.recordDefault [ "wpf/wpf.csproj" ] |> ignore
+        let lock = File.ReadAllText (RecordKit.lockOf "wpf" "Release")
+        Assert.That(lock, Does.Contain "MainWindow.g.cs")
+        Assert.That(lock, Does.Contain "GeneratedInternalTypeHelper.g.cs")
+        Assert.That(lock, Does.Contain "\"project:lib\"")
+        for input in [ "wpf/MainWindow.xaml"; "wpf/Local.xaml"; "wpf/data.txt" ] do
+            Assert.That(lock, Does.Contain input, sprintf "an input of the import: %s" input)
+        Assert.That(File.Exists "locks/wpf/Release.files/net8.0-windows/wpf.g.resources", Is.True)
+        RecordKit.build x.TestOptions "build-wpf" "Release"
+        let _, _, resources = RecordKit.metadata "out/Release/net8.0-windows/wpf/wpf.dll"
+        Assert.That(resources, Does.Contain "wpf.g.resources")
+        // an edited XAML: the recorded g.resources is stale, the build says so
+        File.AppendAllText ("wpf/Local.xaml", "<!-- edited -->\n")
+        let stale = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-wpf-stale" "Release")
+        Assert.That(string stale, Does.Contain "run the import again")
+
+
+/// `Import.record` takes `Page` items or `UseWPF` alone for no WPF project, and writes no host
+/// path into a description whose output folder lies outside the project (S70).
+[<TestFixture>]
+type ``Import record WPF detection and descriptions``() =
     inherit XakeTestBase("import-record-refusals")
 
     [<Test>]
-    member x.``a WPF project is refused before msbuild's markup compiler runs; Page items or UseWPF alone are not WPF``() =
-        RecordKit.write [ "wpf"; "pages"; "wpfcode"; "out"; "locks"; "obj" ]
-            [ "wpf/wpf.csproj", RecordKit.sdkProject "<TargetFramework>net472</TargetFramework><UseWPF>true</UseWPF>" "<Page Include=\"MainWindow.xaml\" />"
-              "pages/pages.csproj", RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>" "<Page Include=\"X.xaml\" />"
+    member x.``Page items or UseWPF alone are not WPF: recorded as before, no XAML among the inputs``() =
+        RecordKit.write [ "pages"; "wpfcode"; "out"; "locks"; "obj" ]
+            [ "pages/pages.csproj", RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>" "<Page Include=\"X.xaml\" />"
               "pages/X.xaml", "<x />\n"
               "pages/C.cs", "class C { }\n"
               "wpfcode/wpfcode.csproj", RecordKit.sdkProject "<TargetFramework>net472</TargetFramework><UseWPF>true</UseWPF>" ""
-              "wpfcode/C.cs", "class C { }\n"
-              "wpf/MainWindow.xaml", "<Window xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" />\n"
-              "wpf/C.cs", "class C { }\n" ]
-        let e = Assert.Catch(fun () -> RecordKit.import x.TestOptions "import-wpf" RecordKit.recordDefault [ "wpf/wpf.csproj" ] |> ignore)
-        Assert.That(string e, Does.Contain "WPF is not supported by the import yet")
-        Assert.That(string e, Does.Contain "/wpf/wpf.csproj'")
-        Assert.That(string e, Does.Not.Contain "MC3050")
-        Assert.That(string e, Does.Not.Contain "pages.csproj")
+              "wpfcode/C.cs", "class C { }\n" ]
         RecordKit.import x.TestOptions "import-pages" RecordKit.recordDefault [ "pages/pages.csproj"; "wpfcode/wpfcode.csproj" ] |> ignore
         Assert.That(File.Exists (RecordKit.lockOf "pages" "Release"))
         Assert.That(File.Exists (RecordKit.lockOf "wpfcode" "Release"))
+        Assert.That(File.ReadAllText (RecordKit.lockOf "pages" "Release"), Does.Not.Contain "X.xaml")
 
     [<Test>]
     member x.``an output folder outside the project or named by the configuration is no host path in the description``() =
@@ -943,7 +991,8 @@ type ``Record entry``() =
                                    (masks |> List.map (sprintf "\"%s\"") |> String.concat ", "))
         { Root = here (); ProjectFile = dir + "/X.csproj"; ProjectDir = dir; Description = description
           DescriptionFile = dir + "/xake.project.json"; PackageRoot = here () + "/pkgs"
-          Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf; Imported = [ dir + "/X.csproj" ] }
+          Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf
+          LockOf = (fun name cfg -> here () + "/" + RecordKit.lockOf name cfg); Imported = [ dir + "/X.csproj" ] }
     let context = contextIn "proj"
     let dumpIn (proj: string) (references: string list) (preserialized: bool) : Import.Dump =
         let dir = here () + "/" + proj
