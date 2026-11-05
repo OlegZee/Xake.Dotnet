@@ -19,4 +19,7 @@ One line per item. Status as of 2026-11-04.
 
 ## Open
 
+- [ ] An application's recorded `deps.json`: the repository's spelling of a miscased project reference's file (brief §7, answer 9). Next
+- [ ] Release notes: the `Csc`/`Fsc.ResxFiles` change as 4.1.0 (answer 11)
+
 - [ ] Consumer re-import on macOS or Windows, then the build on Linux (the owner's)

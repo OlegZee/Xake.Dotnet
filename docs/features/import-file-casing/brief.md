@@ -175,3 +175,15 @@ Constraint: only **paths to files** change. A resource's name (msbuild's manifes
    case-insensitive lookup at replay.
 8. `<include file=...>` in C# doc comments: the import finds them and warns about each one with both
    spellings; the fix is the consumer's, in the sources.
+
+### Owner's answers on the implementation (2026-11-05)
+
+9. A `ProjectReference` spelled in another case than the repository's project file: the reference's
+   output is the repository-spelled assembly file (`Lib.dll`), as implemented; the import also writes
+   that spelling into an application's recorded `deps.json` (a path, the assembly name inside stays
+   as it is), so the replay's `Apps.depsResolved` and the runtime find the file on Linux.
+10. `ResxFiles` hashes are recorded, not checked at build (an edited image rebuilds the resources,
+    like an edited source; it does not make the lock stale).
+11. The new `ResxFiles` field of `Csc`/`Fsc` (`Xake.Dotnet`) ships as **4.1.0**, with the release-notes line.
+12. `ResxFiles` records **every** `ResXFileRef` file under the project root, not only the miscased ones
+    (they become dependencies of the resources: an image edit rebuilds them, which it did not before).
