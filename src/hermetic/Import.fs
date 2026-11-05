@@ -1290,6 +1290,21 @@ module Import =
         |> String.concat "\n"
         |> fun result -> if result.Contains stubVersion then unknown "the stand-in version is left after its versions became tokens" else result
 
+    /// <summary>
+    /// A `deps.json` (as `depsTokens` gives it) with each runtime file of a referenced project
+    /// renamed (`renames`: msbuild's file name -> the one the build writes, `projectsOf`): a
+    /// reference spelled otherwise than the repository's project file names the assembly file
+    /// after its spelling (`lib.dll`), the build after the repository's (`Lib.dll`). Only the
+    /// file name changes -- a JSON string that is exactly that name (the runtime asset) and the
+    /// file of a version token (`$(AssemblyVersion:lib.dll)`); the library and the assembly
+    /// names stay as msbuild wrote them (the host finds the file by the runtime asset's path,
+    /// the runtime binds the assembly by its own name). Pure.
+    /// </summary>
+    let internal depsFileNames (renames: (string * string) list) (text: string) : string =
+        renames |> List.fold (fun (t: string) (spelled: string, file: string) ->
+            let quoted = t.Replace ("\"" + spelled + "\"", "\"" + file + "\"")
+            quoted.Replace (":" + spelled + ")", ":" + file + ")")) text
+
     /// msbuild generates binding redirects for the project of `d` (`AutoGenerateBindingRedirects`
     /// and `GenerateBindingRedirectsOutputType`: a .NET Framework application or test library, a
     /// .NET one that asks for them).
@@ -1354,6 +1369,14 @@ module Import =
         let projectOutputs = dict [ for o, names in projects do for n in names -> n, o ]
         let projectDirs = [ for _, names in projects do for n in names -> (slash (Path.GetDirectoryName n)).TrimEnd '/' + "/" ] |> List.distinct
         let besideProject (path: string) = projectDirs |> List.exists (fun d -> path.StartsWith (d, comparison))
+        // a referenced project's file as msbuild names it -> as the build writes it (they differ
+        // by case where the reference spells the project file otherwise, `projectsOf`)
+        let renames =
+            [ for o, names in projects do
+                for n in names do
+                    let spelled, file = Path.GetFileName n, Path.GetFileName o.Path
+                    if spelled <> file && String.Equals (spelled, file, StringComparison.OrdinalIgnoreCase) then yield spelled, file ]
+            |> List.distinct
         let copy =
             [ for id, m in items d "ReferenceCopyLocalPaths" do
                 let path = absoluteIn ctx.ProjectDir id
@@ -1426,7 +1449,7 @@ module Import =
         let files =
             [ if runtime then
                   generated appRuntimeConfig (named "ProjectRuntimeConfigFileName" (assemblyName + ".runtimeconfig.json")) id
-                  generated appDeps (named "ProjectDepsFileName" (assemblyName + ".deps.json")) (depsTokens (scratch + appDeps))
+                  generated appDeps (named "ProjectDepsFileName" (assemblyName + ".deps.json")) (depsTokens (scratch + appDeps) >> depsFileNames renames)
               config ]
             |> List.choose id
         let recorded = [ for name, bytes in files -> binaryDir + "app/" + name, bytes ]

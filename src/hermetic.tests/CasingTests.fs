@@ -204,6 +204,46 @@ type ``Casing``() =
         finally Directory.Delete (root, true)
 
 
+    [<Test>]
+    member x.``a recorded deps.json names a referenced project's file as the build writes it, its library and assembly names kept``() =
+        let deps =
+            String.concat "\n"
+                [ "{"
+                  "  \"targets\": {"
+                  "    \".NETCoreApp,Version=v8.0\": {"
+                  "      \"Tool/1.0.0\": {"
+                  "        \"dependencies\": {"
+                  "          \"core\": \"$(AssemblyVersion:core.dll)\""
+                  "        },"
+                  "        \"runtime\": {"
+                  "          \"Tool.dll\": {}"
+                  "        }"
+                  "      },"
+                  "      \"core/$(AssemblyVersion:core.dll)\": {"
+                  "        \"runtime\": {"
+                  "          \"core.dll\": {"
+                  "            \"assemblyVersion\": \"$(AssemblyVersion:core.dll)\","
+                  "            \"fileVersion\": \"$(FileVersion:core.dll)\""
+                  "          }"
+                  "        }"
+                  "      },"
+                  "      \"Other/1.0.0\": { \"runtime\": { \"lib/net8.0/core.dll\": {} } }"
+                  "    }"
+                  "  },"
+                  "  \"libraries\": {"
+                  "    \"core/$(AssemblyVersion:core.dll)\": { \"type\": \"project\", \"serviceable\": false, \"sha512\": \"\" }"
+                  "  }"
+                  "}" ]
+        let renamed = Import.depsFileNames [ "core.dll", "Core.dll" ] deps
+        Assert.That(renamed, Does.Contain "\"Core.dll\": {")
+        Assert.That(renamed, Does.Not.Contain "\"core.dll\"")
+        Assert.That(renamed, Does.Not.Contain ":core.dll)")
+        // the library keeps msbuild's name, a package's file in a folder is another file
+        Assert.That(renamed, Does.Contain "\"core/$(AssemblyVersion:Core.dll)\": {")
+        Assert.That(renamed, Does.Contain "\"core\": \"$(AssemblyVersion:Core.dll)\"")
+        Assert.That(renamed, Does.Contain "\"lib/net8.0/core.dll\"")
+        Assert.That(Import.depsFileNames [] deps, Is.EqualTo deps)
+
 /// The files a `.resx` names, as an import records them (`Csc.ResxFiles`): the lock's
 /// `ResxFiles` and the resx compile that reads them.
 [<TestFixture>]
@@ -373,3 +413,46 @@ type ``Import casing``() =
         for e in expected do
             Assert.That(lines |> List.exists (fun l -> l.StartsWith e), Is.True, sprintf "no casing line '%s' in:\n%s" e (String.concat "\n" lines))
         Assert.That(List.distinct lines, Has.Length.EqualTo expected.Length)
+
+    [<Test; Category("Integration")>]
+    member x.``an application's deps.json names a miscased project reference's file as the build writes it, and its run folder builds``() =
+        File.WriteAllText ("case-probe.txt", "")
+        let ignoresCase = File.Exists "CASE-PROBE.TXT"
+        File.Delete "case-probe.txt"
+        if not ignoresCase then Assert.Ignore "the file system here does not ignore case: msbuild cannot evaluate a miscased project"
+        if Directory.Exists ".git" then Directory.Delete (".git", true)
+        let appFiles =
+            [ "core/Core.csproj", RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>" ""
+              "core/Greeter.cs", "namespace Core { public static class Greeter { public static string Hello () => \"hello from core\"; } }\n"
+              "tool/Tool.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType>" "<ProjectReference Include=\"..\\CORE\\core.csproj\" />"
+              "tool/Program.cs", "public static class Program { public static void Main () => System.Console.WriteLine (Core.Greeter.Hello ()); }\n" ]
+        RecordKit.write [ "core"; "tool"; "app"; "lib"; "locks"; "out"; "run" ] appFiles
+        let here = (Directory.GetCurrentDirectory ()).Replace ('\\', '/')
+        CasingKit.git here [ "init"; "-q" ] |> ignore
+        CasingKit.git here ([ "add"; "--" ] @ List.map fst appFiles) |> ignore
+
+        RecordKit.import x.TestOptions "import-casing-app" RecordKit.recordDefault [ "tool/Tool.csproj"; "core/Core.csproj" ] |> ignore
+        let deps = File.ReadAllText "locks/Tool/Release.files/net8.0/app/Tool.deps.json"
+        // the runtime file as the build writes it (msbuild's reference names `core.dll`); the
+        // library keeps msbuild's name (SDK 10 writes the project's version there, no token)
+        Assert.That(deps, Does.Contain "\"Core.dll\": {")
+        Assert.That(deps, Does.Not.Contain "\"core.dll\"")
+        let lock = File.ReadAllText (RecordKit.lockOf "Tool" "Release")
+        Assert.That(lock, Does.Contain "\"To\": \"Core.dll\"")
+
+        // the replay: the outputs from the locks, the run folder, and the application runs
+        RecordKit.build x.TestOptions "build-casing-app" "Release"
+        RecordKit.deploy x.TestOptions "deploy-casing-app" "Release" RunFolder.Copy
+        let folder = Path.GetFullPath "run/Release/net8.0/Tool"
+        let placed = Directory.GetFiles folder |> Array.map Path.GetFileName |> set
+        Assert.That(placed.Contains "Core.dll", Is.True, sprintf "the run folder holds %A" placed)
+        Assert.That(File.ReadAllText (Path.Combine (folder, "Tool.deps.json")), Does.Contain "\"Core.dll\": {")
+        let psi = ProcessStartInfo ("dotnet", "Tool.dll")
+        psi.WorkingDirectory <- folder
+        psi.RedirectStandardOutput <- true
+        psi.UseShellExecute <- false
+        use p = Process.Start psi
+        let out = p.StandardOutput.ReadToEnd ()
+        p.WaitForExit ()
+        Assert.That(out.Trim (), Is.EqualTo "hello from core")

@@ -199,7 +199,8 @@ condition the masks do not know, the two can drift; the import checks them only 
      (`ResXFileRef`, under the project root) go into `ResxFiles`: the resx, the reference as the
      resx spells it (`Ref`), the file in the repository's spelling (`Path`) and its sha256. The
      resx compile reads `Path` for `Ref` and needs it as it needs the resx (an edit rebuilds;
-     the hash is what the import read, for `Lock.diff`, not a gate); the `.resx` is never
+     the hash is what the import read, for `Lock.diff`, not a gate: an edit does not make the
+     lock stale); the `.resx` is never
      rewritten, and a reference with no record is read as spelled. The key is written only
      when there are such files: every other lock is byte-identical, a lock without it reads as
      none, and the format stays 2.
@@ -213,7 +214,9 @@ condition the masks do not know, the two can drift; the import checks them only 
      `Sources` keeps msbuild's whole list). With masks, the lock writes in `Sources` only the
      files the masks do not put in place, and `Recorded.Placed` says where each goes (below).
    - A project reference is the referenced project's output in the build's layout
-     (`OutOf cfg <NearestTargetFramework> <name>`), in `Recorded.Projects`.
+     (`OutOf cfg <NearestTargetFramework> <name>`), in `Recorded.Projects`, named by the
+     repository's spelling of the project file (a reference `..\LIB\lib.csproj` to
+     `lib/Lib.csproj` is `Lib`, its file `Lib.dll`, also in an application's `deps.json`).
    - Every reference and analyzer is hashed, except a project's output (unhashed, as in every
      lock) and a file of the SDK (identified by the SDK version).
    - `Prerequisites` has `dotnet-sdk <NETCoreSdkVersion>` when the entry names a file of that
