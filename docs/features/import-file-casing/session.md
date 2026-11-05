@@ -41,11 +41,19 @@ binds by the assembly's own name, so they need not match). The fixture `Import c
 exe referencing a miscased library: the recorded deps.json, the run folder from the locks, and
 the app runs.
 
-The flake `imports the toolset compiler from the project` (hermetic/rest): 3 full runs of
-`origin/dev` in a temporary worktree all passed; on this branch it failed once in 3 full runs
-(the lock named `~/.nuget/packages` files untokenized: msbuild restored outside the test's
-package folder) and passed alone and in every run since. Not reproduced on dev, not explained;
-the casing resolver is a no-op for that test (its folder is in no git index). Not fixed.
+Flakes (2026-11-05). `origin/dev` in a temporary worktree: 6 full `build test` runs, all
+green. This branch: 7 full runs, 4 green; the failures each passed on rerun, alone and in later
+full runs:
+- `imports the toolset compiler from the project` (hermetic/rest, once): the legacy lock named
+  `~/.nuget/packages` files untokenized (msbuild restored outside the test's package folder);
+- `a .NET app asking for redirects` (hermetic/rest, twice) and `a project file edited since the
+  import fails the build` (hermetic/record, once): a referenced library built from its lock
+  compiled only its generated sources (its masks expanded to no file at build time), so the
+  referencing project did not find its types.
+None of these tests' folders is in a git index, so the casing resolver changes nothing for them,
+and the failing steps (restore, a build's mask expansion) are code this branch does not touch.
+Not shown to predate the feature either (dev did not fail in 6 runs); not fixed. Next: run the
+failing fixtures in a loop on both branches to tell a race from a regression.
 
 ## Next step
 
