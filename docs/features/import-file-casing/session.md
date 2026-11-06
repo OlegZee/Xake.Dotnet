@@ -41,21 +41,45 @@ binds by the assembly's own name, so they need not match). The fixture `Import c
 exe referencing a miscased library: the recorded deps.json, the run folder from the locks, and
 the app runs.
 
-Flakes (2026-11-05). `origin/dev` in a temporary worktree: 6 full `build test` runs, all
-green. This branch: 7 full runs, 4 green; the failures each passed on rerun, alone and in later
-full runs:
-- `imports the toolset compiler from the project` (hermetic/rest, once): the legacy lock named
-  `~/.nuget/packages` files untokenized (msbuild restored outside the test's package folder);
-- `a .NET app asking for redirects` (hermetic/rest, twice) and `a project file edited since the
-  import fails the build` (hermetic/record, once): a referenced library built from its lock
-  compiled only its generated sources (its masks expanded to no file at build time), so the
-  referencing project did not find its types.
-None of these tests' folders is in a git index, so the casing resolver changes nothing for them,
-and the failing steps (restore, a build's mask expansion) are code this branch does not touch.
-Not shown to predate the feature either (dev did not fail in 6 runs); not fixed. Next: run the
-failing fixtures in a loop on both branches to tell a race from a regression.
+## State at 2026-11-06
+
+- `origin/dev` merged (WPF record, 4.1.0 released): this feature is 4.2.0 (release notes
+  "4.2.0 (unreleased)"). Dev's `referencedProject` takes the casing resolver; the WPF markup
+  inputs and the markup run's referenced outputs are resolved (names stay msbuild's).
+- The resolver is per path: `Casing.Repos` finds the repository of each path's nearest existing
+  folder (`git rev-parse --show-cdup`, cached per folder) and reads each repository's index once;
+  a submodule is its own repository, its path spelled as its superproject's index has it. Before,
+  only the index of the script's project root was read, so the consumer's sources (a sibling
+  repository behind a declared root, mostly in submodules) were not corrected at all (the
+  consumer's Linux run on 4.2.0-casing.1: 0 changes, 0 warnings). Test folders of this repository
+  (`~testout~`, ignored) are in its index as nothing: unchanged.
+
+Flakes, root cause (2026-11-06): **the IDE builds the test fixtures while the tests run.** VS
+Code's C# Dev Kit (open on the main checkout, so every worktree under `.claude/worktrees/` is in
+its workspace) and its reusable MSBuild nodes (`/nodeReuse:true`; no test starts one) evaluate,
+restore and build the projects the tests write under `src/dotnet.tests/~testout~/`. Evidence:
+- `lsof` sampled every 0.5 s during full runs: the Dev Kit's nodes (children of its process) have
+  their working folder or files in the fixtures that flake (`import-record-chain`, `-redirects`,
+  `-apps`, `run-folders`, `toolset-import`) in every run (49 to 136 samples per run); in a
+  failing run the node sat in `import-record-chain/b` exactly while `c`, referencing `b`, failed
+  for `b`'s missing types;
+- symptoms are those of a second build in the folder: a fixture folder "Directory not empty" while
+  a test deletes it (also `git worktree remove` of a temporary worktree after its tests ended,
+  with a Dev Kit node holding a fixture folder open), a design-time build resolving no project
+  reference, the legacy import reading an `obj/project.assets.json` whose package paths are
+  `~/.nuget/packages` (the IDE's restore, not the test's package folder);
+- the branch-point code (`68c786b`, no casing code) fails the same tests in this worktree
+  (1 in 3 interleaved runs), and the branch's code outside the IDE's workspace (a temporary
+  worktree under `$TMPDIR`) passed 8 of 8 (and the tip 5 of 5, below);
+- the resolver is a no-op for those fixtures (their files are in no index); bisecting it away
+  (`git` not run, the content scan skipped) did not change the failures.
+The feature adds integration fixtures (more projects for the IDE to load, longer runs), which
+likely raises the rate in this worktree. Not a defect of the feature code; not fixed (closing
+the folder in the IDE, or test folders outside the workspace, would remove it: a decision for
+the owner). Counts: this worktree, branch: 13 failing runs of 38; branch outside the IDE: 0 of
+8; tip after the redesign: 4 of 5 green here, 5 of 5 in a row outside the IDE workspace.
 
 ## Next step
 
-The owner's review and PR to `dev` (none opened); then the consumer re-imports on macOS or
-Windows and builds on Linux (the last tracker item).
+The consumer's re-import on Linux-relevant spellings from the pushed tip (the coordinator reruns
+it); then the PR. Open: whether to keep test folders out of the IDE's workspace (owner).

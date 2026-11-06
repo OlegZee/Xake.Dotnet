@@ -1,6 +1,6 @@
 # Tracker: import-file-casing
 
-One line per item. Status as of 2026-11-05.
+One line per item. Status as of 2026-11-06.
 
 ## Done
 
@@ -19,10 +19,11 @@ One line per item. Status as of 2026-11-05.
 - [x] Owner's answers 9-12 (2026-11-05, brief §7)
 - [x] Answer 9: an application's recorded `deps.json` names a miscased project reference's runtime file as the build writes it (`Import.depsFileNames`; library and assembly names kept); fixture test (exe app, run folder, the app runs) and a pure test
 - [x] Answers 10-12: release notes as `4.1.0 (unreleased)` (the `Csc/Fsc.ResxFiles` record change, the one re-import, resx-referenced files rebuild the resources); `ResxFiles` hashes recorded, not checked; every `ResXFileRef` file recorded (as implemented)
+- [x] Merge of `origin/dev` (WPF record, 4.1.0 released): conflicts resolved keeping both sides; the self-build's lock and fingerprints regenerated; release notes `4.2.0 (unreleased)` above 4.1.0
+- [x] WPF: the markup inputs (`Page`, `ApplicationDefinition`, `Resource`) in `Evaluation.Imports` and the markup run's referenced outputs in the repository's spelling; BAML keys, `Recorded.Markup` identities and `g.resources` bytes stay msbuild's; fixture test (a miscased Page and Resource)
+- [x] Each path in the spelling of the repository that contains it (`Casing.Repos`: per folder `rev-parse --show-cdup`, one `ls-files` per repository; submodules their own repositories; package folder and .NET installation excluded; one Info line per folder tree in no repository); fixture: a project in a submodule of a sibling repository behind a declared root
+- [x] Flake root cause: the IDE (VS Code C# Dev Kit) builds the test fixtures of worktrees under its workspace while the tests run (see session)
 
 ## Open
-
-- [ ] An application's recorded `deps.json`: the repository's spelling of a miscased project reference's file (brief §7, answer 9). Next
-- [ ] Release notes: the `Csc`/`Fsc.ResxFiles` change as 4.1.0 (answer 11)
 
 - [ ] Consumer re-import on macOS or Windows, then the build on Linux (the owner's)
