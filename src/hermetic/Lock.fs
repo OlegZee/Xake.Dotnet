@@ -348,6 +348,12 @@ module Lock =
         /// What msbuild makes of a project with runtime output besides the compile (`App`);
         /// `None` for a library
         App: App option
+        /// A WPF project's: the referenced projects' assemblies its recorded BAML
+        /// (`&lt;assembly&gt;.g.resources`) names, by full name, version included, as the markup
+        /// compiler loaded them (`Baml`). A build checks each against the referenced project's
+        /// output; another identity fails it, "run the import again" (`Locks.compileAs`). Empty
+        /// otherwise
+        Markup: string list
     }
 
     /// <summary>
@@ -1029,7 +1035,11 @@ module Lock =
                           sprintf "%s  { \"Name\": %s, \"Configuration\": %s, \"Framework\": %s, \"Path\": %s }"
                               indent (escape p.Name) (escape p.Configuration) (escape p.Framework) (str p.Path))
                       |> String.concat ",\n"
-                  yield if projects = "" then sprintf "%s\"Projects\": []" indent else sprintf "%s\"Projects\": [\n%s\n%s]" indent projects indent ]
+                  yield if projects = "" then sprintf "%s\"Projects\": []" indent else sprintf "%s\"Projects\": [\n%s\n%s]" indent projects indent
+                  // only when there is one: every lock without XAML stays byte-identical to what
+                  // was written before the key existed
+                  if not (List.isEmpty r.Markup) then
+                      yield stringsWith escape "Markup" r.Markup ]
           // what msbuild makes of a project with runtime output besides the compile
           match entry.Recorded |> Option.bind (fun r -> r.App) with
           | None -> ()
@@ -1110,7 +1120,8 @@ module Lock =
                          match field "Placed" r with
                          | Some (JObject members) -> Some (members |> List.choose (fun (k, v) -> asString v |> Option.map (fun v -> expand k, expand v)))
                          | _ -> None
-                       App = None }
+                       App = None
+                       Markup = field "Markup" r |> Option.map asArray |> Option.defaultValue [] |> List.choose asString }
             | _ -> None
         let context : Identity.Context =
             { Roots = roots; Sdk = str "Sdk" e; Projects = recorded |> Option.map (fun r -> r.Projects) |> Option.defaultValue [] }

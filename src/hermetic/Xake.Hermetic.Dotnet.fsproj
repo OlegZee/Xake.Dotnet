@@ -35,6 +35,7 @@
     <Compile Include="Restore.fs" />
     <Compile Include="Git.fs" />
     <Compile Include="Casing.fs" />
+    <Compile Include="Baml.fs" />
     <Compile Include="Lock.fs" />
     <Compile Include="Described.fs" />
     <Compile Include="Apps.fs" />

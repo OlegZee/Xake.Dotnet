@@ -21,6 +21,8 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Release state
 
+- `Xake.Dotnet` 4.1.0 (WPF projects recorded, `docs/features/wpf-record/`): PR #9 merged into
+  `dev`, tag `v4.1.0` on that merge (2026-11-06); `publish.yml` pushes the package.
 - Xake 4.0.0 is on nuget.org (2026-11-03). `release/4.0.0` moves the floor to `[4.0.0, 5.0)`,
   writes the 4.0.0 notes (`docs/release-notes.md`) and goes to `dev`; the owner then merges `dev`
   into `master` and tags `v4.0.0` (`publish.yml` pushes `Xake.Dotnet` 4.0.0 with the repository

@@ -6,7 +6,7 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
-## 4.1.0 (unreleased)
+## 4.2.0 (unreleased)
 
 ### The import records the repository's spelling of each file
 
@@ -35,6 +35,26 @@ project reference spelled otherwise than its project file is the repository-spel
 - **API: `Csc` and `Fsc` (`Xake.Dotnet`) have a new field `ResxFiles`**: code that builds a
   `Csc` or an `Fsc` record in full (not with `{ c with ... }` or `Csc.ofArgs`) adds
   `ResxFiles = []`. `Import.Imported` has the field `Casing`.
+
+## 4.1.0 (2026-11-06)
+
+- **WPF projects are recorded** (S69; `Import.record` refused them). A project compiling XAML
+  (`UseWPF` with `Page`/`ApplicationDefinition` items) gets runs of its own in which the markup
+  compiler runs against the referenced projects' outputs, built from their locks (`OutOf`) and
+  placed in the run's `OutDir`, and with the compiler running (the second markup pass compiles a
+  temporary assembly). Its generated sources go into the lock, its `g.resources` beside it, its
+  XAML and `Resource` files into `Evaluation.Imports`. Record the WPF projects after building
+  their references ([workflows](hermetic/workflows.md#wpf-projects)).
+- **The recorded BAML's references are checked** (`Recorded.Markup`, a new optional key): the
+  referenced projects' assemblies the BAML names, with the version the markup compiler loaded.
+  A build whose referenced output has another identity fails with "run the import again"
+  instead of producing XAML that fails to load at run time. Locks without XAML do not change.
+- **A project reference may name a project an earlier import recorded** (its lock exists), not
+  only one of the same `Import.record` call.
+- `Compilation.Resources` holds the `.resources` compiled from a `.resx` only; another
+  `EmbeddedResource` with an `OutputResource` (the WPF `g.resources`) is copied beside the lock.
+- The import's restore folder (`xake-record/<key>/`) is appended once: a project that starts
+  from it (WPF's temporary assembly project) found no assets file.
 
 ## 4.0.0 (2026-11-03)
 

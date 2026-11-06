@@ -13,6 +13,7 @@
     "Restore.fs",
     "Git.fs",
     "Casing.fs",
+    "Baml.fs",
     "Lock.fs",
     "Described.fs",
     "Apps.fs",

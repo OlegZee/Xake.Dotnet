@@ -294,6 +294,23 @@ output and map the reference to the other entry's `/out:`: the rule in
 [../hermetic-guide.md](../hermetic-guide.md#6-building-from-an-imported-lock) (run by the maintainers on a
 three-project library repository, 36/36 byte-identical).
 
+### WPF projects
+
+A WPF project's markup compiler loads every assembly the project references, so the import
+needs them built. Record the other projects, build them from their locks (every configuration
+the import records), then record the WPF projects in a second `Import.record`; their
+references to the projects of the first call are allowed because those locks exist:
+
+```fsharp
+let! _ = Import.record options others
+do! need [ for cfg in options.Configurations -> $"build-{cfg}" ]   // the referenced outputs, OutOf
+let! _ = Import.record options wpfProjects
+```
+
+An output that is not built fails the import naming it. The build then compiles the WPF
+project from its lock like any other: the generated sources are in the lock, the
+`g.resources` beside it.
+
 ### `$(SourceRevisionId)`
 
 A project with SourceLink writes the commit sha into generated files. The import replaces it

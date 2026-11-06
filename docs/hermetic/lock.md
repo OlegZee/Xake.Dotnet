@@ -31,7 +31,7 @@ open Xake.Hermetic.Dotnet
 |---|---|---|
 | `Lock.Compilation = Csc of Csc \| Fsc of Fsc` | type | what the compiler is handed, C# or F#; `[<RequireQualifiedAccess>]`, so `Lock.Compilation.Csc c`. Members `Name`, `Framework`, `Directory`, `Options`, `Defines`, `Sources`, `Generated`, `Resources`, `Dependencies`, `Args`, `Output` |
 | `Lock.Entry = { Compilation; Evaluation; Packages; Prerequisites; Recorded }` | type | one project's compilation, where the answer came from, the restore graph, what the environment must provide ([Prerequisites](#prerequisites)), and `Recorded` (`Some` for an entry recorded from msbuild by `Import.record`, `None` for a composed one). Members `Name`, `Framework`, `Dependencies`, `Args`, `Output` (the compilation's), and `Csc` / `Fsc`, which return that case and fail for the other |
-| `Lock.Recorded = { Projects; Masks }`, `Lock.ProjectOutput = { Name; Configuration; Framework; Path }` | type | the marker of a recorded entry: the referenced projects' outputs (`project:<name>`) and the description's source masks ([Recorded locks](#recorded-locks-importrecord)) |
+| `Lock.Recorded = { Projects; Masks; Placed; App; Markup }`, `Lock.ProjectOutput = { Name; Configuration; Framework; Path }` | type | the marker of a recorded entry: the referenced projects' outputs (`project:<name>`), the description's source masks, and for a WPF project the referenced assemblies its BAML names (`Markup`) ([Recorded locks](#recorded-locks-importrecord)) |
 | `Lock.Identity.ofPath ctx path` / `toPath ctx id` | pure (`toPath` reads one directory) | the portable name of a file of a recorded entry (`pkg:`, `pack:`, `sdk:`, `project:`, or the tokenized path) and back |
 | `Lock.FormatVersion` | literal | `2`: the version `format` writes as `"Format"` |
 | `Import.record RecordOptions projects` | recipe | descriptions and recorded locks from msbuild's design-time builds ([Recorded locks](#recorded-locks-importrecord)) |
@@ -217,6 +217,20 @@ condition the masks do not know, the two can drift; the import checks them only 
      (`OutOf cfg <NearestTargetFramework> <name>`), in `Recorded.Projects`, named by the
      repository's spelling of the project file (a reference `..\LIB\lib.csproj` to
      `lib/Lib.csproj` is `Lib`, its file `Lib.dll`, also in an application's `deps.json`).
+     The referenced project is one this import records or one an earlier import recorded
+     (its lock exists).
+   - A WPF project (`UseWPF` with `Page`/`ApplicationDefinition` items) is recorded by a run of
+     its own in which the markup compiler runs: the referenced projects' outputs (built from
+     their locks, `OutOf`) are placed in the run's `OutDir`, and the compiler runs, as the
+     second markup pass (the temporary assembly) needs. Its `*.g.cs` go into `Generated`, its
+     `<assembly>.g.resources` beside the lock (above), and its `Page`,
+     `ApplicationDefinition` and `Resource` files into `Evaluation.Imports`: an edited XAML
+     fails the build with "run the import again". The BAML names every assembly whose types the
+     XAML uses with the version the markup compiler loaded; those of the referenced projects go
+     into `Recorded.Markup` (full names). The build checks each against the referenced
+     project's output: another identity (that project's version changed, only it imported
+     again) fails the build with "run the import again" (`LOCK_STALE=warn` makes it a warning),
+     where the XAML would otherwise fail to load at run time.
    - Every reference and analyzer is hashed, except a project's output (unhashed, as in every
      lock) and a file of the SDK (identified by the SDK version).
    - `Prerequisites` has `dotnet-sdk <NETCoreSdkVersion>` when the entry names a file of that
@@ -354,6 +368,9 @@ Switching to NuGet changes every lock with a pack reference once, on its next im
   of the 20,010 source lines of 172 entries (Designer.App: 2,179 per framework down to 4).
 - `Recorded` is the marker of an entry recorded from msbuild (`"By": "msbuild"`). A composed
   entry has no such section and keeps `Path` items.
+- `Recorded.Markup` (since 4.1.0) is written only when the BAML names a referenced project's
+  assembly: `"Markup": [ "lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" ]`. Every
+  other lock is byte-identical to one written before the key existed.
 - `Evaluation.Properties` keeps a few of msbuild's properties, among them `TargetFileName`:
   `Locks.needAll` and `Locks.compileAs` name the output after it (`app.exe` for a .NET Framework
   application, `app.dll` for .NET).
