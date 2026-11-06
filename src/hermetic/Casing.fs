@@ -204,6 +204,25 @@ module Casing =
                     let result = result + (if trailing then "/" else "")
                     if result = p then path else result
 
+        /// Whether `path` (absolute) is a file of the repository that contains it (in its index,
+        /// in any spelling): a path excluded, in no repository or untracked is not.
+        member this.IsTracked (path: string) : bool =
+            let p = slash path
+            if excluded |> List.exists (fun e -> p.StartsWith (e, StringComparison.OrdinalIgnoreCase)) then false else
+            match existing (match Path.GetDirectoryName p with null -> "" | d -> slash d) with
+            | None -> false
+            | Some dir ->
+                match topOf dir with
+                | Error _ -> false
+                | Ok top ->
+                    match indexOf (canonical top) with
+                    | Error _ -> false
+                    | Ok index ->
+                        let resolved = slash (this.Resolve p)
+                        let top' = canonical top
+                        resolved.Length > top'.Length + 1 && resolved.StartsWith (top' + "/", StringComparison.OrdinalIgnoreCase)
+                        && index.Files.ContainsKey (resolved.Substring(top'.Length + 1).ToLowerInvariant ())
+
         /// The folders (topmost, sorted) whose files are in no repository, with why: "" for no git.
         member _.Outside : (string * string) list =
             let dirs = outside |> Seq.map (fun kv -> kv.Key, kv.Value) |> Seq.sortBy fst |> List.ofSeq
@@ -230,6 +249,12 @@ module Casing =
                     let p = slash path
                     found.TryAdd ((if p.Contains "/../" || p.Contains "/./" then slash (Path.GetFullPath p) else p), resolved) |> ignore
                 resolved
+
+        /// Whether `path` (absolute) is a file of the repository that contains it (`Repos.IsTracked`).
+        member _.IsTracked (path: string) : bool =
+            match repos with
+            | None -> false
+            | Some r -> r.IsTracked path
 
         /// `path` (absolute) in the repository's spelling, the difference not noted: what the
         /// caller reports in a line of its own (a reference the import does not rewrite).

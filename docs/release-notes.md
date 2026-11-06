@@ -26,7 +26,7 @@ project reference spelled otherwise than its project file is the repository-spel
   another). A lock recorded before keeps failing on Linux as stale: the build looks nothing up
   ignoring case.
 - **The files a `.resx` names are inputs of the resources.** `Import.record` records every
-  `ResXFileRef` file under the project root in the lock (`ResxFiles`: the resx's spelling, the
+  `ResXFileRef` file of a repository under a root of the lock (the project root or a declared one) in the lock (`ResxFiles`: the resx's spelling, the
   repository's file, its hash; written only when there are, so the lock format stays 2 and an
   older lock reads as before), and the resx compile reads them from there. An image (or any
   file) a resx references now rebuilds the resources when it is edited, which it did not

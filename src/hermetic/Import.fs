@@ -739,13 +739,29 @@ module Import =
         }
 
     /// <summary>
-    /// The lines for what a project's files name in their content, which the import does not
-    /// rewrite, in another spelling than the repository's: each `ResXFileRef` of a `.resx` of
-    /// `resources` (relative to `projectDir`; a lock, `record`, records the repository's file
-    /// for it) and each `&lt;include file&gt;` of a doc comment (`///`) in the C# `sources`
-    /// (absolute), resolved against the source's folder as csc does (the fix is the source's).
+    /// Whether the lock records a `ResXFileRef` file (`ResxFiles`): a file of the repository that
+    /// contains it (`Casing.Resolver.IsTracked`: never one of the package folders or the .NET
+    /// installation) under a root of the lock (`roots`: the project root or one the script
+    /// declares), which the lock names by that root's token.
     /// </summary>
-    let internal contentLines (root: string) (casing: Casing.Resolver) (projectDir: string) (resources: string list) (sources: string list) =
+    let internal recordsResxFile (roots: (string * string) list) (casing: Casing.Resolver) (path: string) =
+        casing.IsTracked path && (Roots.tokenize roots (slash path)).StartsWith "$("
+
+    /// <summary>
+    /// The lines for what a project's files name in their content, which the import does not
+    /// rewrite, in another spelling than the repository's:
+    /// <list type="bullet">
+    /// <item>each `ResXFileRef` of a `.resx` of `resources` (relative to `projectDir`), saying what
+    /// becomes of it: `recorded` tells whether the lock records the repository's file for it
+    /// (`recordsResxFile`), `None` when the import writes no lock;</item>
+    /// <item>each `&lt;include file&gt;` of a doc comment (`///`) in the C# `sources` (absolute),
+    /// looked up as csc does -- against the source's folder, then the project's -- at the first
+    /// place it is (on this file system) or the repository has it: reported when the repository
+    /// spells it otherwise (the fix is the source's).</item>
+    /// </list>
+    /// </summary>
+    let internal contentLines (root: string) (casing: Casing.Resolver) (recorded: (string -> bool) option)
+                              (projectDir: string) (resources: string list) (sources: string list) =
         let differs (path: string) = let r = casing.Peek path in if slash r <> slash path then Some r else None
         let includeTag = Text.RegularExpressions.Regex ("<include\\s[^>]*?file\\s*=\\s*([\"'])(.*?)\\1")
         [ for file in resources do
@@ -754,8 +770,13 @@ module Import =
                 for spelledRef, path in ResxFormat.fileRefNames resx do
                     match differs path with
                     | Some r ->
-                        yield sprintf "'%s' (ResXFileRef '%s' in '%s') is '%s' in the repository (git index): a lock records that file for it, the .resx is not changed"
-                                  (relativeTo root path) spelledRef (relativeTo root resx) (relativeTo root r)
+                        let outcome =
+                            match recorded with
+                            | Some records when records r -> "the lock records that file for it (ResxFiles), the .resx is not changed"
+                            | Some _ -> "it is under no root of the lock (declare its folder as a root), so the lock does not record it: the build reads it as the .resx spells it"
+                            | None -> "this import writes no lock (Import.record records that file for it), the .resx is not changed"
+                        yield sprintf "'%s' (ResXFileRef '%s' in '%s') is '%s' in the repository (git index): %s"
+                                  (relativeTo root path) spelledRef (relativeTo root resx) (relativeTo root r) outcome
                     | None -> ()
           for source in sources do
             if source.EndsWith (".cs", StringComparison.OrdinalIgnoreCase) && File.Exists source then
@@ -763,12 +784,20 @@ module Import =
                 for line in File.ReadLines source do
                     if line.TrimStart().StartsWith "///" then
                         for m in includeTag.Matches line do
-                            let path = slash (Path.GetFullPath (Path.Combine (dir, m.Groups.[2].Value.Replace ('\\', '/'))))
-                            match differs path with
-                            | Some r ->
+                            let file = m.Groups.[2].Value.Replace ('\\', '/')
+                            // csc's order: the source's folder, then the project's (its base folder)
+                            let candidates =
+                                [ for d in [ dir; projectDir ] -> slash (Path.GetFullPath (if Path.IsPathRooted file then file else Path.Combine (d, file))) ]
+                                |> List.distinct
+                            let found =
+                                candidates |> List.tryPick (fun c ->
+                                    let r = slash (casing.Peek c)
+                                    if File.Exists c || File.Exists r then Some (c, r) else None)
+                            match found with
+                            | Some (path, r) when r <> path ->
                                 yield sprintf "'%s' (<include file='%s'> in '%s') is '%s' in the repository (git index): csc reads it as the source spells it; fix the spelling in the source"
                                           (relativeTo root path) m.Groups.[2].Value (relativeTo root source) (relativeTo root r)
-                            | None -> () ]
+                            | _ -> () ]
         |> List.distinct
 
     /// The casing lines of a project (`Casing.line` for each difference `casing` found, then
@@ -787,7 +816,7 @@ module Import =
     /// spelling (`casing`); the import's result, the description, the repository's msbuild
     /// files it read and the casing lines of what the project's files name (`contentLines`).
     let private writeDescription (root: string) (projectFile: string) (descriptionFile: string) (packageRoot: string)
-                                 (ev: Evaluated) (targets: (string * Dump) list) (casing: Casing.Resolver) =
+                                 (ev: Evaluated) (targets: (string * Dump) list) (casing: Casing.Resolver) (recorded: (string -> bool) option) =
         recipe {
             let repoFiles, isSdkFile = repositoryFiles ev.Outer packageRoot ev.Imports
             let repoFiles = repoFiles |> List.map casing.Path |> List.distinct
@@ -801,7 +830,7 @@ module Import =
             let notes =
                 let resources = description.Resources @ (description.ByFramework |> List.collect (fun (_, i) -> i.Resources)) |> List.map (fun r -> r.File)
                 let sources = if description.Language = Description.CSharp then expandMasks projectDir description.Sources else []
-                contentLines root casing projectDir (List.distinct resources) sources
+                contentLines root casing recorded projectDir (List.distinct resources) sources
             let imported : Imported =
                 { Project = relativeTo root projectFile
                   Description = relativeTo root descriptionFile
@@ -831,7 +860,7 @@ module Import =
             Directory.CreateDirectory temp |> ignore
             let! ev = evaluate [] projectFile switches temp
             Directory.Delete (temp, true)
-            let! imported, _, _, notes = writeDescription root projectFile descriptionFile packageRoot ev [] casing
+            let! imported, _, _, notes = writeDescription root projectFile descriptionFile packageRoot ev [] casing None
             let! lines = traceCasing root projectFile casing notes printed
             return { imported with Casing = lines }
         }
@@ -1144,6 +1173,8 @@ module Import =
         LockOf: string -> string -> string
         /// the repository's spelling of the project's files (`Casing`), the differences noted
         Casing: Casing.Resolver
+        /// the roots the lock is written with (`Roots.currentWith`): a file under one is named by its token
+        Roots: (string * string) list
     }
 
     /// The file a design-time build reported, absolute, '/'.
@@ -1663,11 +1694,11 @@ module Import =
         // is not rewritten), each in the repository's spelling with its hash: the resx compile
         // reads that file for the spelling (`ResxFormat.readWith`)
         let resxFiles =
-            let under = ctx.Root.TrimEnd '/' + "/"
             [ for resx, _ in resources do
                 for spelledRef, file in ResxFormat.fileRefNames resx do
                     let path = slash (ctx.Casing.Peek file)
-                    if path.StartsWith (under, comparison) && File.Exists path then
+                    // a repository file under a root of the lock (the project root or a declared one)
+                    if recordsResxFile ctx.Roots ctx.Casing path && File.Exists path then
                         yield ({ Resx = resx; Ref = spelledRef; Path = path; Sha256 = FileHash.sha256 path } : ResxFile) ]
 
         // the hashes: a project's output and the SDK's own files carry none
@@ -2201,14 +2232,14 @@ module Import =
                     let descriptionFile = full (options.DescriptionOf pf)
                     let targets = [ for cfg, f, _, d in runs do if cfg = primary then yield f, d ]
                     let casing = casingOf pf
-                    let! imported, description, inputs, notes = writeDescription root pf descriptionFile packageRoot ev targets casing
+                    let! imported, description, inputs, notes = writeDescription root pf descriptionFile packageRoot ev targets casing (Some (recordsResxFile roots casing))
                     let pinFile, pin = Lock.sdkPinAt (Path.GetDirectoryName pf)
                     let ctx : RecordContext =
                         { Root = root; ProjectFile = slash pf; ProjectDir = slash (Path.GetDirectoryName pf)
                           Description = description; DescriptionFile = descriptionFile; PackageRoot = packageRoot
                           Pin = pin; PinFile = pinFile; Inputs = inputs; OutOf = options.OutOf
                           LockOf = fun name cfg -> full (options.LockOf name cfg)
-                          Imported = projectFiles |> List.map slash; Casing = casing
+                          Imported = projectFiles |> List.map slash; Casing = casing; Roots = roots
                           Pin' =
                             match pinFile |> Option.map (Roots.tokenize roots) with
                             | Some t when t.StartsWith "$(" -> t

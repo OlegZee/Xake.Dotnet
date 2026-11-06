@@ -196,7 +196,7 @@ condition the masks do not know, the two can drift; the import checks them only 
      ([description.md](description.md#the-repositorys-spelling-of-a-file)).
    - The `.resx` msbuild compiles go into `Resources`; their `/resource:` switches name the
      moved `.resources`, which the build compiles again. The files a `.resx` names
-     (`ResXFileRef`, under the project root) go into `ResxFiles`: the resx, the reference as the
+     (`ResXFileRef`: a repository file under a root of the lock, the project root or a declared one, named by its token) go into `ResxFiles`: the resx, the reference as the
      resx spells it (`Ref`), the file in the repository's spelling (`Path`) and its sha256. The
      resx compile reads `Path` for `Ref` and needs it as it needs the resx (an edit rebuilds;
      the hash is what the import read, for `Lock.diff`, not a gate: an edit does not make the

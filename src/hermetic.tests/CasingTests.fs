@@ -5,6 +5,7 @@ open System.IO
 open System.Diagnostics
 open NUnit.Framework
 
+open Xake
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet
 
@@ -51,7 +52,7 @@ module internal CasingKit =
             File.Exists (Path.Combine (dir, "PROBE.TXT"))
         finally Directory.Delete (dir, true)
 
-    let ok = function Ok i -> i | Error (e: string) -> failwith e
+    let ok = function Result.Ok i -> i | Result.Error (e: string) -> failwith e
 
 
 /// `Casing`: the repository's spelling of a path from the git index.
@@ -115,8 +116,8 @@ type ``Casing``() =
         let dir = CasingKit.tempFolder "casing-none"
         try
             match Casing.read dir with
-            | Ok _ -> Assert.Fail "an index outside a repository"
-            | Error e -> Assert.That(e, Does.Contain "git")
+            | Result.Ok _ -> Assert.Fail "an index outside a repository"
+            | Result.Error e -> Assert.That(e, Does.Contain "git")
             Assert.That(Casing.Resolver.Unchanged.Path (dir + "/Foo.cs"), Is.EqualTo (dir + "/Foo.cs"))
             Assert.That(Casing.Resolver.Unchanged.Differences, Is.Empty)
         finally Directory.Delete (dir, true)
@@ -194,7 +195,7 @@ type ``Casing``() =
                   "app/code/C.cs", source; "app/code/docs/common.xml", "<doc/>"; "app/code/docs/other.xml", "<doc/>" ]
         try
             let r = Casing.Resolver (Some (Casing.Repos []))
-            let lines = Import.contentLines root r (root + "/app") [ "resources/Strings.resx" ] [ root + "/app/code/C.cs" ]
+            let lines = Import.contentLines root r (Some (fun _ -> true)) (root + "/app") [ "resources/Strings.resx" ] [ root + "/app/code/C.cs" ]
             Assert.That(lines, Has.Length.EqualTo 2)
             Assert.That(lines.[0], Does.StartWith "'app/Images/Copy.TXT' (ResXFileRef '..\\Images\\Copy.TXT' in 'app/resources/Strings.resx') is 'app/images/copy.txt' in the repository")
             Assert.That(lines.[1], Does.StartWith "'app/code/Docs/Common.XML' (<include file='Docs\\Common.XML'> in 'app/code/C.cs') is 'app/code/docs/common.xml' in the repository")
@@ -558,10 +559,20 @@ type ``Import casing``() =
         let subFiles =
             [ "sub.csproj",
                 RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems>"
-                    "<Compile Include=\"Code\\X.CS\" />"
+                    "<Compile Include=\"Code\\X.CS\" /><Compile Include=\"code\\deep\\Y.cs\" />"
               ".editorConfig", "root = true\n[*.cs]\nindent_size = 4\n"
               "code/X.cs", "namespace Sub {\n  /// <include file='../Docs/Common.XML' path='doc/member[@name=\"X\"]/*'/>\n  public class X { }\n}\n"
-              "docs/common.xml", "<doc><member name=\"X\"><summary>X</summary></member></doc>\n" ]
+              "docs/common.xml", "<doc><member name=\"X\"><summary>X</summary></member><member name=\"Y\"><summary>Y</summary></member></doc>\n"
+              // csc's second lookup: not beside the source, under the project folder
+              "code/deep/Y.cs", "namespace Sub {\n  /// <include file='Docs/Common.XML' path='doc/member[@name=\"Y\"]/*'/>\n  public class Y { }\n}\n"
+              // a resx naming an image in another case
+              "resources/Strings.resx",
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n"
+                + "  <resheader name=\"resmimetype\"><value>text/microsoft-resx</value></resheader>\n"
+                + "  <resheader name=\"version\"><value>2.0</value></resheader>\n"
+                + "  <data name=\"Logo\" type=\"System.Resources.ResXFileRef, System.Windows.Forms\"><value>..\\Images\\Logo.PNG;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></data>\n"
+                + "</root>\n"
+              "images/logo.png", "not really a png\n" ]
         for path, text in subFiles do
             Directory.CreateDirectory (Path.GetDirectoryName (Path.Combine (sub, path))) |> ignore
             File.WriteAllText (Path.Combine (sub, path), text)
@@ -593,3 +604,21 @@ type ``Import casing``() =
         Assert.That(has "/ext/Sub/.editorconfig' is '", Is.True, String.concat "\n" lines)
         Assert.That(has "/ext/Sub/Code/X.CS' is '", Is.True, String.concat "\n" lines)
         Assert.That(has "(<include file='../Docs/Common.XML'> in ", Is.True, String.concat "\n" lines)
+        // found through the project folder only (csc's second lookup)
+        Assert.That(has "(<include file='Docs/Common.XML'> in ", Is.True, String.concat "\n" lines)
+        // the resx's image: recorded under the declared root's token, with its hash; the line says so
+        let sha =
+            use algo = Security.Cryptography.SHA256.Create ()
+            algo.ComputeHash (File.ReadAllBytes (sibling + "/ext/Sub/images/logo.png")) |> Array.map (sprintf "%02x") |> String.concat ""
+        Assert.That(lock, Does.Contain (sprintf "\"Ref\": \"..\\\\Images\\\\Logo.PNG\", \"Path\": \"$(Sib)/ext/Sub/images/logo.png\", \"Sha256\": \"%s\"" sha))
+        Assert.That(has "(ResXFileRef '..\\Images\\Logo.PNG' in ", Is.True, String.concat "\n" lines)
+        Assert.That(lines |> List.exists (fun l -> l.Contains "Logo.PNG" && l.Contains "the lock records that file for it (ResxFiles)"), Is.True, String.concat "\n" lines)
+        // the project builds from its lock, its resources compiled from the recorded image
+        let compile = recipe {
+            let! cfg = getRuleMatch "cfg"
+            let! fwk = getRuleMatch "fwk"
+            let! name = getRuleMatch "name"
+            do! Locks.compileAsWith [ "$(Sib)", sibling ] (RecordKit.lockOf name cfg) fwk [] }
+        RecordKit.run options "build-casing-sibling" [ "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile ] [ "out/Release/net8.0/sub/sub.dll" ]
+        let _, _, embedded = RecordKit.metadata "script/out/Release/net8.0/sub/sub.dll"
+        Assert.That(embedded, Does.Contain "sub.resources.Strings.resources")

@@ -1050,7 +1050,7 @@ type ``Record entry``() =
           DescriptionFile = dir + "/xake.project.json"; PackageRoot = here () + "/pkgs"
           Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf
           LockOf = (fun name cfg -> here () + "/" + RecordKit.lockOf name cfg); Imported = [ dir + "/X.csproj" ]
-          Casing = Casing.Resolver.Unchanged }
+          Casing = Casing.Resolver.Unchanged; Roots = [] }
     let context = contextIn "proj"
     let dumpIn (proj: string) (references: string list) (preserialized: bool) : Import.Dump =
         let dir = here () + "/" + proj

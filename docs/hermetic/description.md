@@ -135,9 +135,11 @@ installation are never looked up.
   names and stay msbuild's.
 - **No file's content is rewritten.** A `.resx` naming a file (`ResXFileRef`) in another case is
   left as it is; `Import.record` records the repository's file for that spelling in the lock
-  (`ResxFiles`, [lock.md](lock.md#recorded-locks-importrecord)), and the resx compile reads it
-  from there. A C# doc comment's `<include file='...'>` in another case (csc reads it relative to
-  the source) is reported; the fix is the source's.
+  (`ResxFiles`, [lock.md](lock.md#recorded-locks-importrecord)) when it is a repository file under
+  a root of the lock (the project root or a declared one), and the resx compile reads it from
+  there; the log line says whether it was recorded. A C# doc comment's `<include file='...'>` in
+  another case is reported, looked up as csc does: against the source's folder, then the
+  project's; the fix is the source's.
 - Two entries of the index that differ only by case (`Docs/a.xml`, `docs/A.xml`): the one spelled
   exactly as the project spells it is taken, else the import fails naming both.
 
