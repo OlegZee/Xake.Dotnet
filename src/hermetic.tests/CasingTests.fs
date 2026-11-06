@@ -271,7 +271,7 @@ type ``Casing``() =
             let none = CasingKit.tempFolder "casing-none2"
             try
                 Assert.That(repos.Resolve (none + "/X.CS"), Is.EqualTo (none + "/X.CS"))
-                Assert.That(repos.Outside |> List.map fst, Is.EqualTo [ none ])
+                Assert.That(repos.Outside |> List.map fst, Is.EqualTo [ none ], sprintf "%A" repos.Outside)
             finally Directory.Delete (none, true)
             // excluded folders are never looked up
             let excluding = Casing.Repos [ inner + "/app" ]

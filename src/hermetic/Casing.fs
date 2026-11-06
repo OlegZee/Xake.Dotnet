@@ -128,20 +128,24 @@ module Casing =
             | None -> path
 
     /// <summary>
-    /// The repositories of one import: for each path, the git index of the repository that
-    /// contains it -- found from the nearest existing folder of the path by
-    /// `git rev-parse --show-cdup`, cached per folder; a submodule is a repository of its own --
-    /// and each repository's index read once (`read`). Paths under `excluded` (the package
-    /// folder, the .NET installation: never repository files) are not looked up.
+    /// The repositories of one import: each path in the spelling of the repository that contains
+    /// it, found top-down and the same on every file system -- from the deepest folder whose
+    /// spelling is exactly on disk, each step corrects as many further segments as the index of
+    /// that folder's repository has (`git rev-parse --show-cdup`, cached per folder; each index
+    /// read once, `read`), a submodule being its superproject's gitlink entry; a folder the index
+    /// does not have (a repository of its own inside, an untracked one) is entered by its name on
+    /// disk, compared ignoring case; then the repository there is found again. Paths under
+    /// `excluded` (the package folder, the .NET installation: never repository files) are not
+    /// looked up.
     /// </summary>
     type Repos (excluded: string list) =
         let excluded = excluded |> List.filter ((<>) "") |> List.map (fun e -> (slash e).TrimEnd '/' + "/")
         let topOfDir = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<string, string>>> ()
         let indexOfTop = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<Index, string>>> ()
-        let canonicalOfTop = Collections.Concurrent.ConcurrentDictionary<string, Lazy<string>> ()
+        let entriesOf = Collections.Concurrent.ConcurrentDictionary<string, Lazy<string[]>> ()
         let outside = Collections.Concurrent.ConcurrentDictionary<string, string> ()
 
-        /// The top of the repository the folder `dir` (existing, '/') is in, spelled as `dir` is.
+        /// The top of the repository the folder `dir` (existing, exactly spelled, '/') is in.
         let topOf (dir: string) =
             topOfDir.GetOrAdd(dir, fun d ->
                 lazy (
@@ -149,79 +153,109 @@ module Casing =
                     | Error e -> Error e
                     | Ok cdup -> Ok ((slash (Path.GetFullPath (Path.Combine (d, cdup.Trim ())))).TrimEnd '/'))).Value
 
-        let indexOf (top: string) =
-            indexOfTop.GetOrAdd(top.ToLowerInvariant (), fun _ -> lazy (read top)).Value
+        let indexOf (top: string) = indexOfTop.GetOrAdd(top, fun t -> lazy (read t)).Value
 
-        let rec existing (dir: string) =
-            if dir = "" then None
-            elif Directory.Exists dir then Some dir
-            else match Path.GetDirectoryName dir with null -> None | parent -> existing (slash parent)
+        let list (dir: string) =
+            lazy (try Directory.GetFileSystemEntries dir |> Array.map Path.GetFileName with _ -> [||])
 
-        /// A repository's top in its own spelling: a submodule's path as its superproject's index
-        /// has it (the gitlink entry), recursively; a top in no repository as it is.
-        let rec canonical (top: string) : string =
-            canonicalOfTop.GetOrAdd(top, fun t ->
-                lazy (
-                    match Path.GetDirectoryName t |> Option.ofObj |> Option.map slash |> Option.bind existing with
-                    | None -> t
-                    | Some parent ->
-                        match topOf parent with
-                        | Error _ -> t
-                        | Ok outer when t.Length > outer.Length && t.[outer.Length] = '/' ->
-                            let outer' = canonical outer
-                            match indexOf outer' with
-                            | Ok index -> resolve index (outer' + t.Substring outer.Length)
-                            | Error _ -> outer' + t.Substring outer.Length
-                        | Ok _ -> t)).Value
+        /// The names in the folder `dir`, as the file system has them (cached), listed again when
+        /// `wanted` is not among them: the folder may have changed since (an import writes `obj/`).
+        let entries (dir: string) (wanted: string -> bool) =
+            let es = entriesOf.GetOrAdd(dir, list).Value
+            if Array.exists wanted es then es
+            else
+                let fresh = list dir
+                entriesOf.[dir] <- fresh
+                fresh.Value
 
-        /// `path` (absolute; `\` read as `/`) in the spelling of the repository that contains it
-        /// (`resolve` against that repository's index, its top in its own spelling); a path
-        /// excluded, in no repository or that its index does not have unchanged.
-        member _.Resolve (path: string) : string =
+        let child (dir: string) (name: string) = (if dir.EndsWith "/" then dir else dir + "/") + name
+
+        /// The folder `name` of `dir` on disk: that very name, else the only one equal ignoring case.
+        let folderOnDisk (dir: string) (name: string) =
+            let es = entries dir (fun e -> String.Equals (e, name, StringComparison.OrdinalIgnoreCase))
+            let found =
+                if Array.contains name es then Some name
+                else match es |> Array.filter (fun e -> String.Equals (e, name, StringComparison.OrdinalIgnoreCase)) with
+                     | [| one |] -> Some one
+                     | _ -> None
+            found |> Option.filter (fun n -> Directory.Exists (child dir n))
+
+        /// (the path in the repositories' spelling, whether it is a file of its repository's
+        /// index) from the folder `cur` (existing, exactly spelled) and the segments below it.
+        let rec descend (cur: string) (rest: string list) : (string * bool) option =
+            match rest with
+            | [] -> Some (cur, false)
+            | next :: tail ->
+                let onDisk () =
+                    match tail, folderOnDisk cur next with
+                    | _ :: _, Some name -> descend (child cur name) tail
+                    | _ -> None
+                match topOf cur with
+                | Error reason ->
+                    outside.TryAdd ((if reason.StartsWith "git could not be run" then "" else cur), reason) |> ignore
+                    onDisk ()
+                | Ok top ->
+                    match indexOf top with
+                    | Error _ -> onDisk ()
+                    | Ok index ->
+                        let under = if cur.Length > top.Length then cur.Substring (top.Length + 1) + "/" else ""
+                        let segments = Array.ofList rest
+                        let keyOf k = (under + String.Join ("/", segments, 0, k)).ToLowerInvariant ()
+                        // the longest run of segments the index has, as a file or a folder
+                        let known =
+                            seq { segments.Length .. -1 .. 1 }
+                            |> Seq.tryPick (fun k ->
+                                match index.Files.TryGetValue (keyOf k) with
+                                | true, spellings -> Some (k, true, spellings)
+                                | _ ->
+                                    match index.Folders.TryGetValue (keyOf k) with
+                                    | true, spellings -> Some (k, false, spellings)
+                                    | _ -> None)
+                        match known with
+                        | None -> onDisk ()
+                        | Some (k, isFile, spellings) ->
+                            let spelled = pick index (under + String.Join ("/", segments, 0, k)) spellings
+                            let full = top + "/" + spelled
+                            if k = segments.Length then Some (full, isFile)
+                            // more below: a folder of this repository or a submodule (its gitlink)
+                            elif Directory.Exists full then descend full (List.skip k rest)
+                            else None
+
+        /// (the path in the repositories' spelling, whether it is a tracked file), or `None`: a
+        /// path excluded, in no repository, or that the indexes do not have.
+        let lookup (path: string) : (string * bool) option =
             let p = slash path
             let p = if p.Contains "/../" || p.Contains "/./" then slash (Path.GetFullPath p) else p
+            let p = p.TrimEnd '/'
+            if p = "" || excluded |> List.exists (fun e -> (p + "/").StartsWith (e, StringComparison.OrdinalIgnoreCase)) then None else
+            let root = slash (Path.GetPathRoot p)
+            let segments = p.Substring(root.Length).Split ([| '/' |], StringSplitOptions.RemoveEmptyEntries) |> List.ofArray
+            // the deepest folder spelled exactly as on disk
+            let rec exact (cur: string) (rest: string list) =
+                match rest with
+                | next :: tail when Array.contains next (entries cur ((=) next)) && Directory.Exists (child cur next) -> exact (child cur next) tail
+                | _ -> cur, rest
+            // from the root with its slash (`/`, `C:/`: `C:` alone is the drive's current folder)
+            let start, rest = exact (if root.EndsWith "/" then root else root + "/") segments
+            descend start rest
+
+        /// `path` (absolute; `\` read as `/`) in the spelling of the repository that contains it;
+        /// a path excluded, in no repository or that the index does not have unchanged.
+        member _.Resolve (path: string) : string =
+            let p = slash path
             let trailing = p.Length > 1 && p.EndsWith "/"
-            let p' = if trailing then p.TrimEnd '/' else p
-            if excluded |> List.exists (fun e -> (p' + "/").StartsWith (e, StringComparison.OrdinalIgnoreCase)) then path else
-            match existing p' |> Option.orElse (Path.GetDirectoryName p' |> Option.ofObj |> Option.bind (slash >> existing)) with
+            match lookup path with
+            | Some (r, _) ->
+                let r = r + (if trailing then "/" else "")
+                if r = p then path else r
             | None -> path
-            | Some dir ->
-                match topOf dir with
-                | Error reason ->
-                    outside.TryAdd ((if reason.StartsWith "git could not be run" then "" else dir), reason) |> ignore
-                    path
-                | Ok top ->
-                    let top' = canonical top
-                    let result =
-                        if p' = top then top'
-                        else
-                            match indexOf top' with
-                            | Error _ -> p'
-                            | Ok index ->
-                                match resolve index (top' + p'.Substring top.Length) with
-                                | r when r = top' + p'.Substring top.Length && top' <> top -> p'
-                                | r -> slash r
-                    let result = result + (if trailing then "/" else "")
-                    if result = p then path else result
 
         /// Whether `path` (absolute) is a file of the repository that contains it (in its index,
         /// in any spelling): a path excluded, in no repository or untracked is not.
-        member this.IsTracked (path: string) : bool =
-            let p = slash path
-            if excluded |> List.exists (fun e -> p.StartsWith (e, StringComparison.OrdinalIgnoreCase)) then false else
-            match existing (match Path.GetDirectoryName p with null -> "" | d -> slash d) with
+        member _.IsTracked (path: string) : bool =
+            match lookup path with
+            | Some (_, tracked) -> tracked
             | None -> false
-            | Some dir ->
-                match topOf dir with
-                | Error _ -> false
-                | Ok top ->
-                    match indexOf (canonical top) with
-                    | Error _ -> false
-                    | Ok index ->
-                        let resolved = slash (this.Resolve p)
-                        let top' = canonical top
-                        resolved.Length > top'.Length + 1 && resolved.StartsWith (top' + "/", StringComparison.OrdinalIgnoreCase)
-                        && index.Files.ContainsKey (resolved.Substring(top'.Length + 1).ToLowerInvariant ())
 
         /// The folders (topmost, sorted) whose files are in no repository, with why: "" for no git.
         member _.Outside : (string * string) list =
