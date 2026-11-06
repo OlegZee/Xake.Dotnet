@@ -496,21 +496,25 @@ module Project =
             // msbuild runs in the project root (`runMsbuild`): it is given full paths, a
             // relative `Projects` entry or `Output` being the current directory's as before
             let output = Path.GetFullPath options.Output
-            // the repository's spelling of the files the lock names (the git index, read once);
-            // without git or outside a repository the project's, said once
+            // the repository's spelling of the files the lock names: the git index of the
+            // repository each project is in, read once; without git or for a project in no
+            // repository the project's spelling, said once
             let! ctxOptions = getCtxOptions ()
             let root = Path.GetFullPath ctxOptions.ProjectRoot
-            let! index =
-                recipe {
-                    match Casing.read root with
-                    | Result.Ok index -> return Some index
-                    | Result.Error reason ->
-                        do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
-                        return None
-                }
+            let indexes = Casing.Indexes ()
+            let said = ref false
             let printed = System.Collections.Generic.HashSet<string> ()
             for project in options.Projects do
-                let casing = Casing.Resolver index
+                let! casing =
+                    recipe {
+                        match indexes.For (Path.GetDirectoryName (Path.GetFullPath project)) with
+                        | Result.Ok index -> return Casing.Resolver (Some index)
+                        | Result.Error reason ->
+                            if not said.Value then
+                                said.Value <- true
+                                do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
+                            return Casing.Resolver.Unchanged
+                    }
                 let projectFile = casing.Path (Path.GetFullPath project)
                 let projectDir = Path.GetDirectoryName projectFile
                 let pinFile, pin = Lock.sdkPinAt projectDir

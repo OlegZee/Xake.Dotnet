@@ -244,6 +244,27 @@ type ``Casing``() =
         Assert.That(renamed, Does.Contain "\"lib/net8.0/core.dll\"")
         Assert.That(Import.depsFileNames [] deps, Is.EqualTo deps)
 
+    [<Test>]
+    member x.``a project is resolved against the repository it is in, not the one around it``() =
+        let outer = CasingKit.repository "casing-outer" [ "Top.txt", "" ]
+        try
+            // a repository of its own inside the outer one (as a test's folder in this one)
+            let inner = outer + "/work"
+            Directory.CreateDirectory (inner + "/app/src") |> ignore
+            File.WriteAllText (inner + "/app/src/A.cs", "")
+            CasingKit.git inner [ "init"; "-q" ] |> ignore
+            CasingKit.git inner [ "add"; "--"; "app/src/A.cs" ] |> ignore
+            let indexes = Casing.Indexes ()
+            let ofApp = indexes.For (inner + "/app") |> CasingKit.ok
+            Assert.That(Casing.resolve ofApp (inner + "/APP/Src/a.CS"), Is.EqualTo (inner + "/app/src/A.cs"))
+            // the outer repository does not track it: nothing changes there
+            let ofOuter = indexes.For outer |> CasingKit.ok
+            Assert.That(Casing.resolve ofOuter (inner + "/APP/Src/a.CS"), Is.EqualTo (inner + "/APP/Src/a.CS"))
+            Assert.That(Casing.resolve ofOuter (outer + "/top.TXT"), Is.EqualTo (outer + "/Top.txt"))
+            // one index per repository: the same for another folder of it
+            Assert.That(Object.ReferenceEquals (indexes.For (inner + "/app/src") |> CasingKit.ok, ofApp), Is.True)
+        finally Directory.Delete (outer, true)
+
 /// The files a `.resx` names, as an import records them (`Csc.ResxFiles`): the lock's
 /// `ResxFiles` and the resx compile that reads them.
 [<TestFixture>]

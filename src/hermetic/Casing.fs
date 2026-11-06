@@ -86,6 +86,28 @@ module Casing =
                         else None)
                 Ok (ofFiles root files)
 
+    /// <summary>
+    /// The indexes of an import, one per repository: the index of the repository a folder (a
+    /// project's) is in -- its top found by `git rev-parse --show-cdup` from that folder, every
+    /// file of it listed once (`read`) -- or why there is none. A project is resolved against its
+    /// own repository, whatever repository (if any) the build's project root is in.
+    /// </summary>
+    type Indexes () =
+        let ofTop = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<Index, string>>> ()
+        let ofDir = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<Index, string>>> ()
+
+        /// The index of the repository `dir` (absolute) is in.
+        member _.For (dir: string) : Result<Index, string> =
+            let dir = (slash dir).TrimEnd '/'
+            ofDir.GetOrAdd(dir, fun d ->
+                lazy (
+                    if not (Directory.Exists d) then Error (sprintf "'%s' is no folder" d) else
+                    match git d "rev-parse --show-cdup" with
+                    | Error e -> Error e
+                    | Ok cdup ->
+                        let top = (slash (Path.GetFullPath (Path.Combine (d, cdup.Trim ())))).TrimEnd '/'
+                        ofTop.GetOrAdd(top, fun t -> lazy (read t)).Value)).Value
+
     /// The one spelling of `rel` among `spellings`: the exact one when the index has it, the only
     /// one, else a failure naming them all.
     let private pick (index: Index) (rel: string) (spellings: string list) =
