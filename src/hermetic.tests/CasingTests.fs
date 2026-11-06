@@ -321,6 +321,10 @@ type ``Import casing``() =
         + "  <data name=\"Copy\" type=\"System.Resources.ResXFileRef, System.Windows.Forms\"><value>..\\Images\\Copy.TXT;System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></data>\n"
         + "</root>\n"
 
+    /// Every folder a test of the fixture writes: each test starts without the others' projects
+    /// (a build takes every description it finds)
+    let folders = [ "app"; "lib"; "core"; "tool"; "wpf"; "locks"; "out"; "run"; "obj" ]
+
     let files =
         [ "shared.props", "<Project>\n  <PropertyGroup><Deterministic>true</Deterministic></PropertyGroup>\n</Project>\n"
           "lib/Lib.fsproj",
@@ -353,7 +357,7 @@ type ``Import casing``() =
         File.Delete "case-probe.txt"
         if not ignoresCase then Assert.Ignore "the file system here does not ignore case: msbuild cannot evaluate a miscased project"
         if Directory.Exists ".git" then Directory.Delete (".git", true)
-        RecordKit.write [ "app"; "lib"; "locks" ] files
+        RecordKit.write folders files
         let here = (Directory.GetCurrentDirectory ()).Replace ('\\', '/')
         CasingKit.git here [ "init"; "-q" ] |> ignore
         CasingKit.git here ([ "add"; "--" ] @ List.map fst files) |> ignore
@@ -427,7 +431,7 @@ type ``Import casing``() =
               "tool/Tool.csproj",
                 RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType>" "<ProjectReference Include=\"..\\CORE\\core.csproj\" />"
               "tool/Program.cs", "public static class Program { public static void Main () => System.Console.WriteLine (Core.Greeter.Hello ()); }\n" ]
-        RecordKit.write [ "core"; "tool"; "app"; "lib"; "locks"; "out"; "run" ] appFiles
+        RecordKit.write folders appFiles
         let here = (Directory.GetCurrentDirectory ()).Replace ('\\', '/')
         CasingKit.git here [ "init"; "-q" ] |> ignore
         CasingKit.git here ([ "add"; "--" ] @ List.map fst appFiles) |> ignore
@@ -456,3 +460,45 @@ type ``Import casing``() =
         let out = p.StandardOutput.ReadToEnd ()
         p.WaitForExit ()
         Assert.That(out.Trim (), Is.EqualTo "hello from core")
+
+    [<Test; Category("Integration")>]
+    member x.``a WPF project's miscased XAML and resource are recorded as the repository's files, the BAML names as msbuild's``() =
+        File.WriteAllText ("case-probe.txt", "")
+        let ignoresCase = File.Exists "CASE-PROBE.TXT"
+        File.Delete "case-probe.txt"
+        if not ignoresCase then Assert.Ignore "the file system here does not ignore case: msbuild cannot evaluate a miscased project"
+        if Directory.Exists ".git" then Directory.Delete (".git", true)
+        let presentation = "xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\""
+        let wpfFiles =
+            [ "wpf/wpf.csproj",
+                RecordKit.sdkProject
+                    "<TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting><EnableDefaultPageItems>false</EnableDefaultPageItems>"
+                    "<Page Include=\"Views\\Brushes.XAML\" /><Resource Include=\"Data.TXT\" />"
+              "wpf/views/Brushes.xaml", sprintf "<ResourceDictionary %s>\n  <SolidColorBrush x:Key=\"accent\" Color=\"Red\" />\n</ResourceDictionary>\n" presentation
+              "wpf/data.txt", "a resource\n"
+              "wpf/Code.cs", "namespace Wpf { public class Code { } }\n" ]
+        RecordKit.write folders wpfFiles
+        let here = (Directory.GetCurrentDirectory ()).Replace ('\\', '/')
+        CasingKit.git here [ "init"; "-q" ] |> ignore
+        CasingKit.git here ([ "add"; "--" ] @ List.map fst wpfFiles) |> ignore
+
+        let imported = RecordKit.import x.TestOptions "import-casing-wpf" RecordKit.recordDefault [ "wpf/wpf.csproj" ]
+        let lock = File.ReadAllText (RecordKit.lockOf "wpf" "Release")
+        // the markup inputs (Evaluation.Imports): the repository's files
+        Assert.That(lock, Does.Contain "\"$(ProjectRoot)/wpf/views/Brushes.xaml\"")
+        Assert.That(lock, Does.Contain "\"$(ProjectRoot)/wpf/data.txt\"")
+        Assert.That(lock, Does.Not.Contain "Views/Brushes.XAML")
+        Assert.That(lock, Does.Not.Contain "/wpf/Data.TXT")
+        let lines = imported |> List.collect (fun i -> i.Casing)
+        for e in [ "'wpf/Views/Brushes.XAML' is 'wpf/views/Brushes.xaml'"; "'wpf/Data.TXT' is 'wpf/data.txt'" ] do
+            Assert.That(lines |> List.exists (fun l -> l.StartsWith e), Is.True, sprintf "no casing line '%s' in:\n%s" e (String.concat "\n" lines))
+        // the g.resources is msbuild's, bytes and names: its BAML key from the project's spelling
+        let resources = File.ReadAllBytes "locks/wpf/Release.files/net8.0-windows/wpf.g.resources"
+        let keys =
+            use reader = new System.Resources.ResourceReader (new MemoryStream (resources))
+            [ for e in reader |> Seq.cast<System.Collections.DictionaryEntry> -> string e.Key ]
+        Assert.That(keys, Does.Contain "views/brushes.baml")
+        Assert.That(keys, Does.Contain "data.txt")
+        RecordKit.build x.TestOptions "build-casing-wpf" "Release"
+        let _, _, embedded = RecordKit.metadata "out/Release/net8.0-windows/wpf/wpf.dll"
+        Assert.That(embedded, Does.Contain "wpf.g.resources")

@@ -1733,12 +1733,14 @@ module Import =
             | _ -> []
         // a WPF project's XAML and the files its markup compiler packs into `<assembly>.g.resources`
         // (recorded beside the lock as bytes, not compiled again): inputs of the import, so an edit
-        // fails the build with "run the import again" as the project file's does
+        // fails the build with "run the import again" as the project file's does. In the
+        // repository's spelling; the names inside the `g.resources` (BAML keys msbuild derives
+        // from the item's spelling) stay msbuild's, its bytes are recorded as they are
         let markupSources =
             if not (isTrue (p "UseWPF")) then [] else
             [ for kind in [ "Page"; "ApplicationDefinition"; "Resource" ] do
                 for id, _ in items d kind do
-                    let f = absoluteIn ctx.ProjectDir id
+                    let f = ctx.Casing.Path (absoluteIn ctx.ProjectDir id)
                     if File.Exists f && not (f.StartsWith (scratch, comparison)) then yield f ]
         // the referenced projects' assemblies its BAML names, with the version the markup
         // compiler loaded: the build checks them against the outputs it references

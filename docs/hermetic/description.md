@@ -117,14 +117,18 @@ says so.
   evaluates them so spelled), the description's `project`, `sources` (the F# list; for C# the
   literal part of each mask, wildcards kept), `resources[].file`, `keyFile`, `projectRefs` (a
   reference's name is the repository's name of the project file), the packed icon and readme,
-  and in a lock the compiler's command line, `Resources`, `Evaluation.Imports`, an application's
-  files and the referenced projects.
+  and in a lock the compiler's command line, `Resources`, `Evaluation.Imports` (a WPF project's
+  `Page`, `ApplicationDefinition` and `Resource` files among them), an application's files and
+  the referenced projects (also the outputs a WPF markup run places).
 - A **resource keeps the name msbuild gives it** from the project's spelling: where the
   repository's spelling would derive another default name, the description writes msbuild's as
   `name` (`Resources\Strings.RESX` -> file `resources/Strings.resx`, name
   `App.Resources.Strings.resources`); a lock's `/resource:<file>,<name>` keeps its name, and a
   `/resource:<file>` without one (named after its file name) gets the project's file name as its
   name.
+- A WPF project's `<assembly>.g.resources` is recorded as msbuild wrote it: its BAML keys
+  (`views/brushes.baml`, from the item's spelling), like `Recorded.Markup`'s assembly names, are
+  names and stay msbuild's.
 - **No file's content is rewritten.** A `.resx` naming a file (`ResXFileRef`) in another case is
   left as it is; `Import.record` records the repository's file for that spelling in the lock
   (`ResxFiles`, [lock.md](lock.md#recorded-locks-importrecord)), and the resx compile reads it
