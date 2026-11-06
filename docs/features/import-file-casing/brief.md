@@ -187,3 +187,8 @@ Constraint: only **paths to files** change. A resource's name (msbuild's manifes
 11. The new `ResxFiles` field of `Csc`/`Fsc` (`Xake.Dotnet`) ships as **4.1.0**, with the release-notes line.
 12. `ResxFiles` records **every** `ResXFileRef` file under the project root, not only the miscased ones
     (they become dependencies of the resources: an image edit rebuilds them, which it did not before).
+13. (2026-11-06) 4.1.0 shipped first (the WPF record), so answer 11 becomes **4.2.0**: the next minor.
+14. (2026-11-06) Answer 1 applied per file: the truth is the index of the git repository that
+    **contains** the file (a submodule is its own repository), under any root, not only the
+    script's project root. Found by the consumer test on Linux: its sources are a sibling
+    repository with submodules, which the first resolver never read.
