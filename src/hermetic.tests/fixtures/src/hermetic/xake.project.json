@@ -12,6 +12,7 @@
     "Nuget.fs",
     "Restore.fs",
     "Git.fs",
+    "Baml.fs",
     "Lock.fs",
     "Described.fs",
     "Apps.fs",

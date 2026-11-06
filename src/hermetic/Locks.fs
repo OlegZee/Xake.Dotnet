@@ -512,6 +512,37 @@ module Locks =
                     failwith msg
         }
 
+    /// <summary>
+    /// Checks the referenced assemblies a WPF entry's recorded BAML names (`Recorded.Markup`)
+    /// against the referenced projects' outputs, built by now. Another identity (a referenced
+    /// project's version changed since the import, the WPF project not imported again) compiles,
+    /// but the XAML fails to load at run time; so it fails the build naming both, "run the
+    /// import again" -- or warns, as `staleImports` does.
+    /// </summary>
+    let private staleMarkup (lockPath: string) (entry: Lock.Entry) (r: Lock.Recorded) : Recipe<ExecContext, unit> =
+        recipe {
+            let outputs = r.Projects |> List.map (fun o -> (Path.GetFileNameWithoutExtension o.Path).ToLowerInvariant (), o.Path) |> Map.ofList
+            let changed =
+                [ for recorded in r.Markup do
+                    match outputs |> Map.tryFind ((System.Reflection.AssemblyName recorded).Name.ToLowerInvariant ()) with
+                    | Some path when File.Exists path ->
+                        let built = (System.Reflection.AssemblyName.GetAssemblyName path).FullName
+                        if not (Baml.sameIdentity recorded built) then yield sprintf "'%s', the build references '%s' (%s)" recorded built path
+                    | _ -> () ]
+            match changed with
+            | [] -> ()
+            | changed ->
+                let msg =
+                    sprintf "'%s' (%s): the XAML recorded in the lock '%s' names %s; run the import again"
+                        entry.Name entry.Framework lockPath (String.concat "; " changed)
+                let! stale = Var.read<string> "LOCK_STALE"
+                let! ci = Lock.underCi
+                if staleWarns stale ci then do! trace Warning "%s" msg
+                else
+                    do! trace Error "%s" msg
+                    failwith msg
+        }
+
     /// `compile` for the assembly target (`.dll`, `.exe`): C# and F# alike.
     let private compileAssembly (settings: Settings) (lockPath: string) (fwk: string) : Recipe<ExecContext, unit> =
         let extraRoots, versions = settings.Roots, settings.Versions
@@ -552,6 +583,10 @@ module Locks =
             let app = entry.Recorded |> Option.bind (fun r -> r.App)
             match app |> Option.map Apps.projectCopies with
             | Some (_ :: _ as outputs) -> do! needFiles (Filelist (outputs |> List.distinct |> List.map File.make))
+            | _ -> ()
+            // the recorded BAML names the referenced assemblies with the version the import saw
+            match entry.Recorded with
+            | Some r when not (List.isEmpty r.Markup) -> do! staleMarkup lockPath entry r
             | _ -> ()
 
             let c = entry.Compilation

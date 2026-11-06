@@ -196,7 +196,7 @@ type ``App recording``() =
         let entry =
             { Lock.ofCsc c with
                 Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/app/app.csproj"; Sdk = "8.0.425" }
-                Recorded = Some { Projects = [ lib ]; Masks = []; Placed = None; App = Some app } }
+                Recorded = Some { Projects = [ lib ]; Masks = []; Placed = None; App = Some app; Markup = [] } }
         let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
         Assert.That(text, Does.Contain "\"Host\": { \"Rid\": \"win-x64\", \"Id\": \"pack:microsoft.netcore.app.host.win-x64/8.0.31/runtimes/win-x64/native/apphost.exe\", \"Sha256\": \"ab\" }")
         Assert.That(text, Does.Contain "{ \"Id\": \"project:lib\", \"Sha256\": \"\", \"To\": \"lib.dll\" }")

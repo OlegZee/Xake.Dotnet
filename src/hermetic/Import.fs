@@ -831,7 +831,12 @@ module Import =
           "_XakeOwnAppConfig", [ "TargetPath" ]
           "_XakeRelatedExtension", []
           // the project's own items msbuild copies to the output (`Content`)
-          "_XakeCopyItem", [ "TargetPath"; "CopyToOutputDirectory" ] ]
+          "_XakeCopyItem", [ "TargetPath"; "CopyToOutputDirectory" ]
+          // a WPF project's markup compiler inputs (`UseWPF`): the XAML and the files it packs into
+          // `<assembly>.g.resources`, inputs of the import like the project file (`entryOf`)
+          "Page", []
+          "ApplicationDefinition", []
+          "Resource", [] ]
     let internal designTimeProperties =
         [ "AssemblyName"; "MSBuildProjectFullPath"; "MSBuildProjectDirectory"; "MSBuildProjectName"; "TargetFramework"
           "TargetFrameworkIdentifier"; "TargetFrameworkMoniker"; "DefineConstants"; "LangVersion"; "Version"; "OutputType"
@@ -841,7 +846,7 @@ module Import =
           "TargetFileName"; "Configuration"
           "HasRuntimeOutput"; "UseAppHost"; "RuntimeIdentifier"; "SelfContained"; "ProjectDepsFileName"; "ProjectRuntimeConfigFileName"
           "ProjectDepsFilePath"; "ProjectRuntimeConfigFilePath"; "AutoGenerateBindingRedirects"; "GenerateBindingRedirectsOutputType"
-          "_GenerateBindingRedirectsIntermediateAppConfig"; "IsTestProject"; "OutDir"
+          "_GenerateBindingRedirectsIntermediateAppConfig"; "IsTestProject"; "OutDir"; "UseWPF"
           // the sources of an application's recorded files: its `App.config`, `runtimeconfig.template.json`
           "AppConfig"; "UserRuntimeConfig" ]
 
@@ -919,7 +924,19 @@ module Import =
               "    <_XakeProjectExtensionsBase>$(MSBuildProjectExtensionsPath)</_XakeProjectExtensionsBase>"
               "    <_XakeProjectExtensionsBase Condition=\"'$(_XakeProjectExtensionsBase)' == ''\">$(BaseIntermediateOutputPath)</_XakeProjectExtensionsBase>"
               "    <_XakeProjectExtensionsBase Condition=\"'$(_XakeProjectExtensionsBase)' == ''\">obj/</_XakeProjectExtensionsBase>"
-              "    <MSBuildProjectExtensionsPath>$([MSBuild]::EnsureTrailingSlash('$(_XakeProjectExtensionsBase)'))xake-record/$(XakeRecordKey)/</MSBuildProjectExtensionsPath>"
+              "    <_XakeProjectExtensionsBase>$([MSBuild]::EnsureTrailingSlash('$(_XakeProjectExtensionsBase)'))</_XakeProjectExtensionsBase>"
+              // once: a WPF project's temporary assembly project (`_wpftmp`) starts from the folder
+              // already under `xake-record/<key>/`
+              "    <MSBuildProjectExtensionsPath Condition=\"!$(_XakeProjectExtensionsBase.Replace('\\', '/').EndsWith('xake-record/$(XakeRecordKey)/'))\">$(_XakeProjectExtensionsBase)xake-record/$(XakeRecordKey)/</MSBuildProjectExtensionsPath>"
+              "    <MSBuildProjectExtensionsPath Condition=\"$(_XakeProjectExtensionsBase.Replace('\\', '/').EndsWith('xake-record/$(XakeRecordKey)/'))\">$(_XakeProjectExtensionsBase)</MSBuildProjectExtensionsPath>"
+              // that project reads the parent's assets file, but its own nuget.g.props/.targets, which WinFX
+              // copies into `BaseIntermediateOutputPath` (for .NET Framework they bring the reference
+              // assemblies package: without them MSB3644)
+              "    <_XakeWpfTemporary>$(MSBuildProjectName.EndsWith('_wpftmp'))</_XakeWpfTemporary>"
+              "    <ProjectAssetsFile Condition=\"'$(_XakeWpfTemporary)' == 'true' and '$(ProjectAssetsFile)' == ''\">$(MSBuildProjectExtensionsPath)project.assets.json</ProjectAssetsFile>"
+              "    <_XakeWpfTemporaryBase>$(BaseIntermediateOutputPath)</_XakeWpfTemporaryBase>"
+              "    <_XakeWpfTemporaryBase Condition=\"'$(_XakeWpfTemporaryBase)' == ''\">obj/</_XakeWpfTemporaryBase>"
+              "    <MSBuildProjectExtensionsPath Condition=\"'$(_XakeWpfTemporary)' == 'true'\">$([MSBuild]::EnsureTrailingSlash('$(_XakeWpfTemporaryBase)'))</MSBuildProjectExtensionsPath>"
               "  </PropertyGroup>"
               "</Project>"
               "" ]
@@ -1001,9 +1018,12 @@ module Import =
         Pin': string
         /// the repository's msbuild files the evaluation read (absolute)
         Inputs: string list
-        /// the project files this import records (absolute, '/'): a project reference must be one
+        /// the project files this import records (absolute, '/'): a project reference must be one,
+        /// or a project an earlier import recorded (its lock exists, `LockOf`)
         Imported: string list
         OutOf: string -> string -> string -> string
+        /// the lock of a project (by its name) and configuration, absolute (`RecordOptions.LockOf`)
+        LockOf: string -> string -> string
     }
 
     /// The file a design-time build reported, absolute, '/'.
@@ -1028,27 +1048,36 @@ module Import =
                 | csTargets -> slash (Path.GetFullPath (Path.GetDirectoryName (slash csTargets) </> "bincore" </> "csc.dll"))
             | toolPath -> slash (toolPath </> (match p "CscToolExe" with "" -> "csc.dll" | exe -> exe))
 
+    /// A `ReferencePath` item of a design-time build that names a referenced project: its project
+    /// file (absolute, '/'), its name (`project:<name>`) and the framework msbuild chose for it.
+    let internal referencedProject (projectDir: string) (d: Dump) (m: Map<string, string>) =
+        let source = meta "MSBuildSourceProjectFile" m
+        if meta "ReferenceSourceTarget" m = "ProjectReference" || source <> "" then
+            let projectFile = absoluteIn projectDir (match source with "" -> meta "OriginalProjectReferenceItemSpec" m | s -> s)
+            let framework =
+                match meta "NearestTargetFramework" m, meta "SetTargetFramework" m with
+                | "", set when set.StartsWith "TargetFramework=" -> set.Substring 16
+                | "", _ -> prop d "TargetFramework"
+                | f, _ -> f
+            Some (projectFile, Path.GetFileNameWithoutExtension projectFile, framework)
+        else None
+
     /// The project references of a design-time build: each referenced project's output in the
     /// build's layout (`outOf cfg <framework msbuild chose> <name>`), and the paths msbuild
     /// names it by (its output, its reference assembly).
     let internal projectsOf (ctx: RecordContext) (cfg: string) (d: Dump) : (Lock.ProjectOutput * string list) list =
         let found =
           [ for id, m in items d "ReferencePath" do
-            let source = meta "MSBuildSourceProjectFile" m
-            if meta "ReferenceSourceTarget" m = "ProjectReference" || source <> "" then
-                let projectFile = absoluteIn ctx.ProjectDir (match source with "" -> meta "OriginalProjectReferenceItemSpec" m | s -> s)
-                let name = Path.GetFileNameWithoutExtension projectFile
-                // its output is found by the lock of that project, which this import must write
-                // (ignoring case: a reference may spell a folder otherwise on a file system that
-                // ignores it, as macOS's and Windows' do)
-                if not (ctx.Imported |> List.exists (fun p -> String.Equals (p, projectFile, StringComparison.OrdinalIgnoreCase))) then
-                    failwithf "'%s' (%s|%s) references the project '%s', which this import does not record: its output would have no lock; add it to the imported projects"
-                        ctx.ProjectFile cfg (prop d "TargetFramework") projectFile
-                let framework =
-                    match meta "NearestTargetFramework" m, meta "SetTargetFramework" m with
-                    | "", set when set.StartsWith "TargetFramework=" -> set.Substring 16
-                    | "", _ -> prop d "TargetFramework"
-                    | f, _ -> f
+            match referencedProject ctx.ProjectDir d m with
+            | None -> ()
+            | Some (projectFile, name, framework) ->
+                // its output is found by the lock of that project, which this import writes or an
+                // earlier one wrote (ignoring case: a reference may spell a folder otherwise on a
+                // file system that ignores it, as macOS's and Windows' do)
+                if not (ctx.Imported |> List.exists (fun p -> String.Equals (p, projectFile, StringComparison.OrdinalIgnoreCase)))
+                   && not (File.Exists (ctx.LockOf name cfg)) then
+                    failwithf "'%s' (%s|%s) references the project '%s', which this import does not record and no earlier import did (no lock '%s'): its output would have no lock; add it to the imported projects"
+                        ctx.ProjectFile cfg (prop d "TargetFramework") projectFile (ctx.LockOf name cfg)
                 let output = absoluteIn ctx.Root (ctx.OutOf cfg framework name </> Path.GetFileName (slash id))
                 let names = [ id; meta "ReferenceAssembly" m ] |> List.filter ((<>) "") |> List.map (absoluteIn ctx.ProjectDir)
                 yield projectFile, (({ Name = name; Configuration = cfg; Framework = framework; Path = output } : Lock.ProjectOutput), names) ]
@@ -1385,9 +1414,12 @@ module Import =
         // copied byte for byte beside the lock (`binaryDir`) and named there
         let inputs = if isFSharp then FscArgs.inputs args else CscArgs.inputs args
         let inScratch (path: string) = path.StartsWith (scratch, comparison)
+        // a `.resources` the build compiles again: from a `.resx` only (the WPF targets add their
+        // `g.resources` as an `EmbeddedResource` too, with itself as its `OutputResource`)
+        let isResx (id: string) = id.EndsWith (".resx", StringComparison.OrdinalIgnoreCase)
         let resxOutputs =
-            set [ for _, m in items d "EmbeddedResource" do
-                    if meta "OutputResource" m <> "" then yield absoluteIn ctx.ProjectDir (meta "OutputResource" m) ]
+            set [ for id, m in items d "EmbeddedResource" do
+                    if meta "OutputResource" m <> "" && isResx id then yield absoluteIn ctx.ProjectDir (meta "OutputResource" m) ]
         let binaries =
             [ for path in inputs |> List.map slash |> List.distinct do
                 if inScratch path && File.Exists path && not (isRecordedText path) && not (resxOutputs.Contains path) then
@@ -1463,7 +1495,7 @@ module Import =
         let named (path: string) = resourceSwitches |> List.exists (fun v -> v = path || v.StartsWith (path + ","))
         let resources =
             [ for id, m in items d "EmbeddedResource" do
-                if meta "OutputResource" m <> "" && not (isTrue (meta "WithCulture" m)) then
+                if meta "OutputResource" m <> "" && isResx id && not (isTrue (meta "WithCulture" m)) then
                     let compiled = moved (absoluteIn ctx.ProjectDir (meta "OutputResource" m))
                     if named compiled then yield absoluteIn ctx.ProjectDir id, compiled ]
             |> List.distinct
@@ -1539,19 +1571,38 @@ module Import =
                 |> List.map (absoluteIn ctx.ProjectDir)
                 |> List.filter (fun f -> File.Exists f && not (f.StartsWith (scratch, comparison)))
             | _ -> []
+        // a WPF project's XAML and the files its markup compiler packs into `<assembly>.g.resources`
+        // (recorded beside the lock as bytes, not compiled again): inputs of the import, so an edit
+        // fails the build with "run the import again" as the project file's does
+        let markupSources =
+            if not (isTrue (p "UseWPF")) then [] else
+            [ for kind in [ "Page"; "ApplicationDefinition"; "Resource" ] do
+                for id, _ in items d kind do
+                    let f = absoluteIn ctx.ProjectDir id
+                    if File.Exists f && not (f.StartsWith (scratch, comparison)) then yield f ]
+        // the referenced projects' assemblies its BAML names, with the version the markup
+        // compiler loaded: the build checks them against the outputs it references
+        let markup =
+            if not (isTrue (p "UseWPF")) then [] else
+            let outputs = set [ for o, _ in projects -> (Path.GetFileNameWithoutExtension o.Path).ToLowerInvariant () ]
+            [ for path, _ in binaries do
+                if path.EndsWith (".g.resources", StringComparison.OrdinalIgnoreCase) then
+                    for name in Baml.ofResources path do
+                        if outputs.Contains ((Reflection.AssemblyName name).Name.ToLowerInvariant ()) then yield name ]
+            |> List.distinct |> List.sort
         let entry : Lock.Entry =
             { Compilation = compilation
               Evaluation =
                 { Project = slash ctx.ProjectFile
                   ProjectRefs = projects |> List.map (fun (o, _) -> o.Name)
                   // text: hashed with CRLF read as LF, so a lock holds on any checkout (`FileHash`)
-                  Imports = ctx.Inputs @ appSources |> List.distinct |> List.map (fun f -> { Path = f; Sha256 = FileHash.textSha256 f } : Lock.Hashed)
+                  Imports = ctx.Inputs @ appSources @ markupSources |> List.distinct |> List.map (fun f -> { Path = f; Sha256 = FileHash.textSha256 f } : Lock.Hashed)
                   Sdk = sdk
                   SdkPin = Some ctx.Pin
                   Properties = d.Props |> Map.filter (fun k v -> List.contains k keptProperties && v <> "") }
               Packages = packages
               Prerequisites = []
-              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app } }
+              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup } }
         // the SDK the entry was recorded with, when it names a file of that SDK (its compiler,
         // analyzers, shims, its apphost): the prerequisite follows the content
         let entry =
@@ -1777,19 +1828,15 @@ module Import =
                         })
                     |> concurrently
                 do! trace Info "import: %d project evaluation(s) in %.1f s" projectFiles.Length (elapsed phase)
-                // WPF (S69): its markup compiler's second pass needs a compiled assembly, which the
-                // design-time build does not make (msbuild's MC3050 errors); refused up front
-                let wpf =
-                    [ for pf, ev in List.zip projectFiles evaluations do
-                        let dumps = ev.Outer :: (ev.Inner |> List.map snd)
-                        // `UseWPF` brings the markup compiler, XAML `Page`/`ApplicationDefinition`
-                        // items are its input: `UseWPF` without them (the trial product' WinForms designers)
-                        // or `Page` items without `UseWPF` compile no markup
-                        let markup (d: Dump) = isTrue (prop d "UseWPF") && not (List.isEmpty (items d "Page") && List.isEmpty (items d "ApplicationDefinition"))
-                        if dumps |> List.exists markup then yield pf ]
-                if not (List.isEmpty wpf) then
-                    failwithf "WPF is not supported by the import yet (UseWPF with XAML Page items: the markup compiler's second pass needs a compiled assembly; S69): %s"
-                        (wpf |> List.map (sprintf "'%s'") |> String.concat ", ")
+                // WPF (S69): a project whose markup compiler runs gets builds of its own (the markup
+                // run below). `UseWPF` brings the markup compiler, XAML `Page`/`ApplicationDefinition`
+                // items are its input: `UseWPF` without them (the trial product' WinForms designers)
+                // or `Page` items without `UseWPF` compile no markup
+                let markupProjects =
+                    set [ for pf, ev in List.zip projectFiles evaluations do
+                            let dumps = ev.Outer :: (ev.Inner |> List.map snd)
+                            let markup (d: Dump) = isTrue (prop d "UseWPF") && not (List.isEmpty (items d "Page") && List.isEmpty (items d "ApplicationDefinition"))
+                            if dumps |> List.exists markup then yield slash pf ]
                 // 3. every design-time build of a configuration in one msbuild process: a traversal
                 // project over (project, framework), the dump target handed to every project
                 let targetsFile = temp </> "xake-record.targets"
@@ -1805,6 +1852,39 @@ module Import =
                         // from being skipped as up to date
                         "-p:NonExistentFile=__NonExistentSubDir__/__NonExistentFile__" ]
                 let runs = [ for pf, ev in List.zip projectFiles evaluations do for f, _ in ev.Inner -> pf, ev, f ]
+                let isMarkup (pf: string, _, _) = markupProjects.Contains (slash pf)
+                // (project, framework) builds as the traversal items, each with its properties
+                let runItem (pf: string) (properties: string) =
+                    sprintf "    <XakeRun Include=\"%s\" AdditionalProperties=\"%s\" />"
+                        (Security.SecurityElement.Escape pf) (Security.SecurityElement.Escape properties)
+                // one msbuild process over the `items`, the `targets` and then `XakeRecordDump`
+                // (writing into `dumpRoot`) in each
+                let traverse (name: string) (items: string list) (targets: string) (dumpRoot: string) (switches: string list) =
+                    let traversal = temp </> name + ".proj"
+                    File.WriteAllText (traversal, String.concat "\n" ([ "<Project>"; "  <ItemGroup>" ] @ items @
+                                                                      [ "  </ItemGroup>"
+                                                                        "  <Target Name=\"Build\">"
+                                                                        (sprintf "    <MSBuild Projects=\"@(XakeRun)\" Targets=\"%s;XakeRecordDump\" BuildInParallel=\"true\" />" targets)
+                                                                        "  </Target>"; "</Project>"; "" ]))
+                    Directory.CreateDirectory dumpRoot |> ignore
+                    msbuild environment
+                        ([ traversal; "-nologo"; "-verbosity:quiet"; "-m"; "-nodeReuse:false"; "-p:XakeDumpRoot=" + slash dumpRoot ] @ switches) traversal
+                // the dumps of a traversal by (project, framework), each with a copy of the assets
+                // file it read (read later: another import with the same properties restores into
+                // the same folder)
+                let readDumps (dumpRoot: string) (assetsRoot: string) =
+                    Directory.CreateDirectory assetsRoot |> ignore
+                    Directory.GetFiles (dumpRoot, "*.txt") |> Array.map readRecordDump
+                    |> Array.mapi (fun i d ->
+                        let d =
+                            match prop d "ProjectAssetsFile" with
+                            | assets when assets <> "" && File.Exists assets ->
+                                let copy = assetsRoot </> sprintf "%d.json" i
+                                File.Copy (assets, copy)
+                                { d with Props = d.Props |> Map.add "ProjectAssetsFile" copy }
+                            | _ -> d
+                        (slash (prop d "MSBuildProjectFullPath"), prop d "TargetFramework"), d)
+                    |> Map.ofArray
                 let phase = DateTime.UtcNow
                 // one configuration after the other: its restore (a package may depend on the
                 // configuration; each restores into its own key's folder), its design-time builds,
@@ -1814,37 +1894,59 @@ module Import =
                         recipe {
                             if cfg <> primary then do! restore cfg
                             let dumpRoot = temp </> "dump-" + cfg
-                            let assetsRoot = temp </> "assets-" + cfg
-                            Directory.CreateDirectory dumpRoot |> ignore
-                            Directory.CreateDirectory assetsRoot |> ignore
-                            let traversal = temp </> sprintf "record-%s.proj" cfg
-                            let runItems =
-                                runs |> List.map (fun (pf, ev, f) ->
-                                    sprintf "    <XakeRun Include=\"%s\" AdditionalProperties=\"%s\" />"
-                                        (Security.SecurityElement.Escape pf)
-                                        (Security.SecurityElement.Escape (runProperties (key cfg) ev f)))
-                            File.WriteAllText (traversal, String.concat "\n" ([ "<Project>"; "  <ItemGroup>" ] @ runItems @
-                                                                              [ "  </ItemGroup>"
-                                                                                "  <Target Name=\"Build\">"
-                                                                                (sprintf "    <MSBuild Projects=\"@(XakeRun)\" Targets=\"%s;XakeRecordDump\" BuildInParallel=\"true\" />" designTimeTargets)
-                                                                                "  </Target>"; "</Project>"; "" ]))
-                            do! msbuild environment
-                                    ([ traversal; "-nologo"; "-verbosity:quiet"; "-m"; "-nodeReuse:false"; "-p:XakeDumpRoot=" + slash dumpRoot ]
-                                     @ recordSwitches cfg) traversal
-                            let byRun =
-                                Directory.GetFiles (dumpRoot, "*.txt") |> Array.map readRecordDump
-                                |> Array.mapi (fun i d ->
-                                    // a copy, read later: another import with the same properties
-                                    // restores into the same folder
-                                    let d =
-                                        match prop d "ProjectAssetsFile" with
-                                        | assets when assets <> "" && File.Exists assets ->
-                                            let copy = assetsRoot </> sprintf "%d.json" i
-                                            File.Copy (assets, copy)
-                                            { d with Props = d.Props |> Map.add "ProjectAssetsFile" copy }
-                                        | _ -> d
-                                    (slash (prop d "MSBuildProjectFullPath"), prop d "TargetFramework"), d)
-                                |> Map.ofArray
+                            let designRuns = runs |> List.filter (isMarkup >> not)
+                            if not (List.isEmpty designRuns) then
+                                do! traverse (sprintf "record-%s" cfg) [ for pf, ev, f in designRuns -> runItem pf (runProperties (key cfg) ev f) ]
+                                        designTimeTargets dumpRoot (recordSwitches cfg)
+                            let designDumps = if List.isEmpty designRuns then Map.empty else readDumps dumpRoot (temp </> "assets-" + cfg)
+                            // WPF (S69): the markup compiler loads every assembly the project references,
+                            // and for XAML naming the project's own types (its second pass) compiles a
+                            // temporary assembly (`GenerateTemporaryTargetAssembly`: a `_wpftmp` project
+                            // that inherits the global properties). Neither works in the design-time
+                            // build: the referenced projects are not built and the compiler does not
+                            // run. So such a project's builds run apart, each with an `OutDir` of its
+                            // own where the referenced projects' outputs -- built from their locks, in
+                            // the build's layout (`OutOf`) -- are placed, and with the compiler running.
+                            // `ProduceReferenceAssembly=false` names those files rather than reference
+                            // assemblies under the referenced projects' `obj/`; the recorded command
+                            // line drops `/refout` anyway. A first run resolves the references, the
+                            // second is the design-time build, the markup compiler included
+                            let markupRuns = runs |> List.filter isMarkup
+                            let! markupDumps =
+                                if List.isEmpty markupRuns then recipe { return Map.empty } else
+                                recipe {
+                                    let phase = DateTime.UtcNow
+                                    let markupItems =
+                                        markupRuns |> List.mapi (fun i (pf, ev, f) ->
+                                            let outDir = slash (temp </> sprintf "markup-out-%s" cfg </> string i) + "/"
+                                            runItem pf (runProperties (key cfg) ev f + ";OutDir=" + outDir))
+                                    let markupSwitches =
+                                        (recordSwitches cfg |> List.filter ((<>) "-p:SkipCompilerExecution=true")) @ [ "-p:ProduceReferenceAssembly=false" ]
+                                    let referencesRoot = temp </> "markup-references-" + cfg
+                                    do! traverse (sprintf "record-markup-references-%s" cfg) markupItems
+                                            "BuildOnlySettings;PrepareForBuild;ResolveReferences" referencesRoot markupSwitches
+                                    let references = readDumps referencesRoot (temp </> "markup-references-assets-" + cfg)
+                                    for pf, _, f in markupRuns do
+                                        let d =
+                                            match references |> Map.tryFind (slash pf, f) with
+                                            | Some d -> d
+                                            | None -> failwithf "'%s': the reference resolution for %s|%s wrote nothing; the import stops" pf cfg f
+                                        for id, m in items d "ReferencePath" do
+                                            match referencedProject (slash (Path.GetDirectoryName pf)) d m with
+                                            | None -> ()
+                                            | Some (projectFile, name, framework) ->
+                                                let built = full (options.OutOf cfg framework name </> Path.GetFileName (slash id))
+                                                if not (File.Exists built) then
+                                                    failwithf "'%s' (%s|%s) compiles XAML, whose compiler loads the referenced project '%s': its output '%s' is not built; build the references from their locks, then import this project"
+                                                        pf cfg f projectFile built
+                                                let placed = absoluteIn (slash (Path.GetDirectoryName pf)) id
+                                                Directory.CreateDirectory (Path.GetDirectoryName placed) |> ignore
+                                                File.Copy (built, placed, true)
+                                    let markupRoot = temp </> "markup-dump-" + cfg
+                                    do! traverse (sprintf "record-markup-%s" cfg) markupItems designTimeTargets markupRoot markupSwitches
+                                    do! trace Info "import: the markup compiler of %d build(s) for %s in %.1f s" markupRuns.Length cfg (elapsed phase)
+                                    return readDumps markupRoot (temp </> "markup-assets-" + cfg) }
+                            let byRun = Map.fold (fun acc k v -> Map.add k v acc) designDumps markupDumps
                             // the applications' runtimeconfig.json and deps.json and the config files
                             // with binding redirects (applications and .NET Framework test libraries):
                             // a second run over them, every output in a folder of its own (`OutDir`)
@@ -1919,6 +2021,7 @@ module Import =
                         { Root = root; ProjectFile = slash pf; ProjectDir = slash (Path.GetDirectoryName pf)
                           Description = description; DescriptionFile = descriptionFile; PackageRoot = packageRoot
                           Pin = pin; PinFile = pinFile; Inputs = inputs; OutOf = options.OutOf
+                          LockOf = fun name cfg -> full (options.LockOf name cfg)
                           Imported = projectFiles |> List.map slash
                           Pin' =
                             match pinFile |> Option.map (Roots.tokenize roots) with
