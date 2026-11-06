@@ -27,4 +27,5 @@ One line per item. Status as of 2026-11-06.
 
 ## Open
 
-- [ ] Consumer re-import on macOS or Windows, then the build on Linux (the owner's)
+- [x] Consumer check (2026-11-06): re-import on macOS with 4.2.0-casing.3 (af99f32), build of all four cells and the app run folders on Linux (case-sensitive ext4, no case aliases): green; the consumer's sources fixed only for the doc `<include>` spellings the import reported
+- [ ] The consumer's own re-import and its doc `<include>` fixes in its sources (the owner's)

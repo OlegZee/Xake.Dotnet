@@ -90,3 +90,21 @@ IDE's workspace), `build.fsc.fsx clean build check` green.
 
 The coordinator's Linux consumer rerun from the pushed tip (the resx images and the includes);
 then the PR. Open: whether to keep test folders out of the IDE's workspace (owner).
+
+## Consumer check on Linux (2026-11-06)
+
+The consumer at its last commit before the WPF work, re-imported on macOS with a local package of
+`af99f32` (`4.2.0-casing.3`), built in a Linux container on a case-sensitive file system with no case
+aliases. Its sources are a sibling repository (a declared root) with git submodules.
+- Import: 13 paths corrected (analyzer configs, a `Directory.Build.props` import, one source, 7
+  project references), 39 miscased `ResXFileRef`, 812 doc `<include>` warnings. No resource or
+  manifest name changed. `ResxFiles`: about 16,000 entries in 60 locks (every `ResXFileRef` file,
+  answer 12), the only other lock change.
+- Linux: all four cells built (186/186/184/184 compilations) and both brands' app run folders were
+  written; every runtime asset of the 88 `deps.json` exists with its exact spelling. The only source
+  change was the 812 include spellings, generated from the import's warnings alone.
+- Two earlier runs found the gaps fixed since: the resolver read only the script's repository (now
+  the containing repository of each path, submodules included), and `ResxFiles` and the include scan
+  were limited to the project root / the source's folder.
+- The test flakes in this worktree come from the IDE (C# Dev Kit) building the test fixtures under
+  `~testout~` while tests run; outside the IDE's workspace the suite is green 5 of 5.
