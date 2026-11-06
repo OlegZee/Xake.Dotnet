@@ -874,11 +874,13 @@ type ``Import record WPF``() =
     /// A library and a WPF library referencing it, for .NET and .NET Framework (whose temporary
     /// assembly project needs the reference assemblies package): a window with code-behind
     /// (`x:Class`, pass one) holding an object of the library, a page whose root is the
-    /// project's own type (pass two, the temporary assembly) and a `Resource` file
+    /// project's own type (pass two, the temporary assembly) and a `Resource` file. The library's
+    /// version is explicit: msbuild takes an environment variable `VERSION` as `$(Version)` (the
+    /// release workflow exports one)
     let wpfFixture () =
         let presentation = "xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\""
         RecordKit.write [ "lib"; "wpf"; "out"; "locks"; "obj" ]
-            [ "lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>netstandard2.0</TargetFramework>" ""
+            [ "lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>netstandard2.0</TargetFramework><Version>1.0.0</Version>" ""
               "lib/Greeter.cs", "namespace Lib { public class Greeter { public string Name { get; set; } = \"lib\"; } }\n"
               "wpf/wpf.csproj",
                 RecordKit.sdkProject "<TargetFrameworks>net8.0-windows;net472</TargetFrameworks><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>"
