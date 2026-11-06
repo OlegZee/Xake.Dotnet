@@ -86,6 +86,12 @@ recorded), and the include scan now follows csc's order (the source's folder, th
 folder). Full `build test` 5 of 5 in a row in a temporary worktree under `$TMPDIR` (outside the
 IDE's workspace), `build.fsc.fsx clean build check` green.
 
+PR #12's Linux CI failed one unit test: `Casing.Repos` took the repository of the nearest
+*existing* folder, which on a case-sensitive file system stops above a miscased folder (the outer
+repository instead of the nested one or the submodule). The lookup is top-down now (29a1a77);
+the casing tests pass in a Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`, the sources
+copied into its own file system, `DOTNET_ROLL_FORWARD=Major` for the net8.0 test host).
+
 ## Next step
 
 The coordinator's Linux consumer rerun from the pushed tip (the resx images and the includes);
