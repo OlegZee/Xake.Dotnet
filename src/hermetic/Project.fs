@@ -501,20 +501,12 @@ module Project =
             // repository the project's spelling, said once
             let! ctxOptions = getCtxOptions ()
             let root = Path.GetFullPath ctxOptions.ProjectRoot
-            let indexes = Casing.Indexes ()
-            let said = ref false
+            let repos =
+                let home = System.Environment.GetFolderPath System.Environment.SpecialFolder.UserProfile
+                Casing.Repos [ packageRoot; Path.Combine (home, ".nuget", "packages"); defaultArg (DotNetFwk.dotnetRoot ()) "" ]
             let printed = System.Collections.Generic.HashSet<string> ()
             for project in options.Projects do
-                let! casing =
-                    recipe {
-                        match indexes.For (Path.GetDirectoryName (Path.GetFullPath project)) with
-                        | Result.Ok index -> return Casing.Resolver (Some index)
-                        | Result.Error reason ->
-                            if not said.Value then
-                                said.Value <- true
-                                do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
-                            return Casing.Resolver.Unchanged
-                    }
+                let casing = Casing.Resolver (Some repos)
                 let projectFile = casing.Path (Path.GetFullPath project)
                 let projectDir = Path.GetDirectoryName projectFile
                 let pinFile, pin = Lock.sdkPinAt projectDir
@@ -656,6 +648,10 @@ module Project =
                 for difference in casing.Differences do
                     let line = Casing.line root difference
                     if printed.Add line then do! trace Info "  casing (%s): %s" (Path.GetFileName projectFile) line
+
+            for dir, reason in repos.Outside do
+                if dir = "" then do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
+                else do! trace Info "import: the files under '%s' are in no git repository: they keep the project's spelling" dir
 
             let lock : Lock.Document = {
                 Configuration = options.Configuration

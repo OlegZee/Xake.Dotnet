@@ -719,24 +719,23 @@ module Import =
 
     // ---- the repository's spelling ----------------------------------------------------------
 
-    /// The repositories of an import (`Casing.Indexes`, each index read once) and whether the
-    /// Info line for a project in none was said.
-    type internal Repositories = { Indexes: Casing.Indexes; Said: bool ref }
-
-    let internal repositories () = { Indexes = Casing.Indexes (); Said = ref false }
-
-    /// The resolver of a project whose folder is `dir`: the git index of the repository that
-    /// folder is in (`Casing.Indexes.For`); without git, or for a project in no repository, one
-    /// that changes nothing, and one Info line per import says so.
-    let private resolverOf (repos: Repositories) (dir: string) : Recipe<ExecContext, Casing.Resolver> =
+    /// The repositories of one import (`Casing.Repos`): the index of the repository that contains
+    /// each path, read once; never for a path under the package folder (`packageRoot`, NuGet's
+    /// default one) or the .NET installation, whose files are no repository's.
+    let private repositories () : Recipe<ExecContext, Casing.Repos> =
         recipe {
-            match repos.Indexes.For dir with
-            | Result.Ok index -> return Casing.Resolver (Some index)
-            | Result.Error reason ->
-                let first = lock repos.Said (fun () -> let f = not repos.Said.Value in repos.Said.Value <- true; f)
-                if first then
-                    do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
-                return Casing.Resolver.Unchanged
+            let! packageRoot = DotNetFwk.packageRoot ()
+            let home = Environment.GetFolderPath Environment.SpecialFolder.UserProfile
+            return Casing.Repos [ packageRoot; Path.Combine (home, ".nuget", "packages"); defaultArg (DotNetFwk.dotnetRoot ()) "" ]
+        }
+
+    /// One Info line per folder tree whose files are in no repository (their spelling is not
+    /// checked), or one when git cannot be run.
+    let private traceOutside (root: string) (repos: Casing.Repos) =
+        recipe {
+            for dir, reason in repos.Outside do
+                if dir = "" then do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
+                else do! trace Info "import: the files under '%s' are in no git repository: they keep the project's spelling" (relativeTo root dir)
         }
 
     /// <summary>
@@ -816,13 +815,13 @@ module Import =
 
     /// `project` with the repository's index read already, the casing lines traced once per
     /// import (`printed`). The project file is the repository's spelling of `project`.
-    let private projectWith (repos: Repositories) (printed: Collections.Concurrent.ConcurrentDictionary<string, unit>)
+    let private projectWith (repos: Casing.Repos) (printed: Collections.Concurrent.ConcurrentDictionary<string, unit>)
                             (project: string) (descriptionOf: string -> string) (globals: (string * string) list) : Recipe<ExecContext, Imported> =
         recipe {
             let! options = getCtxOptions ()
             let root = slash (Path.GetFullPath options.ProjectRoot)
             let full (p: string) = slash (Path.GetFullPath (if Path.IsPathRooted p then p else root </> p))
-            let! casing = resolverOf repos (Path.GetDirectoryName (full project))
+            let casing = Casing.Resolver (Some repos)
             let projectFile = casing.Path (full project)
             let descriptionFile =
                 full (descriptionOf (if projectFile = full project then project elif Path.IsPathRooted project then projectFile else relativeTo root projectFile))
@@ -847,8 +846,9 @@ module Import =
         recipe {
             do! Project.requireImportMsbuild ()
             let! options = getCtxOptions ()
-            let repos = repositories ()
+            let! repos = repositories ()
             let! imported = projectWith repos (Collections.Concurrent.ConcurrentDictionary ()) project descriptionOf globals
+            do! traceOutside options.ProjectRoot repos
             return imported
         }
 
@@ -859,9 +859,10 @@ module Import =
             // the MSBuild the evaluations need, checked once for all of them
             do! Project.requireImportMsbuild ()
             let! options = getCtxOptions ()
-            let repos = repositories ()
+            let! repos = repositories ()
             let printed = Collections.Concurrent.ConcurrentDictionary ()
             let! imported = projects |> List.map (fun p -> projectWith repos printed p descriptionOf globals) |> concurrently
+            do! traceOutside options.ProjectRoot repos
             return imported
         }
 
@@ -1920,17 +1921,15 @@ module Import =
             let temp = root </> "obj" </> "xake" </> "import" </> Guid.NewGuid().ToString "N"
             Directory.CreateDirectory temp |> ignore
             try
-                // the repository's spelling of every file the import records (the git index, read
-                // once), the project files first: msbuild evaluates them so spelled
-                let repos = repositories ()
+                // the spelling of every file the import records as the repository that contains it
+                // has it (its git index, read once), the project files first: msbuild evaluates
+                // them so spelled. One resolver per project, for its lines of the log
+                let! repos = repositories ()
                 let printed = Collections.Concurrent.ConcurrentDictionary ()
-                // one resolver per project, of the repository the project is in
-                let! resolved =
+                let resolved =
                     projects |> List.map full |> List.distinct |> List.map (fun p ->
-                        recipe {
-                            let! casing = resolverOf repos (Path.GetDirectoryName p)
-                            return casing.Path p, casing })
-                    |> sequentially
+                        let casing = Casing.Resolver (Some repos)
+                        casing.Path p, casing)
                 let projectFiles = resolved |> List.map fst |> List.distinct
                 let casingOf =
                     let byFile = dict (resolved |> List.distinctBy fst)
@@ -2282,6 +2281,7 @@ module Import =
                     results.Add { imported with Locks = List.ofSeq locks; Casing = lines }
                 for KeyValue ((sdk, pin, _), names) in pinWarnings do
                     do! trace Warning "%s" (sdkPinWarning (List.ofSeq names) sdk pin)
+                do! traceOutside root repos
                 do! trace Info "imported %d project(s) for %s in %.1f s" projectFiles.Length (String.concat ", " options.Configurations)
                         (DateTime.UtcNow - started).TotalSeconds
                 return List.ofSeq results

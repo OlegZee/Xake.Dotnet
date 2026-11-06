@@ -13,8 +13,9 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 A project file that names a file in another case than the repository has it (`Src\A.FS` for
 `src/A.fs`) imported on macOS or Windows gave descriptions and locks that do not build on Linux.
 The imports (`Import.record`, `Import.descriptions`/`project`, `Project.import`) now write every
-repository file as the git index spells it (`git ls-files`, once per import; without git nothing
-changes), log each difference at Info with both spellings (`Imported.Casing`), and keep
+repository file as the git index of the repository that contains it spells it (submodules and
+sibling repositories behind a declared root included; `git ls-files`, once per repository and
+import; without git nothing changes), log each difference at Info with both spellings (`Imported.Casing`), and keep
 msbuild's resource names. A miscased doc comment `<include file>` is reported, not changed. A
 project reference spelled otherwise than its project file is the repository-spelled output
 (`Lib.dll`), and an application's recorded `deps.json` names that file. See

@@ -125,7 +125,7 @@ type ``Casing``() =
     member x.``a resolver keeps a relative path relative, and notes each difference once``() =
         let root = CasingKit.repository "casing-rel" [ "lib/Strings.resx", ""; "app/Key.snk", "" ]
         try
-            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let r = Casing.Resolver (Some (Casing.Repos []))
             let app = root + "/app"
             Assert.That(r.Relative app "../LIB/strings.RESX", Is.EqualTo "../lib/Strings.resx")
             Assert.That(r.Relative app "key.SNK", Is.EqualTo "Key.snk")
@@ -143,7 +143,7 @@ type ``Casing``() =
     member x.``a command line takes the repository's paths; an unnamed resource keeps its file name as its name``() =
         let root = CasingKit.repository "casing-args" [ "app/code/Program.cs", ""; "app/res/logo.png", ""; "app/keys/app.snk", "" ]
         try
-            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let r = Casing.Resolver (Some (Casing.Repos []))
             let csc = Casing.argument false r
             Assert.That(csc (root + "/app/Code/program.CS"), Is.EqualTo (root + "/app/code/Program.cs"))
             Assert.That(csc ("/keyfile:" + root + "/app/Keys/App.SNK"), Is.EqualTo ("/keyfile:" + root + "/app/keys/app.snk"))
@@ -163,7 +163,7 @@ type ``Casing``() =
     member x.``a mask's literal part takes the repository's spelling, its wildcards stay``() =
         let root = CasingKit.repository "casing-masks" [ "app/src/Sub/A.cs", ""; "app/Gen (x86)/B.cs", "" ]
         try
-            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let r = Casing.Resolver (Some (Casing.Repos []))
             let fix = Import.repositoryMask r (root + "/app")
             Assert.That(fix "SRC/sub/a.CS", Is.EqualTo "src/Sub/A.cs")
             Assert.That(fix "Src/**/*.cs", Is.EqualTo "src/**/*.cs")
@@ -193,7 +193,7 @@ type ``Casing``() =
                 [ "app/resources/Strings.resx", resx; "app/images/copy.txt", "copy"; "app/images/same.txt", "same"
                   "app/code/C.cs", source; "app/code/docs/common.xml", "<doc/>"; "app/code/docs/other.xml", "<doc/>" ]
         try
-            let r = Casing.Resolver (Some (Casing.read root |> CasingKit.ok))
+            let r = Casing.Resolver (Some (Casing.Repos []))
             let lines = Import.contentLines root r (root + "/app") [ "resources/Strings.resx" ] [ root + "/app/code/C.cs" ]
             Assert.That(lines, Has.Length.EqualTo 2)
             Assert.That(lines.[0], Does.StartWith "'app/Images/Copy.TXT' (ResXFileRef '..\\Images\\Copy.TXT' in 'app/resources/Strings.resx') is 'app/images/copy.txt' in the repository")
@@ -245,25 +245,39 @@ type ``Casing``() =
         Assert.That(Import.depsFileNames [] deps, Is.EqualTo deps)
 
     [<Test>]
-    member x.``a project is resolved against the repository it is in, not the one around it``() =
+    member x.``each path takes the spelling of the repository that contains it: a nested one, a submodule``() =
         let outer = CasingKit.repository "casing-outer" [ "Top.txt", "" ]
+        let lib = CasingKit.repository "casing-sublib" [ "Code/Lib.cs", "" ]
         try
+            CasingKit.git lib [ "-c"; "user.name=t"; "-c"; "user.email=t@t"; "commit"; "-q"; "-m"; "lib" ] |> ignore
             // a repository of its own inside the outer one (as a test's folder in this one)
             let inner = outer + "/work"
             Directory.CreateDirectory (inner + "/app/src") |> ignore
             File.WriteAllText (inner + "/app/src/A.cs", "")
             CasingKit.git inner [ "init"; "-q" ] |> ignore
             CasingKit.git inner [ "add"; "--"; "app/src/A.cs" ] |> ignore
-            let indexes = Casing.Indexes ()
-            let ofApp = indexes.For (inner + "/app") |> CasingKit.ok
-            Assert.That(Casing.resolve ofApp (inner + "/APP/Src/a.CS"), Is.EqualTo (inner + "/app/src/A.cs"))
-            // the outer repository does not track it: nothing changes there
-            let ofOuter = indexes.For outer |> CasingKit.ok
-            Assert.That(Casing.resolve ofOuter (inner + "/APP/Src/a.CS"), Is.EqualTo (inner + "/APP/Src/a.CS"))
-            Assert.That(Casing.resolve ofOuter (outer + "/top.TXT"), Is.EqualTo (outer + "/Top.txt"))
-            // one index per repository: the same for another folder of it
-            Assert.That(Object.ReferenceEquals (indexes.For (inner + "/app/src") |> CasingKit.ok, ofApp), Is.True)
-        finally Directory.Delete (outer, true)
+            // a submodule of the inner one, at `ext/Lib`
+            CasingKit.git inner [ "-c"; "protocol.file.allow=always"; "submodule"; "add"; "-q"; lib; "ext/Lib" ] |> ignore
+            let repos = Casing.Repos []
+            Assert.That(repos.Resolve (inner + "/APP/Src/a.CS"), Is.EqualTo (inner + "/app/src/A.cs"))
+            Assert.That(repos.Resolve (outer + "/top.TXT"), Is.EqualTo (outer + "/Top.txt"))
+            // in the submodule: its own index, its path as its superproject has it
+            Assert.That(repos.Resolve (inner + "/ext/Lib/code/lib.CS"), Is.EqualTo (inner + "/ext/Lib/Code/Lib.cs"))
+            Assert.That(repos.Resolve (inner + "/EXT/lib/CODE/Lib.cs"), Is.EqualTo (inner + "/ext/Lib/Code/Lib.cs"))
+            // an untracked file of a repository, a folder in none: unchanged
+            File.WriteAllText (inner + "/app/src/Untracked.cs", "")
+            Assert.That(repos.Resolve (inner + "/APP/src/untracked.cs"), Is.EqualTo (inner + "/APP/src/untracked.cs"))
+            let none = CasingKit.tempFolder "casing-none2"
+            try
+                Assert.That(repos.Resolve (none + "/X.CS"), Is.EqualTo (none + "/X.CS"))
+                Assert.That(repos.Outside |> List.map fst, Is.EqualTo [ none ])
+            finally Directory.Delete (none, true)
+            // excluded folders are never looked up
+            let excluding = Casing.Repos [ inner + "/app" ]
+            Assert.That(excluding.Resolve (inner + "/app/src/a.CS"), Is.EqualTo (inner + "/app/src/a.CS"))
+        finally
+            Directory.Delete (outer, true)
+            Directory.Delete (lib, true)
 
 /// The files a `.resx` names, as an import records them (`Csc.ResxFiles`): the lock's
 /// `ResxFiles` and the resx compile that reads them.
@@ -523,3 +537,59 @@ type ``Import casing``() =
         RecordKit.build x.TestOptions "build-casing-wpf" "Release"
         let _, _, embedded = RecordKit.metadata "out/Release/net8.0-windows/wpf/wpf.dll"
         Assert.That(embedded, Does.Contain "wpf.g.resources")
+
+    [<Test; Category("Integration")>]
+    member x.``a project in a submodule of a sibling repository, reached through a declared root, takes that submodule's spelling``() =
+        File.WriteAllText ("case-probe.txt", "")
+        let ignoresCase = File.Exists "CASE-PROBE.TXT"
+        File.Delete "case-probe.txt"
+        if not ignoresCase then Assert.Ignore "the file system here does not ignore case: msbuild cannot evaluate a miscased project"
+        if Directory.Exists ".git" then Directory.Delete (".git", true)
+        let here = (Directory.GetCurrentDirectory ()).Replace ('\\', '/')
+        for d in [ "script"; "sibling"; "subsrc" ] do if Directory.Exists d then Directory.Delete (d, true)
+        let commit dir = CasingKit.git dir [ "-c"; "user.name=t"; "-c"; "user.email=t@t"; "commit"; "-q"; "-m"; "x" ] |> ignore
+        // the script's repository: the project root, nothing of the project in it
+        Directory.CreateDirectory "script" |> ignore
+        File.WriteAllText ("script/build.fsx", "// the script\n")
+        CasingKit.git (here + "/script") [ "init"; "-q" ] |> ignore
+        CasingKit.git (here + "/script") [ "add"; "build.fsx" ] |> ignore
+        // the submodule's repository: the project, its analyzer config, a source including a doc file
+        let sub = here + "/subsrc"
+        let subFiles =
+            [ "sub.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems>"
+                    "<Compile Include=\"Code\\X.CS\" />"
+              ".editorConfig", "root = true\n[*.cs]\nindent_size = 4\n"
+              "code/X.cs", "namespace Sub {\n  /// <include file='../Docs/Common.XML' path='doc/member[@name=\"X\"]/*'/>\n  public class X { }\n}\n"
+              "docs/common.xml", "<doc><member name=\"X\"><summary>X</summary></member></doc>\n" ]
+        for path, text in subFiles do
+            Directory.CreateDirectory (Path.GetDirectoryName (Path.Combine (sub, path))) |> ignore
+            File.WriteAllText (Path.Combine (sub, path), text)
+        CasingKit.git sub [ "init"; "-q" ] |> ignore
+        CasingKit.git sub ([ "add"; "--" ] @ List.map fst subFiles) |> ignore
+        commit sub
+        // the sibling repository: its Directory.Build.props spelled otherwise, the submodule
+        let sibling = here + "/sibling"
+        Directory.CreateDirectory sibling |> ignore
+        File.WriteAllText (sibling + "/Directory.build.props", "<Project>\n  <PropertyGroup><Deterministic>true</Deterministic></PropertyGroup>\n</Project>\n")
+        CasingKit.git sibling [ "init"; "-q" ] |> ignore
+        CasingKit.git sibling [ "add"; "Directory.build.props" ] |> ignore
+        CasingKit.git sibling [ "-c"; "protocol.file.allow=always"; "submodule"; "add"; "-q"; sub; "ext/Sub" ] |> ignore
+        commit sibling
+
+        let options = { x.TestOptions with ProjectRoot = here + "/script" }
+        let record = { RecordKit.recordDefault with Roots = [ "$(Sib)", sibling ] }
+        let imported = RecordKit.import options "import-casing-sibling" record [ sibling + "/ext/Sub/sub.csproj" ]
+        let lock = File.ReadAllText "script/locks/sub/Release.json"
+        // the msbuild import, the analyzer config, the source: as the repositories that hold them have them
+        Assert.That(lock, Does.Contain "\"$(Sib)/Directory.build.props\"")
+        Assert.That(lock, Does.Not.Contain "Directory.Build.props")
+        Assert.That(lock, Does.Contain "/analyzerconfig:$(Sib)/ext/Sub/.editorConfig")
+        Assert.That(lock, Does.Contain "$(Sib)/ext/Sub/code/X.cs")
+        Assert.That(File.ReadAllText (sibling + "/ext/Sub/xake.project.json"), Does.Contain "\"code/X.cs\"")
+        let lines = imported |> List.collect (fun i -> i.Casing)
+        let has (prefix: string) = lines |> List.exists (fun l -> l.Contains prefix)
+        Assert.That(has "Directory.Build.props' is '", Is.True, String.concat "\n" lines)
+        Assert.That(has "/ext/Sub/.editorconfig' is '", Is.True, String.concat "\n" lines)
+        Assert.That(has "/ext/Sub/Code/X.CS' is '", Is.True, String.concat "\n" lines)
+        Assert.That(has "(<include file='../Docs/Common.XML'> in ", Is.True, String.concat "\n" lines)

@@ -107,11 +107,15 @@ A project file may name a file in another case than the repository has it (`Src\
 `src/A.fs`): msbuild accepts that where the file system ignores case (macOS, Windows) and the
 import would write that spelling, which a build on Linux does not find. Every import
 (`Import.descriptions`, `Import.record`, `Project.import`) therefore writes the **repository's
-spelling** of each file, taken from the git index: `git ls-files -z --full-name`, run once per
-import in the project root (`Casing.read`; the index is never parsed by Xake). A path outside
-the project root, or one the index does not have (an untracked or generated file), is written as
-msbuild spells it. Without git, or outside a repository, nothing changes and one line at Info
-says so.
+spelling** of each file, taken from the git index of the repository that contains the file,
+under any root (the project root, a root the script declares, a sibling repository): the
+repository of a path's folder is found by `git rev-parse --show-cdup`, once per folder, and each
+repository's index is read once per import with `git ls-files -z --full-name` (`Casing.Repos`;
+the index is never parsed by Xake). A submodule is a repository of its own, its path spelled as
+its superproject's index has it. A path the index does not have (an untracked or generated
+file) is written as msbuild spells it; so is a path in no repository, with one line at Info per
+such folder tree (one line without git). Paths under the package folder and the .NET
+installation are never looked up.
 
 - What changes is only the **path** of a file: the project files the script names (msbuild then
   evaluates them so spelled), the description's `project`, `sources` (the F# list; for C# the

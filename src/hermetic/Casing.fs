@@ -86,28 +86,6 @@ module Casing =
                         else None)
                 Ok (ofFiles root files)
 
-    /// <summary>
-    /// The indexes of an import, one per repository: the index of the repository a folder (a
-    /// project's) is in -- its top found by `git rev-parse --show-cdup` from that folder, every
-    /// file of it listed once (`read`) -- or why there is none. A project is resolved against its
-    /// own repository, whatever repository (if any) the build's project root is in.
-    /// </summary>
-    type Indexes () =
-        let ofTop = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<Index, string>>> ()
-        let ofDir = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<Index, string>>> ()
-
-        /// The index of the repository `dir` (absolute) is in.
-        member _.For (dir: string) : Result<Index, string> =
-            let dir = (slash dir).TrimEnd '/'
-            ofDir.GetOrAdd(dir, fun d ->
-                lazy (
-                    if not (Directory.Exists d) then Error (sprintf "'%s' is no folder" d) else
-                    match git d "rev-parse --show-cdup" with
-                    | Error e -> Error e
-                    | Ok cdup ->
-                        let top = (slash (Path.GetFullPath (Path.Combine (d, cdup.Trim ())))).TrimEnd '/'
-                        ofTop.GetOrAdd(top, fun t -> lazy (read t)).Value)).Value
-
     /// The one spelling of `rel` among `spellings`: the exact one when the index has it, the only
     /// one, else a failure naming them all.
     let private pick (index: Index) (rel: string) (spellings: string list) =
@@ -150,33 +128,115 @@ module Casing =
             | None -> path
 
     /// <summary>
-    /// What one import resolves with: the index (`None` without git or outside a repository:
-    /// every path stays as it is) and every difference it found between a path as the project
-    /// spelled it and the repository's spelling, (project's, repository's), once each.
+    /// The repositories of one import: for each path, the git index of the repository that
+    /// contains it -- found from the nearest existing folder of the path by
+    /// `git rev-parse --show-cdup`, cached per folder; a submodule is a repository of its own --
+    /// and each repository's index read once (`read`). Paths under `excluded` (the package
+    /// folder, the .NET installation: never repository files) are not looked up.
     /// </summary>
-    type Resolver (index: Index option) =
+    type Repos (excluded: string list) =
+        let excluded = excluded |> List.filter ((<>) "") |> List.map (fun e -> (slash e).TrimEnd '/' + "/")
+        let topOfDir = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<string, string>>> ()
+        let indexOfTop = Collections.Concurrent.ConcurrentDictionary<string, Lazy<Result<Index, string>>> ()
+        let canonicalOfTop = Collections.Concurrent.ConcurrentDictionary<string, Lazy<string>> ()
+        let outside = Collections.Concurrent.ConcurrentDictionary<string, string> ()
+
+        /// The top of the repository the folder `dir` (existing, '/') is in, spelled as `dir` is.
+        let topOf (dir: string) =
+            topOfDir.GetOrAdd(dir, fun d ->
+                lazy (
+                    match git d "rev-parse --show-cdup" with
+                    | Error e -> Error e
+                    | Ok cdup -> Ok ((slash (Path.GetFullPath (Path.Combine (d, cdup.Trim ())))).TrimEnd '/'))).Value
+
+        let indexOf (top: string) =
+            indexOfTop.GetOrAdd(top.ToLowerInvariant (), fun _ -> lazy (read top)).Value
+
+        let rec existing (dir: string) =
+            if dir = "" then None
+            elif Directory.Exists dir then Some dir
+            else match Path.GetDirectoryName dir with null -> None | parent -> existing (slash parent)
+
+        /// A repository's top in its own spelling: a submodule's path as its superproject's index
+        /// has it (the gitlink entry), recursively; a top in no repository as it is.
+        let rec canonical (top: string) : string =
+            canonicalOfTop.GetOrAdd(top, fun t ->
+                lazy (
+                    match Path.GetDirectoryName t |> Option.ofObj |> Option.map slash |> Option.bind existing with
+                    | None -> t
+                    | Some parent ->
+                        match topOf parent with
+                        | Error _ -> t
+                        | Ok outer when t.Length > outer.Length && t.[outer.Length] = '/' ->
+                            let outer' = canonical outer
+                            match indexOf outer' with
+                            | Ok index -> resolve index (outer' + t.Substring outer.Length)
+                            | Error _ -> outer' + t.Substring outer.Length
+                        | Ok _ -> t)).Value
+
+        /// `path` (absolute; `\` read as `/`) in the spelling of the repository that contains it
+        /// (`resolve` against that repository's index, its top in its own spelling); a path
+        /// excluded, in no repository or that its index does not have unchanged.
+        member _.Resolve (path: string) : string =
+            let p = slash path
+            let p = if p.Contains "/../" || p.Contains "/./" then slash (Path.GetFullPath p) else p
+            let trailing = p.Length > 1 && p.EndsWith "/"
+            let p' = if trailing then p.TrimEnd '/' else p
+            if excluded |> List.exists (fun e -> (p' + "/").StartsWith (e, StringComparison.OrdinalIgnoreCase)) then path else
+            match existing p' |> Option.orElse (Path.GetDirectoryName p' |> Option.ofObj |> Option.bind (slash >> existing)) with
+            | None -> path
+            | Some dir ->
+                match topOf dir with
+                | Error reason ->
+                    outside.TryAdd ((if reason.StartsWith "git could not be run" then "" else dir), reason) |> ignore
+                    path
+                | Ok top ->
+                    let top' = canonical top
+                    let result =
+                        if p' = top then top'
+                        else
+                            match indexOf top' with
+                            | Error _ -> p'
+                            | Ok index ->
+                                match resolve index (top' + p'.Substring top.Length) with
+                                | r when r = top' + p'.Substring top.Length && top' <> top -> p'
+                                | r -> slash r
+                    let result = result + (if trailing then "/" else "")
+                    if result = p then path else result
+
+        /// The folders (topmost, sorted) whose files are in no repository, with why: "" for no git.
+        member _.Outside : (string * string) list =
+            let dirs = outside |> Seq.map (fun kv -> kv.Key, kv.Value) |> Seq.sortBy fst |> List.ofSeq
+            dirs |> List.filter (fun (d, _) -> not (dirs |> List.exists (fun (o, _) -> o <> d && o <> "" && d.StartsWith (o + "/"))))
+
+    /// <summary>
+    /// What one project of an import resolves with: the import's repositories (`None`: every path
+    /// stays as it is) and every difference it found between a path as the project spelled it and
+    /// the repository's spelling, (project's, repository's), once each.
+    /// </summary>
+    type Resolver (repos: Repos option) =
         let found = Collections.Concurrent.ConcurrentDictionary<string, string> ()
 
         /// A resolver that changes nothing.
-        static member Unchanged = Resolver (Option<Index>.None)
+        static member Unchanged = Resolver (Option<Repos>.None)
 
-        /// `path` (absolute) in the repository's spelling (`resolve`), the difference noted.
+        /// `path` (absolute) in the repository's spelling (`Repos.Resolve`), the difference noted.
         member _.Path (path: string) : string =
-            match index with
+            match repos with
             | None -> path
-            | Some i ->
-                let r = resolve i path
-                if slash r <> slash path then
+            | Some r ->
+                let resolved = r.Resolve path
+                if slash resolved <> slash path then
                     let p = slash path
-                    found.TryAdd ((if p.Contains "/../" || p.Contains "/./" then slash (Path.GetFullPath p) else p), r) |> ignore
-                r
+                    found.TryAdd ((if p.Contains "/../" || p.Contains "/./" then slash (Path.GetFullPath p) else p), resolved) |> ignore
+                resolved
 
-        /// `path` (absolute) in the repository's spelling (`resolve`), the difference not noted:
-        /// what the caller reports in a line of its own (a reference the import does not rewrite).
+        /// `path` (absolute) in the repository's spelling, the difference not noted: what the
+        /// caller reports in a line of its own (a reference the import does not rewrite).
         member _.Peek (path: string) : string =
-            match index with
+            match repos with
             | None -> path
-            | Some i -> resolve i path
+            | Some r -> r.Resolve path
 
         /// `path` relative to the folder `dir` (absolute), or absolute, in the repository's
         /// spelling (`Path`); in the form it was given -- relative to `dir` with `/` when it
