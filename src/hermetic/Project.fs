@@ -227,8 +227,9 @@ module Project =
     /// so this function does no file walking of its own beyond the msbuild result and the
     /// files the command line names. Fails when the command line rebuilt from the structured
     /// entry (`Entry.Args`) is not exactly msbuild's -- the fidelity guarantee of brief §8c,
-    /// checked here rather than trusted.
-    let internal parseImport (framework: string) (resultFile: string) (imports: string list) (pin: SdkPin) (packages: Lock.Package list) =
+    /// checked here rather than trusted. Every repository file in the repository's spelling
+    /// (`casing`: the command line, the resx, the imports, the project references).
+    let internal parseImportWith (casing: Casing.Resolver) (framework: string) (resultFile: string) (imports: string list) (pin: SdkPin) (packages: Lock.Package list) =
         let root = File.ReadAllText resultFile |> ToolJson.parse
         let items name =
             ToolJson.field "Items" root |> Option.bind (ToolJson.field name)
@@ -250,6 +251,7 @@ module Project =
         let args =
             if isFSharp then fscArgs |> FscArgs.absolutize directory
             else items "CscCommandLineArgs" |> List.map identity |> CscArgs.absolutize directory
+            |> List.map (Casing.argument isFSharp casing)
         if List.isEmpty args then
             failwithf "'%s': the design-time build reported no compiler command line -- CoreCompile did not run (skipped as up to date, or the project has no C# or F# compile step)" (prop "MSBuildProjectFullPath")
         let slash (p: string) = p.Replace ('\\', '/')
@@ -303,8 +305,8 @@ module Project =
         // not subject to this) is reliable.
         let resolveAgainstProject (path: string) =
             let path = slash path
-            if Path.IsPathRooted path then path
-            else Path.GetFullPath (Path.Combine (directory, path)) |> slash
+            if Path.IsPathRooted path then casing.Path path
+            else Path.GetFullPath (Path.Combine (directory, path)) |> slash |> casing.Path
 
         // `PrepareResources` compiles every resx `EmbeddedResource` and records where: prefer
         // `OutputResource` (`GenerateResource`'s own, exact, relative to the project directory)
@@ -342,6 +344,7 @@ module Project =
         let imports =
             imports |> List.map slash
             |> List.filter (fun path -> not (sdkRoot <> "" && path.StartsWith (sdkRoot + "/")) && not (path.StartsWith baseIntermediate))
+            |> List.map casing.Path
 
         let dependencies tool (parsed: Dependencies) : Dependencies =
             { Compiler = { Tool = tool; Path = compilerPath; Sha256 = (if Lock.isSdkCompiler compilerPath then "" else Csc.sha256 compilerPath); Version = Csc.compilerVersion compilerPath }
@@ -371,7 +374,7 @@ module Project =
         let entry : Lock.Entry = {
             Compilation = compilation
             Evaluation =
-                { Project = prop "MSBuildProjectFullPath" |> slash
+                { Project = prop "MSBuildProjectFullPath" |> slash |> casing.Path
                   ProjectRefs = items "ProjectReference" |> List.map (identity >> resolveAgainstProject)
                   Imports = imports |> List.map (fun f -> { Path = f; Sha256 = FileHash.textSha256 f } : Lock.Hashed)
                   Sdk = prop "NETCoreSdkVersion"
@@ -397,6 +400,10 @@ module Project =
         match prop "SourceRevisionId" with
         | "" -> entry
         | sha -> entry |> Lock.mapText (Git.tokenize sha)
+
+    /// `parseImportWith`, the paths as msbuild spells them.
+    let internal parseImport (framework: string) (resultFile: string) (imports: string list) (pin: SdkPin) (packages: Lock.Package list) =
+        parseImportWith Casing.Resolver.Unchanged framework resultFile imports pin packages
 
     /// <summary>
     /// Imports the projects, for every framework in `options.Frameworks`, and writes the one
@@ -489,8 +496,18 @@ module Project =
             // msbuild runs in the project root (`runMsbuild`): it is given full paths, a
             // relative `Projects` entry or `Output` being the current directory's as before
             let output = Path.GetFullPath options.Output
+            // the repository's spelling of the files the lock names: the git index of the
+            // repository each project is in, read once; without git or for a project in no
+            // repository the project's spelling, said once
+            let! ctxOptions = getCtxOptions ()
+            let root = Path.GetFullPath ctxOptions.ProjectRoot
+            let repos =
+                let home = System.Environment.GetFolderPath System.Environment.SpecialFolder.UserProfile
+                Casing.Repos [ packageRoot; Path.Combine (home, ".nuget", "packages"); defaultArg (DotNetFwk.dotnetRoot ()) "" ]
+            let printed = System.Collections.Generic.HashSet<string> ()
             for project in options.Projects do
-                let projectFile = Path.GetFullPath project
+                let casing = Casing.Resolver (Some repos)
+                let projectFile = casing.Path (Path.GetFullPath project)
                 let projectDir = Path.GetDirectoryName projectFile
                 let pinFile, pin = Lock.sdkPinAt projectDir
 
@@ -555,7 +572,7 @@ module Project =
                         do! msbuild ([ projectFile; "-nologo" ] @ switches @ [ sprintf "-pp:%s" preprocessed ]) project
 
                         let imports = File.ReadAllText preprocessed |> parseImports
-                        let entry = parseImport framework dump imports pin graph
+                        let entry = parseImportWith casing framework dump imports pin graph
                         File.Delete dump
                         File.Delete preprocessed
                         ofProject.Add entry
@@ -626,6 +643,15 @@ module Project =
                 // and the ref file (or `packed-refs`) it resolves through are the files that
                 // change when the commit does
                 do! needFiles (Filelist (Git.headFiles projectDir |> List.map File.make))
+
+                // each file the project spells otherwise than the repository, once
+                for difference in casing.Differences do
+                    let line = Casing.line root difference
+                    if printed.Add line then do! trace Info "  casing (%s): %s" (Path.GetFileName projectFile) line
+
+            for dir, reason in repos.Outside do
+                if dir = "" then do! trace Info "import: the files keep the project's spelling, the repository's is not checked: %s" reason
+                else do! trace Info "import: the files under '%s' are in no git repository: they keep the project's spelling" dir
 
             let lock : Lock.Document = {
                 Configuration = options.Configuration

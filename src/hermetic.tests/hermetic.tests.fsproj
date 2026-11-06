@@ -39,6 +39,7 @@
     <Compile Include="AppTests.fs" />
     <Compile Include="RunFolderTests.fs" />
     <Compile Include="HermeticVarsTests.fs" />
+    <Compile Include="CasingTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <!-- The engine (package `Xake`) comes with src/dotnet's package reference. -->

@@ -47,3 +47,8 @@ module Resx =
     /// Returns whether it wrote.
     let refresh (resxFile: string) (resourcesFile: string) : bool =
         ResxFormat.refresh resxFile resourcesFile
+
+    /// `refresh`, each `ResXFileRef` read from the file `files` records for its spelling ((the
+    /// resx's spelling, the file); `ResxFormat.readWith`).
+    let refreshWith (files: (string * string) list) (resxFile: string) (resourcesFile: string) : bool =
+        ResxFormat.refreshWith files resxFile resourcesFile

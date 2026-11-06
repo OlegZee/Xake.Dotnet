@@ -16,10 +16,10 @@ type ``Compiler record shapes``() =
     static member Records : obj[][] = [|
         [| typeof<CscTypes.CscSettingsType>; [ "Platform"; "Target"; "Out"; "Src"; "Ref"; "RefGlobal"; "Resources"; "Define"; "Unsafe"; "TargetFramework"; "CommandArgs"; "FailOnError"; "CscPath"; "Toolset"; "Server"; "Project"; "Throttle" ] |]
         [| typeof<CscTypes.RunOptions>; [ "FailOnError"; "CscPath"; "Server"; "Environment"; "Throttle" ] |]
-        [| typeof<Csc>; [ "Name"; "Framework"; "Directory"; "Options"; "Defines"; "Sources"; "Generated"; "Resources"; "RuntimeConfig"; "Dependencies" ] |]
+        [| typeof<Csc>; [ "Name"; "Framework"; "Directory"; "Options"; "Defines"; "Sources"; "Generated"; "Resources"; "ResxFiles"; "RuntimeConfig"; "Dependencies" ] |]
         [| typeof<FscTypes.FscSettingsType>; [ "Platform"; "Target"; "Out"; "Src"; "Ref"; "RefGlobal"; "Resources"; "Define"; "TargetFramework"; "FscVersion"; "Doc"; "CommandArgs"; "FailOnError"; "NoFramework"; "Tailcalls"; "Project"; "Throttle" ] |]
         [| typeof<FscTypes.FscRunOptions>; [ "FailOnError"; "FscPath"; "Environment"; "Throttle" ] |]
-        [| typeof<Fsc>; [ "Name"; "Framework"; "Directory"; "Options"; "Defines"; "Sources"; "Generated"; "Resources"; "RuntimeConfig"; "Dependencies" ] |]
+        [| typeof<Fsc>; [ "Name"; "Framework"; "Directory"; "Options"; "Defines"; "Sources"; "Generated"; "Resources"; "ResxFiles"; "RuntimeConfig"; "Dependencies" ] |]
     |]
 
     [<TestCaseSource("Records")>]

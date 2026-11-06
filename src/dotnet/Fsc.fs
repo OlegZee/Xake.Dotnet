@@ -157,6 +157,10 @@ type Fsc = {
     /// `.resx` files this compilation embeds: (resx path, `.resources` output path), both
     /// absolute; the runner compiles the output whenever it is missing
     Resources: (string * string) list
+    /// The files the `.resx` of `Resources` name (`ResXFileRef`), as an import recorded them
+    /// (`ResxFile`: the resx's spelling read from the repository's); empty for a composed
+    /// compilation, whose resx names its files as they are
+    ResxFiles: ResxFile list
     /// The `<output>.runtimeconfig.json` the rule declares as a target next to the output
     /// (absolute), `None` when it declares none; the runner writes it after a successful
     /// compile, with the content `dotnet build` writes for `Framework`
@@ -211,6 +215,7 @@ module Fsc =
           Fsc.Sources = List.ofSeq sources
           Fsc.Generated = []
           Fsc.Resources = []
+          Fsc.ResxFiles = []
           Fsc.RuntimeConfig = None
           Fsc.Dependencies =
             { Compiler = { Tool = "fsc"; Path = ""; Sha256 = ""; Version = "" }
@@ -245,6 +250,7 @@ module Fsc =
             Fsc.Sources = c.Sources |> List.map f
             Fsc.Generated = c.Generated |> List.map (fun (path, content) -> f path, content)
             Fsc.Resources = c.Resources |> List.map (fun (resx, resources) -> f resx, f resources)
+            Fsc.ResxFiles = c.ResxFiles |> List.map (fun r -> let path = f r.Path in { r with Resx = f r.Resx; Path = path; Sha256 = (if path = r.Path then r.Sha256 else "") })
             Fsc.RuntimeConfig = c.RuntimeConfig |> Option.map f
             Fsc.Dependencies =
                 { c.Dependencies with References = c.Dependencies.References |> List.map rewriteReference } }
@@ -272,6 +278,7 @@ module Fsc =
           for (resx, resources) in f.Resources do
               yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = resx }
               yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = resources }
+          for r in f.ResxFiles do yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = r.Path }
           for p in Option.toList f.RuntimeConfig do yield { HermeticMode.Role = HermeticMode.Other; HermeticMode.Path = p } ]
         |> List.distinctBy (fun i -> i.Path)
 
@@ -581,6 +588,7 @@ module Fsc =
                       yield compiler.Path, compiler.Sha256 ]
                   Generated = f.Generated
                   Resources = f.Resources
+                  ResxFiles = f.ResxFiles |> List.map (fun r -> r.Resx, r.Ref, r.Path)
                   RuntimeConfig = f.RuntimeConfig |> Option.map (fun path -> path, CompilerRunner.runtimeConfigContent f.Name f.Framework)
                   Environment = options.Environment
                   Directory = f.Directory
