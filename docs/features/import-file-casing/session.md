@@ -79,7 +79,14 @@ the folder in the IDE, or test folders outside the workspace, would remove it: a
 the owner). Counts: this worktree, branch: 13 failing runs of 38; branch outside the IDE: 0 of
 8; tip after the redesign: 4 of 5 green here, 5 of 5 in a row outside the IDE workspace.
 
+Consumer rerun on Linux from 903129b (2026-11-06): 13 paths corrected, no stale lock, no name
+changed. Two gaps, fixed in 111db26: `ResxFiles` was filtered to the project root (now: a
+repository file under any root of the lock, `recordsResxFile`; the log line says whether it was
+recorded), and the include scan now follows csc's order (the source's folder, then the project
+folder). Full `build test` 5 of 5 in a row in a temporary worktree under `$TMPDIR` (outside the
+IDE's workspace), `build.fsc.fsx clean build check` green.
+
 ## Next step
 
-The consumer's re-import on Linux-relevant spellings from the pushed tip (the coordinator reruns
-it); then the PR. Open: whether to keep test folders out of the IDE's workspace (owner).
+The coordinator's Linux consumer rerun from the pushed tip (the resx images and the includes);
+then the PR. Open: whether to keep test folders out of the IDE's workspace (owner).

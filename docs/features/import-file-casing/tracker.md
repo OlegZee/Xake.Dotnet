@@ -23,6 +23,7 @@ One line per item. Status as of 2026-11-06.
 - [x] WPF: the markup inputs (`Page`, `ApplicationDefinition`, `Resource`) in `Evaluation.Imports` and the markup run's referenced outputs in the repository's spelling; BAML keys, `Recorded.Markup` identities and `g.resources` bytes stay msbuild's; fixture test (a miscased Page and Resource)
 - [x] Each path in the spelling of the repository that contains it (`Casing.Repos`: per folder `rev-parse --show-cdup`, one `ls-files` per repository; submodules their own repositories; package folder and .NET installation excluded; one Info line per folder tree in no repository); fixture: a project in a submodule of a sibling repository behind a declared root
 - [x] Flake root cause: the IDE (VS Code C# Dev Kit) builds the test fixtures of worktrees under its workspace while the tests run (see session)
+- [x] Consumer rerun on Linux (903129b, the coordinator): 13 paths corrected; two gaps fixed: `ResxFiles` recorded under any root of the lock (not only the project root; the log says what happens), doc `<include>` looked up as csc does (the source's folder, then the project's); fixture extended (a resx image and a project-folder include in the sibling's submodule, built from the lock)
 
 ## Open
 
