@@ -28,6 +28,12 @@ Branch `feature/wpf-record` from `dev` at `v4.0.0`. Goal and design: `brief.md`;
   green (478), fsc `build check` green. Packed as `4.1.0-wpf.3`; a consumer's re-import changed
   no lock (its XAML names no referenced project, so no `Markup` key).
 
+- On Windows (.NET Framework 4.7.2) a consumer's WPF application, every assembly compiled from
+  its lock on macOS, opened its main window and rendered reports: the recorded BAML and the
+  themes load at run time.
+- PR #9 merged into `dev`; tagged `v4.1.0` (2026-11-06).
+
 ## Next step
 
-The PR to `dev` and the 4.1.0 release. Open: a WPF window from a consumer's output on Windows.
+None: the feature is released. A version that changes per build (the brief) would be a feature
+of its own.

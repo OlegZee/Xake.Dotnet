@@ -6,7 +6,7 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
-## 4.1.0 (unreleased)
+## 4.1.0 (2026-11-06)
 
 - **WPF projects are recorded** (S69; `Import.record` refused them). A project compiling XAML
   (`UseWPF` with `Page`/`ApplicationDefinition` items) gets runs of its own in which the markup

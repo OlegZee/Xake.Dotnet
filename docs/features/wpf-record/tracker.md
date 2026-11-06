@@ -1,15 +1,17 @@
 # Tracker: wpf-record
 
-One line per item. Status as of 2026-11-05.
+One line per item. Status as of 2026-11-06: released in 4.1.0.
 
 ## Open
 
-- [x] Decide: referenced identities pinned by the BAML -> record and verify (brief, "Open decisions", 2026-11-06)
-- [x] Implement: BAML identities in the entry (`Recorded.Markup`, `Baml`), verified at build time (`Locks.staleMarkup`)
-- [ ] Run a consumer's WPF output on Windows (the build is verified on macOS; a WPF window is not)
-- [ ] PR `feature/wpf-record` -> `dev`; release 4.1.0
+(none)
 
 ## Done
+
+- [x] Decide: referenced identities pinned by the BAML -> record and verify (brief, "Open decisions", 2026-11-06)
+- [x] Implement: BAML identities in the entry (`Recorded.Markup`, `Baml`), verified at build time (`Locks.staleMarkup`)
+- [x] A consumer's WPF application built from locks on macOS ran on Windows (.NET Framework 4.7.2): the main window opens, reports render (2026-11-06)
+- [x] PR #9 `feature/wpf-record` -> `dev`; tag `v4.1.0` (2026-11-06)
 
 - [x] Analysis and probes (brief, "Evidence"); feature folder (2026-11-05)
 - [x] Fixture: a WPF library (pass-one window with code-behind, pass-two page rooted in its own type, a `Resource` file) referencing a library; `net8.0-windows` and `net472`
