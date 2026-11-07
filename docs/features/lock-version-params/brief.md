@@ -96,14 +96,17 @@ take different suffixes (a distribution variant adds `-eu` to one group only).
 
 ## Lock format changes
 
-- New token value `$(Version)` in `Generated` content, in `Evaluation.Properties.Version` and in
-  recorded application text files. Example of a recorded entry:
+- New token value `$(Version)` in `Generated` content and in `Evaluation.Properties.Version`;
+  a recorded `deps.json` gets `$(Version:<file>)` per project (see "Decisions taken"). Example
+  of a recorded entry:
   ```json
   "Evaluation": { "Properties": { "Version": "$(Version)", "VersionPrefix": "1.4.0", ... } },
   "Compilation": { "Generated": { "$(ProjectRoot)/obj/xake/core/netstandard2.0/Release/Core.AssemblyInfo.cs":
       "... AssemblyFileVersionAttribute(\"1.4.0.0\")] ... AssemblyInformationalVersionAttribute(\"$(Version)\")] ... AssemblyVersionAttribute(\"1.4.0.0\")] ..." } }
   ```
-  and in `deps.json`: `"core/$(Version)"`, `"core": "$(Version)"`.
+  and in `deps.json`: `"core/$(Version:core.dll)"`, `"core": "$(Version:core.dll)"` (the
+  version of each project's runtime file, resolved by `Apps.depsResolved` when the application
+  is written).
 - New kept property `VersionPrefix`.
 - No `FormatVersion` bump. An older Xake.Dotnet reading such a lock already fails on the token in
   `Generated` (no matching `Versions` mask), before it would copy a token into `deps.json`, because

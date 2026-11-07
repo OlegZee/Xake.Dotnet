@@ -253,14 +253,14 @@ from the built `core.dll`, whatever group the application is in.
 
 ### A variant tag on one group
 
-A distribution variant adds `-eu` to one group. Appending to an empty suffix gives a double dash:
+A distribution variant adds `-eu` to one group. Appending to an empty suffix gives `-eu`, which
+the build refuses (a suffix must not start with `-`, see [A valid suffix](#a-valid-suffix)):
 
 ```fsharp
-"brands/eu/**", recipe { let! s = vars.Suffix in return s + "-eu" }   // SUFFIX= gives 3.1.0--eu
+"brands/eu/**", recipe { let! s = vars.Suffix in return s + "-eu" }   // SUFFIX= fails the build
 ```
 
-`3.1.0--eu` is a SemVer pre-release (`-eu` is a legal identifier), so it fails nowhere; it is just
-not what was meant. Handle the empty case:
+Handle the empty case:
 
 ```fsharp
 [ "brands/eu/**", recipe {
@@ -354,6 +354,10 @@ What loses the dependency (an assembly keeps the old version, or groups get diff
 | `DateTime.Now` (differs per assembly, recorded nowhere) | a variable the CI sets once per build (a run number) |
 | `File.ReadAllText "version.txt"` | `do! need [ "version.txt" ]` before reading it |
 
+The masks themselves are script code, not a dependency: editing `Versions` or `VersionSuffixes`
+(a new mask, moving a group to `Versions`) rebuilds nothing while the variables read last time
+keep their values. Clean the outputs after such an edit.
+
 ## Packages
 
 `Locks.versionOf settings lockPath fwk : Recipe<ExecContext, string>` is the entry's `Version` as
@@ -397,15 +401,18 @@ target "out/pkg/(name:*).nupkg" {
 
 ## A valid suffix
 
-Nothing checks the suffix: it is written into the assemblies as given. Keep it a SemVer 2.0
-pre-release label:
+The build checks the suffix of `VersionSuffixes` (`Locks.suffixProblem`) and fails, naming the
+project, the mask and the reason, unless it is empty or a SemVer 2.0 pre-release label:
 
 - dot-separated identifiers of `0-9A-Za-z-`, none empty: `ci.512`, `beta.3`, `alpha-7`; not
   `ci_512`, `feature/x`, `ci..1`, a leading or trailing `.`;
 - no leading zero in a numeric identifier: `ci.0512` is invalid;
-- no `+`: build metadata is cut from the `deps.json` version but kept in `InformationalVersion` and
-  `Locks.versionOf`, so the two would differ;
-- no leading `-`: the build adds the dash (`-ci` gives `3.1.0--ci`).
+- no `+`: build metadata would be cut from the `deps.json` version but kept in
+  `InformationalVersion` and `Locks.versionOf`, so the two would differ;
+- no leading `-`: the build adds the dash (`-ci` would give `3.1.0--ci`, legal SemVer but not
+  what was meant).
+
+The masks of `Versions` give the whole version and are not checked.
 
 Ordering: an identifier compares numerically only when it is all digits, so `ci.10` sorts after
 `ci.9`, but `ci-10` sorts before `ci-9`. A dot in the label makes a SemVer 2.0 package, which
@@ -421,6 +428,7 @@ NuGet clients before 4.3 do not see.
 | `the import is asked to record the version as a token (RecordOptions.VersionSuffix) and the script sets the property VersionSuffix too; drop one` | import | remove `VersionSuffix` from `RecordOptions.Properties` |
 | `the version marker '<m>' (RecordOptions.VersionSuffix) must be letters and digits, starting with a letter` | import | use `Import.versionMarker` |
 | ``'<name>': the lock '<lock>' needs a version ($(Version)) and no mask of `Versions` or `VersionSuffixes` matches '<path>' (<masks>)`` | build | add a mask; `**` last |
+| ``'<name>': the version suffix '<s>' (`VersionSuffixes`, mask '<mask>') for '<path>' is not a SemVer pre-release label: <why>`` | build | fix the suffix ([A valid suffix](#a-valid-suffix)) |
 | ``'<name>': the lock '<lock>' needs a version ($(Version)) and records no VersionPrefix for the suffix of `VersionSuffixes` ...`` | build | a `Versions` mask for that project, or re-import with the option |
 | `the deps.json takes the version of '<file>' from its InformationalVersion, which '<path>' does not have` | build, application | the referenced output was built without one |
 | `'<name>' (<fwk>): the lock '<lock>' is stale: '.../Directory.Build.props' changed since the import that wrote it; run the import again` | build | a new prefix: re-import, commit |

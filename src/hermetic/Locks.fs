@@ -437,6 +437,27 @@ module Locks =
         let covers (mask: string) = Path.matches (normal mask) "" (normal projectPath)
         versions |> List.tryFind (fst >> covers) |> Option.map snd
 
+    /// <summary>
+    /// Why `suffix` (of `VersionSuffixes`) is not a SemVer 2.0 pre-release label the build can
+    /// append to a prefix: `None` when it is one, or empty. A leading `-` (the build adds the
+    /// dash) and build metadata (`+`: the `deps.json` drops it, `versionOf` would not) are refused
+    /// too. Pure.
+    /// </summary>
+    let suffixProblem (suffix: string) : string option =
+        let digit c = c >= '0' && c <= '9'
+        let allowed c = digit c || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c = '-'
+        let identifier (s: string) =
+            if s = "" then Some "an empty identifier (a leading, trailing or double '.')"
+            elif s |> Seq.exists (allowed >> not) then
+                Some (sprintf "'%s' has a character other than 0-9, A-Z, a-z and '-'" s)
+            elif s.Length > 1 && s.[0] = '0' && s |> Seq.forall digit then
+                Some (sprintf "the numeric identifier '%s' has a leading zero" s)
+            else None
+        if suffix = "" then None
+        elif suffix.Contains "+" then Some "it has build metadata ('+'), which the deps.json drops"
+        elif suffix.StartsWith "-" then Some "it starts with '-' (the build adds the dash)"
+        else suffix.Split '.' |> Array.tryPick identifier
+
     /// The files an entry's import read (`Evaluation.Imports`: the project file,
     /// `Directory.Build.props`, an application's `App.config`, ...) that are missing or no
     /// longer have the hash the lock records. Text: a file whose line ends alone differ (a
@@ -590,10 +611,15 @@ module Locks =
                 let! version = var
                 return version
             | None ->
-                match versionFor (expanded settings.VersionSuffixes) projectPath, entry.Evaluation.Properties |> Map.tryFind "VersionPrefix" with
-                | Some suffix, Some prefix ->
+                let suffixes = settings.VersionSuffixes |> List.map (fun (mask, v) -> Roots.expand roots mask, (mask, v))
+                match versionFor suffixes projectPath, entry.Evaluation.Properties |> Map.tryFind "VersionPrefix" with
+                | Some (mask, suffix), Some prefix ->
                     let! suffix = suffix
-                    return (if suffix = "" then prefix else prefix + "-" + suffix)
+                    match suffixProblem suffix with
+                    | Some why ->
+                        return failwithf "'%s': the version suffix '%s' (`VersionSuffixes`, mask '%s') for '%s' is not a SemVer pre-release label: %s"
+                                    entry.Name suffix mask projectPath why
+                    | None -> return (if suffix = "" then prefix else prefix + "-" + suffix)
                 | Some _, None ->
                     return failwithf "'%s': the lock '%s' needs a version (%s) and records no VersionPrefix for the suffix of `VersionSuffixes` (a lock not imported with Import.RecordOptions.VersionSuffix); give '%s' a mask of `Versions`"
                                 entry.Name lockPath VersionToken projectPath

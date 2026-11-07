@@ -14,7 +14,8 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
   `Version` property) and `$(Version:<file>)` for the projects' versions in a `deps.json`; the
   build fills in the recorded prefix and a suffix per project mask. A CI build stamps its build
   number into assemblies, `deps.json` and packages without an import, and imports with any
-  suffix write the same lock. `AssemblyVersion` and `FileVersion` stay literals. Without the
+  suffix write the same lock. `AssemblyVersion` and `FileVersion` stay literals; a suffix that is
+  not a SemVer pre-release label (`+`, `_`, a leading `-`) fails the build. Without the
   option nothing changes; with it a re-import changes each entry once. How-to:
   [hermetic/versioning.md](hermetic/versioning.md). `Locks.Settings` and `Import.RecordOptions`
   have a new field each: a script that builds them as a full record literal no longer compiles;

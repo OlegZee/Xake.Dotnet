@@ -579,24 +579,28 @@ module internal RecordKit =
 
     let recordDefault = { Import.RecordOptions.Default with LockOf = lockOf; OutOf = outOf }
 
-    /// The fixture's outputs of configuration `cfg`, built from the locks.
-    let build (options: ExecOptions) (label: string) (cfg: string) =
+    /// The fixture's outputs of configuration `cfg`, built from the locks with `settings`.
+    let buildWith (options: ExecOptions) (label: string) (cfg: string) (settings: Locks.Settings) =
         let compile = recipe {
             let! cfg = getRuleMatch "cfg"
             let! fwk = getRuleMatch "fwk"
             let! name = getRuleMatch "name"
-            do! Locks.compileAs (lockOf name cfg) fwk [] }
+            do! Locks.compile settings (lockOf name cfg) fwk }
         let doc = recipe {
             let! cfg = getRuleMatch "cfg"
             let! fwk = getRuleMatch "fwk"
             let! name = getRuleMatch "name"
-            do! Locks.doc Locks.Settings.Default (lockOf name cfg) fwk }
+            do! Locks.doc settings (lockOf name cfg) fwk }
         run options label
             [ command "build" { do! Locks.needAll (!! "*/xake.project.json") cfg lockOf outOf }
               "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile
               "out/(cfg:*)/(fwk:*)/(name:*)/*.exe" ..> compile
               "out/(cfg:*)/(fwk:*)/(name:*)/*.xml" ..> doc ]
             [ "build" ]
+
+    /// The fixture's outputs of configuration `cfg`, built from the locks.
+    let build (options: ExecOptions) (label: string) (cfg: string) =
+        buildWith options label cfg Locks.Settings.Default
 
     /// The run folders (`run/<cfg>/<fwk>/<name>/`, `Locks.runFolderWith` by `mode`) of every
     /// application and test project of configuration `cfg`, over the fixture's per-project
@@ -934,6 +938,46 @@ type ``Import record WPF``() =
         File.AppendAllText ("wpf/Local.xaml", "<!-- edited -->\n")
         let stale = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-wpf-stale" "Release")
         Assert.That(string stale, Does.Contain "run the import again")
+
+    /// Acceptance 9 of the version token: the BAML (`g.resources`) and `Recorded.Markup` name
+    /// `AssemblyVersion` only, which the marker does not reach, so they are the same with and
+    /// without `RecordOptions.VersionSuffix`. The library takes its version from `VersionPrefix`
+    /// here (the token reaches it); `VERSION` is emptied for the import without the option, which
+    /// would take it as `$(Version)`.
+    [<Test>]
+    member x.``the BAML and Recorded.Markup are the same with and without the version token``() =
+        let fwks = [ "net8.0-windows"; "net472" ]
+        let recordWith (label: string) (record: Import.RecordOptions) (settings: Locks.Settings) =
+            wpfFixture ()
+            File.WriteAllText ("lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>netstandard2.0</TargetFramework><VersionPrefix>1.0.0</VersionPrefix>" "")
+            RecordKit.import x.TestOptions (label + "-lib") record [ "lib/lib.csproj" ] |> ignore
+            RecordKit.buildWith x.TestOptions (label + "-build-lib") "Release" settings
+            RecordKit.import x.TestOptions (label + "-wpf") record [ "wpf/wpf.csproj" ] |> ignore
+            let doc = Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "wpf" "Release")
+            let markup = [ for e in doc.Entries -> e.Framework, e.Recorded |> Option.map (fun r -> r.Markup) |> Option.defaultValue [] ] |> List.sort
+            let resources = [ for fwk in fwks -> fwk, File.ReadAllBytes (sprintf "locks/wpf/Release.files/%s/wpf.g.resources" fwk) ]
+            File.ReadAllText (RecordKit.lockOf "lib" "Release"), File.ReadAllText (RecordKit.lockOf "wpf" "Release"), markup, resources
+        let saved = Environment.GetEnvironmentVariable "VERSION"
+        Environment.SetEnvironmentVariable ("VERSION", null)
+        try
+            let libPlain, _, markupPlain, resourcesPlain = recordWith "plain" RecordKit.recordDefault Locks.Settings.Default
+            let token = { RecordKit.recordDefault with VersionSuffix = Some Import.versionMarker }
+            let settings = { Locks.Settings.Default with VersionSuffixes = [ "**", recipe { return "ci.1" } ] }
+            let libToken, wpfToken, markupToken, resourcesToken = recordWith "token" token settings
+            // the option is in effect: both locks carry the token, the plain one does not
+            Assert.That(libPlain, Does.Not.Contain "$(Version)")
+            Assert.That(libToken, Does.Contain "\"Version\": \"$(Version)\"")
+            Assert.That(wpfToken, Does.Contain "\"Version\": \"$(Version)\"")
+            Assert.That(markupToken, Is.EqualTo markupPlain)
+            Assert.That(markupToken |> List.collect snd, Does.Contain "lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null")
+            for (fwk, plain), (_, token) in List.zip resourcesPlain resourcesToken do
+                Assert.That(token, Is.EqualTo plain, fwk + ": wpf.g.resources")
+            // and it builds with a suffix
+            RecordKit.buildWith x.TestOptions "token-build" "Release" settings
+            for fwk in fwks do
+                Assert.That(Apps.informationalVersion (Path.GetFullPath (sprintf "out/Release/%s/wpf/wpf.dll" fwk)), Is.EqualTo (Some "1.0.0-ci.1"), fwk)
+        finally
+            Environment.SetEnvironmentVariable ("VERSION", saved)
 
 
 /// `Import.record` takes `Page` items or `UseWPF` alone for no WPF project, and writes no host
@@ -1462,6 +1506,17 @@ type ``Version tokens``() =
         Assert.That(stray.Message, Does.Contain "app.deps.json")
 
     [<Test>]
+    member x.``a suffix is a SemVer pre-release label``() =
+        for ok in [ ""; "alpha-7"; "ci.512"; "beta.3"; "0"; "ci.0"; "x-y-z"; "rc.1-eu"; "a-" ] do
+            Assert.That(Locks.suffixProblem ok, Is.EqualTo None, ok)
+        for bad, why in [ "ci+1", "build metadata"; "-eu", "starts with '-'"; "ci_512", "'ci_512' has a character"
+                          "feature/x", "'feature/x' has a character"; "ci..1", "empty identifier"; ".ci", "empty identifier"
+                          "ci.", "empty identifier"; "ci.0512", "leading zero"; "été", "has a character" ] do
+            match Locks.suffixProblem bad with
+            | Some message -> Assert.That(message, Does.Contain why, bad)
+            | None -> Assert.Fail (sprintf "'%s' passes" bad)
+
+    [<Test>]
     member x.``the marker is a global property of the import; the script's own VersionSuffix fails``() =
         let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; VersionSuffix = Some m }
         Assert.That(Import.recordGlobals "/r/proj" options, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", m ])
@@ -1482,7 +1537,8 @@ type ``Import record version token``() =
     let marker = Import.versionMarker
     let appSuffix = Var.string (name = "APP_SUFFIX") |> withDefault "alpha-7"
     let coreSuffix = Var.string (name = "CORE_SUFFIX") |> withDefault "beta-3"
-    let schema = {| AppSuffix = appSuffix; CoreSuffix = coreSuffix |}
+    let coreVersion = Var.string (name = "CORE_VERSION") |> withDefault "7.7.7"
+    let schema = {| AppSuffix = appSuffix; CoreSuffix = coreSuffix; CoreVersion = coreVersion |}
     let record = { RecordKit.recordDefault with VersionSuffix = Some marker }
     let projects = [ "app/app.csproj"; "core/core.csproj"; "fixed/fixed.csproj" ]
     let suffixes = [ "app/**", recipe { let! s = appSuffix in return s }; "**", recipe { let! s = coreSuffix in return s } ]
@@ -1582,6 +1638,38 @@ type ``Import record version token``() =
         Assert.That(stamp (dll "Release" "net8.0" "core"), Is.EqualTo (snd before.[1]), "core unchanged")
         Assert.That(stamp (dll "Release" "net8.0" "fixed"), Is.EqualTo (snd before.[2]), "fixed unchanged")
         Assert.That(File.ReadAllText "out/Release/net8.0/app/app.deps.json", Does.Contain "\"app/3.1.0-alpha-8\"")
+
+        // a new suffix of core: core and the application that references it, whose deps.json
+        // names core's new version; fixed unchanged
+        let before = [ for d in [ dll "Release" "net8.0" "app"; dll "Release" "net8.0" "core"; dll "Release" "net8.0" "fixed" ] -> d, stamp d ]
+        let vars = [ "APP_SUFFIX", "alpha-8"; "CORE_SUFFIX", "beta-4" ]
+        let versions = x.Build "build-4" vars settings
+        Assert.That(product (dll "Release" "net8.0" "core"), Is.EqualTo "1.4.0-beta-4")
+        Assert.That(product (dll "Release" "netstandard2.0" "core"), Is.EqualTo "1.4.0-beta-4")
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0-alpha-8")
+        Assert.That(versions.["core|net8.0"], Is.EqualTo "1.4.0-beta-4")
+        Assert.That(stamp (dll "Release" "net8.0" "core"), Is.Not.EqualTo (snd before.[1]), "core rebuilt")
+        Assert.That(stamp (dll "Release" "net8.0" "app"), Is.Not.EqualTo (snd before.[0]), "app rebuilt")
+        Assert.That(stamp (dll "Release" "net8.0" "fixed"), Is.EqualTo (snd before.[2]), "fixed unchanged")
+        let written = File.ReadAllText "out/Release/net8.0/app/app.deps.json"
+        Assert.That(written, Does.Contain "\"core/1.4.0-beta-4\"")
+        Assert.That(written, Does.Contain "\"core\": \"1.4.0-beta-4\"")
+        Assert.That(written, Does.Not.Contain "beta-3")
+
+        // a mask of Versions wins over VersionSuffixes: the whole version for core (the masks
+        // are no dependency, so from clean outputs)
+        Directory.Delete ("out", true)
+        let versions = x.Build "build-versions" vars { settings with Versions = [ "core/**", coreVersion ] }
+        Assert.That(product (dll "Release" "net8.0" "core"), Is.EqualTo "7.7.7")
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0-alpha-8")
+        Assert.That(versions.["core|netstandard2.0"], Is.EqualTo "7.7.7")
+        Assert.That(File.ReadAllText "out/Release/net8.0/app/app.deps.json", Does.Contain "\"core/7.7.7\"")
+
+        // a suffix that is not a SemVer pre-release label fails the build, naming the mask
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-metadata" [ "CORE_SUFFIX", "ci+1" ] settings |> ignore)
+        Assert.That(e.Data0, Does.Contain "the version suffix 'ci+1'")
+        Assert.That(e.Data0, Does.Contain "mask '**'")
+        Assert.That(e.Data0, Does.Contain "build metadata")
 
         // an empty suffix: the prefix alone
         Directory.Delete ("out", true)
