@@ -60,6 +60,8 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Feature folders
 
+- `docs/features/satellites/`: satellite assemblies in locks (reopens S71); started 2026-11-07,
+  start with its `session.md`, "Next step".
 - `docs/features/lock-version-params/`: released in 4.2.0; open only the "Later" items of its
   `tracker.md` (`FileVersion` as a token, a `Pack` helper for dependency versions).
 - `docs/features/hermetic-windows/`: the remaining work of the hermetic-on-Windows findings (moved from
