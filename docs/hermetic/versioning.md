@@ -15,12 +15,35 @@ open Xake.Hermetic.Dotnet
 
 ## The model
 
+Two inputs make a project's version, by the .NET SDK's own rules (not Xake's):
+
+- the **prefix** (`VersionPrefix`, `3.1.0`): the release number, in the project or its
+  `Directory.Build.props`; it changes with a source edit;
+- the **suffix** (`ci.512`): the label of one build (branch, CI run number); the build gives it.
+
+From them the SDK derives four fields:
+
+| Field | The SDK's rule | Example | Where it shows |
+|---|---|---|---|
+| `Version` | prefix `-` suffix; the prefix alone for an empty suffix | `3.1.0-ci.512` | the package version, `deps.json`, `Locks.versionOf` |
+| `InformationalVersion` | `Version` | `3.1.0-ci.512` | the file's "Product version" |
+| `AssemblyVersion` | prefix `.0` | `3.1.0.0` | the assembly's identity: references, binding redirects, WPF BAML |
+| `FileVersion` | prefix `.0` | `3.1.0.0` | the file's "File version" |
+
+The suffix reaches only the first two: `AssemblyVersion` and `FileVersion` are four numbers
+(`a.b.c.d`), with no room for a label. A project that sets one of the four itself keeps what it
+sets.
+
+What the lock holds, with `RecordOptions.VersionToken`:
+
 ```
-Version = VersionPrefix          -  suffix
-          3.1.0                     ci.512
-          recorded in the lock      per build, from the script (Locks.Settings.VersionSuffixes)
-          (Directory.Build.props)   empty: the prefix alone, "3.1.0" (no trailing "-")
+Version, InformationalVersion   $(Version)          the build fills in prefix-suffix
+VersionPrefix                   3.1.0               recorded at import
+AssemblyVersion, FileVersion    3.1.0.0             literals, as without the option
 ```
+
+The suffix comes from the script at each build (`Locks.Settings.VersionSuffixes`, per project
+mask), so one lock serves every build. Where the token ends up:
 
 | Changes with the suffix | Stays `<prefix>.0` (a literal in the lock) |
 |---|---|
