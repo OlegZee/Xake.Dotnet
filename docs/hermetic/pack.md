@@ -66,8 +66,9 @@ fwk` (the version the assemblies carry), and a dependency on another project's p
 project's `Locks.versionOf` through a token of the script's: [versioning.md](versioning.md#packages).
 Nothing checks a stable package against a pre-release dependency (NuGet's NU5104).
 
-Not covered: satellite assemblies (not built yet), symbols packages, a `<files>` element with
-`exclude`.
+Not covered: symbols packages, a `<files>` element with
+`exclude`. Satellite assemblies built by `Locks.satellite` (4.3.0) go in like any built file, one
+wildcard per culture folder (`lib/net8.0/ja/*.resources.dll`); not tested yet.
 
 ## What `Pack.nupkg`/`Pack.zip` fix, and how
 

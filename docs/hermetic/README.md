@@ -290,6 +290,9 @@ and:
   `"resources"` lines are missing from `deps.json`; against 0.3.7-0.3.8 this is a regression
   for the package entries that shipped them. Recording msbuild's `GenerateSatelliteAssemblies`
   inputs is a later step.
+  Reopened in `Xake.Dotnet` 4.3.0: a project's own satellites are recorded and built on
+  request (`Locks.satellite`, [lock.md](lock.md#satellite-assemblies)); a referenced project's in a
+  run folder and `deps.json` are still not placed.
 - **The compile no longer copies copy-local files** (breaking against PR 3's previews):
   `Locks.compileAs` writes an application's `Files` and apphost only; the copy-local files and
   items are the run folder's. A script that ran an application from its output folder builds its

@@ -336,6 +336,10 @@ module Lock =
         /// The switches of every satellite's compile but the references, the resources, the
         /// output and the source (`/noconfig`, the key switches of the entry, `/optimize`, ...)
         Options: string list
+        /// The file names (no extension) of the entry's references the satellites take, as the
+        /// recording SDK's target filters them (SDK 10: `mscorlib`, `netstandard`,
+        /// `System.Runtime`); `None`: every reference of the entry (SDK 8)
+        References: string list option
         /// The assembly attributes of the satellite's source but `AssemblyCulture`, one per
         /// line as `WriteCodeFragment` writes them (`System.Reflection.AssemblyVersionAttribute("1.2.3.0")`);
         /// `None` when the project writes its attributes itself: the build reads them from the
@@ -1059,6 +1063,9 @@ module Lock =
                           |> String.concat ",\n"
                       yield
                           [ yield sprintf "%s\"Options\": [\n%s\n%s]" inner (list (s.Options |> List.map str)) inner
+                            match s.References with
+                            | Some names -> yield sprintf "%s\"References\": [\n%s\n%s]" inner (list (names |> List.map escape)) inner
+                            | None -> ()
                             match s.Attributes with
                             | Some lines -> yield sprintf "%s\"Attributes\": [\n%s\n%s]" inner (list (lines |> List.map (Roots.tokenizeText roots >> escape))) inner
                             | None -> ()
@@ -1151,6 +1158,7 @@ module Lock =
                          match field "Satellites" r with
                          | Some (JObject _ as s) ->
                              Some { Options = strings "Options" s
+                                    References = field "References" s |> Option.map (asArray >> List.choose asString)
                                     Attributes = field "Attributes" s |> Option.map (asArray >> List.choose asString >> List.map expand)
                                     Cultures =
                                       match field "Cultures" s with

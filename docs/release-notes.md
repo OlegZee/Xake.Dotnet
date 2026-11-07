@@ -6,6 +6,25 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
+## 4.3.0 (unreleased)
+
+### Satellite assemblies (S71 reopened)
+
+A C# project's culture-specific resources (`Strings.ja.resx`) are no longer dropped by the
+import: the lock records its satellite assemblies, and a script builds them on request.
+[hermetic/lock.md](hermetic/lock.md#satellite-assemblies).
+
+- **Record**: `Recorded.Satellites` in the entry, written only for a project with culture
+  resources (every other lock is unchanged): the switches, references and attributes of the
+  satellite compile, composed by the recording SDK's `CoreGenerateSatelliteAssemblies` recipe
+  (msbuild's own call cannot be recorded), and the resources per culture. An F# project's are
+  reported and left out; under invariant globalization a culture-shaped resource fails the
+  import. A re-import adds the key to the locks of such projects.
+- **Build**: `Locks.satellite settings lockPath fwk`, the rule of
+  `<dir>/<culture>/<Name>.resources.dll`, and `Locks.satellitesOf` to list them; the assembly's
+  rule builds none. Byte-identical to `dotnet build`'s on SDK 8 and 10, signed or not.
+- Not yet: a referenced project's satellites in a run folder and their `deps.json` lines.
+
 ## 4.2.0 (2026-11-07)
 
 ### The version as a token in a recorded lock

@@ -37,7 +37,12 @@ items: `tracker.md`.
   `Satellite composition`, `Import record satellites` (the attributes equal `dotnet build`'s
   satellite source, the commit a token). Hermetic suite green (340).
 
-1. The satellite rule (`src/hermetic/Locks.fs`): requested explicitly, after the main assembly;
-   writes the source (the attributes, or those read from the built assembly when `Attributes`
-   is absent), compiles each `.resx` (`Resx`), runs csc with the entry's compiler and
-   references to `<out>/<culture>/<asm>.resources.dll`. Test: byte-identical to `dotnet build`.
+- Build done (`Locks.satellite`, `Locks.satellitesOf`, `satelliteSource`,
+  `satelliteAttributesFromAssembly`). SDK 10 differs from 8: the satellite takes only
+  `mscorlib`/`netstandard`/`System.Runtime` and gets `PathMap`/`Features`; the import reads
+  the recipe off the recording SDK's targets (`Import.satelliteRecipeOf`, `Satellites.References`).
+  Test `a satellite built from the lock is msbuild's, byte for byte` (generated and hand-written
+  attributes). Suites green: hermetic 343, dotnet 151.
+
+1. `Pack` and SBOM with satellites (a test), then the PR to `dev` (4.3.0). A consumer check
+   (re-import and build of a localized project) before the release.

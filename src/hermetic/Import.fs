@@ -1490,15 +1490,50 @@ module Import =
             | _, Some value -> yield sprintf "%s(\"%s\")" name value
             | _ -> () ]
 
+    /// What the recording SDK's `CoreGenerateSatelliteAssemblies` hands csc besides the fixed
+    /// switches, as it differs between SDKs: the references it filters `ReferencePath` to (by
+    /// file name; `None`: all of them, SDK 8), whether it passes `PathMap` and `Features` (SDK 10).
+    type internal SatelliteRecipe = { References: string list option; PathMap: bool; Features: bool }
+
+    /// The recipe of SDK 8 (`SatelliteRecipe`): every reference, no path map, no features.
+    let internal sdk8SatelliteRecipe = { References = None; PathMap = false; Features = false }
+
+    /// <summary>
+    /// The `SatelliteRecipe` of the SDK whose `Microsoft.NET.Sdk.targets` is `targets`: read off
+    /// its `CoreGenerateSatelliteAssemblies` target (the `_SatelliteAssemblyReferences` filter,
+    /// the `Csc` task's `PathMap` and `Features`); SDK 8's when the target is not found. Pure.
+    /// </summary>
+    let internal satelliteRecipeOf (targets: string) : SatelliteRecipe =
+        match targets.IndexOf "<Target Name=\"CoreGenerateSatelliteAssemblies\"" with
+        | -1 -> sdk8SatelliteRecipe
+        | start ->
+            let block =
+                match targets.IndexOf ("</Target>", start) with
+                | -1 -> targets.Substring start
+                | stop -> targets.Substring (start, stop - start)
+            let filter = Text.RegularExpressions.Regex "<_SatelliteAssemblyReferences Include=\"@\\(ReferencePath\\)\" Condition=\"([^\"]*)\""
+            let references =
+                match filter.Match block with
+                | m when m.Success && block.Contains "References=\"@(_SatelliteAssemblyReferences)\"" ->
+                    Text.RegularExpressions.Regex.Matches (m.Groups.[1].Value, "'%\\(Filename\\)' == '([^']+)'")
+                    |> Seq.cast<Text.RegularExpressions.Match> |> Seq.map (fun n -> n.Groups.[1].Value) |> List.ofSeq |> Some
+                | _ -> None
+            { References = references
+              PathMap = block.Contains "PathMap=\"$(PathMap)\""
+              Features = block.Contains "Features=\"$(Features)\"" }
+
     /// <summary>
     /// The switches of a satellite assembly's compile (`Lock.Satellites.Options`) by the recipe of
     /// the SDK's `CoreGenerateSatelliteAssemblies`: `/noconfig`, the main compile's switches the
     /// target passes on (the key, `/nostdlib`, `/warn`, `/optimize`, `/deterministic`,
-    /// `/warnaserror` with a list), `/nowarn` from `DisabledWarnings` (not the main compile's
-    /// `NoWarn`), `/target:library`. Pure.
+    /// `/warnaserror` with a list; `/pathmap`, `/features` when the SDK's recipe passes them),
+    /// `/nowarn` from `DisabledWarnings` (not the main compile's `NoWarn`), `/target:library`. Pure.
     /// </summary>
-    let internal satelliteOptions (mainOptions: string list) (disabledWarnings: string) : string list =
-        let passed = set [ "nostdlib"; "warn"; "keyfile"; "keycontainer"; "publicsign"; "delaysign"; "optimize"; "deterministic" ]
+    let internal satelliteOptions (recipe: SatelliteRecipe) (mainOptions: string list) (disabledWarnings: string) : string list =
+        let passed =
+            set [ yield! [ "nostdlib"; "warn"; "keyfile"; "keycontainer"; "publicsign"; "delaysign"; "optimize"; "deterministic" ]
+                  if recipe.PathMap then yield "pathmap"
+                  if recipe.Features then yield "features" ]
         [ yield "/noconfig"
           for o in mainOptions do
               match CscArgs.parse o with
@@ -1682,7 +1717,15 @@ module Import =
                     | _, info ->
                         let info = moved (absoluteIn ctx.ProjectDir info)
                         generated |> List.tryFind (fst >> (=) info) |> Option.map (snd >> satelliteAttributesOf)
-                Some { Options = satelliteOptions c.Options (p "DisabledWarnings")
+                // the recipe of the SDK that recorded the project, read off its own target
+                let recipe =
+                    let targets = Path.Combine (p "NetCoreRoot", "sdk", p "NETCoreSdkVersion", "Sdks", "Microsoft.NET.Sdk", "targets", "Microsoft.NET.Sdk.targets")
+                    if p "NetCoreRoot" <> "" && File.Exists targets then satelliteRecipeOf (File.ReadAllText targets)
+                    else
+                        warnings.Add (sprintf "'%s' (%s|%s): the SDK's targets are not found (%s): the satellites take SDK 8's recipe" ctx.Description.Name cfg framework targets)
+                        sdk8SatelliteRecipe
+                Some { Options = satelliteOptions recipe c.Options (p "DisabledWarnings")
+                       References = recipe.References
                        Attributes = attributes
                        Cultures =
                          cultured |> List.map fst |> List.distinct
