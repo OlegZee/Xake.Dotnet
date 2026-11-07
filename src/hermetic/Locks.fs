@@ -17,7 +17,7 @@ module Locks =
     /// <summary>
     /// What `compile` is given besides the lock and the framework: the script's extra roots
     /// (`Roots`, as for `Lock.loadWith`; `compileAsWith`'s `extraRoots`), the `$(Version)`
-    /// masks (`Versions`, `compileAs`'s `versions`), and the runner options handed to
+    /// masks (`Versions`, `compileAs`'s `versions`; `VersionSuffixes`), and the runner options handed to
     /// `Lock.compileFromWith` (`Lock`: `Run` for csc, `FscRun` for fsc, `Restore`). The
     /// library still fills `Lock.Run.Server` from `CSC_SERVER` when the script leaves it at
     /// the default. `Default` is what `compileAs` does.
@@ -27,9 +27,14 @@ module Locks =
         Roots: (string * string) list
         /// The `$(Version)` token's variable per project mask, the first matching wins (`versionFor`).
         Versions: (string * RequiredVar<string>) list
+        /// The version suffix per project mask, the first matching wins (`versionFor`), for a
+        /// project no `Versions` mask matches: `$(Version)` is the prefix the import recorded
+        /// (`VersionPrefix`, `Import.RecordOptions.VersionToken`) and `-<suffix>`, or the prefix
+        /// alone for an empty suffix. A recipe, so the script composes it from its variables.
+        VersionSuffixes: (string * Recipe<ExecContext, string>) list
         /// The options of the compile (`Lock.compileFromWith`).
         Lock: Lock.Options
-    } with static member Default = { Roots = []; Versions = []; Lock = Lock.Options.Default }
+    } with static member Default = { Roots = []; Versions = []; VersionSuffixes = []; Lock = Lock.Options.Default }
 
     let private same (a: string) (b: string) = System.String.Equals (a, b, System.StringComparison.OrdinalIgnoreCase)
     let private normal (path: string) = path.Replace ('\\', '/')
@@ -432,6 +437,27 @@ module Locks =
         let covers (mask: string) = Path.matches (normal mask) "" (normal projectPath)
         versions |> List.tryFind (fst >> covers) |> Option.map snd
 
+    /// <summary>
+    /// Why `suffix` (of `VersionSuffixes`) is not a SemVer 2.0 pre-release label the build can
+    /// append to a prefix: `None` when it is one, or empty. A leading `-` (the build adds the
+    /// dash) and build metadata (`+`: the `deps.json` drops it, `versionOf` would not) are refused
+    /// too. Pure.
+    /// </summary>
+    let suffixProblem (suffix: string) : string option =
+        let digit c = c >= '0' && c <= '9'
+        let allowed c = digit c || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c = '-'
+        let identifier (s: string) =
+            if s = "" then Some "an empty identifier (a leading, trailing or double '.')"
+            elif s |> Seq.exists (allowed >> not) then
+                Some (sprintf "'%s' has a character other than 0-9, A-Z, a-z and '-'" s)
+            elif s.Length > 1 && s.[0] = '0' && s |> Seq.forall digit then
+                Some (sprintf "the numeric identifier '%s' has a leading zero" s)
+            else None
+        if suffix = "" then None
+        elif suffix.Contains "+" then Some "it has build metadata ('+'), which the deps.json drops"
+        elif suffix.StartsWith "-" then Some "it starts with '-' (the build adds the dash)"
+        else suffix.Split '.' |> Array.tryPick identifier
+
     /// The files an entry's import read (`Evaluation.Imports`: the project file,
     /// `Directory.Build.props`, an application's `App.config`, ...) that are missing or no
     /// longer have the hash the lock records. Text: a file whose line ends alone differ (a
@@ -543,24 +569,112 @@ module Locks =
                     failwith msg
         }
 
+    /// Whether a compilation carries `$(Version)` (in a generated text, an option or a define).
+    let private carriesVersion (c: Lock.Compilation) =
+        let mutable found = false
+        let see (text: string) = (if text.Contains VersionToken then found <- true); text
+        (match c with
+         | Lock.Compilation.Fsc f -> Fsc.mapText see f |> ignore
+         | Lock.Compilation.Csc x -> Csc.mapText see x |> ignore)
+        found
+
+    /// <summary>
+    /// What `$(Version)` stands for in `entry` of `lockPath` (compilation `c`) under the project
+    /// root `root`: the variable of the first `Versions` mask matching the project's folder, else
+    /// the recorded `VersionPrefix` with the suffix of the first `VersionSuffixes` mask (`-<suffix>`;
+    /// the prefix alone for an empty one). Fails when no mask matches, naming the masks.
+    /// </summary>
+    let private versionIn (settings: Settings) (root: string) (lockPath: string) (entry: Lock.Entry) (c: Lock.Compilation) : Recipe<ExecContext, string> =
+        recipe {
+            let guessed () =
+                c.Sources |> List.tryFind (fun s -> not (c.Generated |> List.exists (fst >> (=) s)) && not (s.StartsWith "!"))
+                |> Option.map (fun s ->
+                    let parts = (normal s).Split '/' |> List.ofArray
+                    let fixedParts = parts |> List.takeWhile (fun p -> not (p.Contains "*" || p.Contains "?"))
+                    String.concat "/" (if fixedParts.Length = parts.Length then List.truncate (parts.Length - 1) parts else fixedParts))
+                |> Option.defaultValue root
+            // the project's folder from the lock; the project root is what a lock written with no project says
+            let projectDir =
+                match (if c.Directory = "" then "" else (normal (Path.GetFullPath c.Directory)).TrimEnd '/') with
+                | dir when dir <> "" && dir <> root -> dir
+                | _ -> guessed ()
+            let relative =
+                if projectDir = root then ""
+                elif projectDir.StartsWith (root + "/") then projectDir.Substring (root.Length + 1)
+                else projectDir
+            let projectPath = if relative = "" then Description.FileName else relative + "/" + Description.FileName
+            // the masks may start with a script root (`$(Sibling)/**`)
+            let! roots = Roots.currentWith settings.Roots
+            let expanded masks = masks |> List.map (fun (mask, v) -> Roots.expand roots mask, v)
+            // a mask with a root as the message shows it: with its expansion, to compare with the path
+            let shown (mask: string) =
+                match normal (Roots.expand roots mask) with
+                | e when e = normal mask -> mask
+                | e -> sprintf "%s = %s" mask e
+            match versionFor (expanded settings.Versions) projectPath with
+            | Some var ->
+                let! version = var
+                return version
+            | None ->
+                let suffixes = settings.VersionSuffixes |> List.map (fun (mask, v) -> Roots.expand roots mask, (mask, v))
+                match versionFor suffixes projectPath, entry.Evaluation.Properties |> Map.tryFind "VersionPrefix" with
+                | Some (mask, suffix), Some prefix ->
+                    let! suffix = suffix
+                    match suffixProblem suffix with
+                    | Some why ->
+                        return failwithf "'%s': the version suffix '%s' (`VersionSuffixes`, mask '%s') for '%s' is not a SemVer pre-release label: %s"
+                                    entry.Name suffix (shown mask) projectPath why
+                    | None -> return (if suffix = "" then prefix else prefix + "-" + suffix)
+                | Some _, None ->
+                    return failwithf "'%s': the lock '%s' needs a version (%s) and records no VersionPrefix for the suffix of `VersionSuffixes` (a lock not imported with Import.RecordOptions.VersionToken); give '%s' a mask of `Versions`"
+                                entry.Name lockPath VersionToken projectPath
+                | None, _ ->
+                    let masks = (settings.Versions |> List.map fst) @ (settings.VersionSuffixes |> List.map fst)
+                    return failwithf "'%s': the lock '%s' needs a version (%s) and no mask of `Versions` or `VersionSuffixes` matches '%s' (%s)"
+                                entry.Name lockPath VersionToken projectPath (masks |> List.map shown |> String.concat ", ")
+        }
+
+    /// The entry of the lock document `doc` (of `lockPath`) for the framework `fwk`.
+    let private entryOfFramework (lockPath: string) (fwk: string) (doc: Lock.Document) : Lock.Entry =
+        match doc.Entries |> List.filter (fun e -> same e.Framework fwk) with
+        | [ e ] -> e
+        | [] ->
+            failwithf "the lock '%s' has no entry for %s (%s)" lockPath fwk
+                (doc.Entries |> List.map (fun e -> e.Framework) |> String.concat ", ")
+        | many ->
+            failwithf "the lock '%s' has %d entries for %s (%s); one per framework is expected" lockPath many.Length fwk
+                (many |> List.map (fun e -> e.Name) |> String.concat ", ")
+
+    /// <summary>
+    /// The version of the entry of `lockPath` for `fwk` as the build stamps it (`compile`): the
+    /// recorded `Version` property with `$(Version)` resolved by `settings` (`Versions`,
+    /// `VersionSuffixes`), else the literal the import recorded; "" when the lock records none.
+    /// What a package of the project takes for its version.
+    /// </summary>
+    let versionOf (settings: Settings) (lockPath: string) (fwk: string) : Recipe<ExecContext, string> =
+        recipe {
+            let! options = getCtxOptions ()
+            let root = normal (Path.GetFullPath options.ProjectRoot)
+            let! doc = Lock.loadWith settings.Roots lockPath
+            let entry = entryOfFramework lockPath fwk doc
+            match entry.Evaluation.Properties |> Map.tryFind "Version" with
+            | Some version when version.Contains VersionToken ->
+                let! resolved = versionIn settings root lockPath entry entry.Compilation
+                return version.Replace (VersionToken, resolved)
+            | Some version -> return version
+            | None -> return ""
+        }
+
     /// `compile` for the assembly target (`.dll`, `.exe`): C# and F# alike.
     let private compileAssembly (settings: Settings) (lockPath: string) (fwk: string) : Recipe<ExecContext, unit> =
-        let extraRoots, versions = settings.Roots, settings.Versions
+        let extraRoots = settings.Roots
         recipe {
             let! options = getCtxOptions ()
             let root = normal (Path.GetFullPath options.ProjectRoot)
             let! target = getTargetFile ()
             let target = normal target.FullName
             let! doc = Lock.loadWith extraRoots lockPath
-            let entry =
-                match doc.Entries |> List.filter (fun e -> same e.Framework fwk) with
-                | [ e ] -> e
-                | [] ->
-                    failwithf "the lock '%s' has no entry for %s (%s)" lockPath fwk
-                        (doc.Entries |> List.map (fun e -> e.Framework) |> String.concat ", ")
-                | many ->
-                    failwithf "the lock '%s' has %d entries for %s (%s); one per framework is expected" lockPath many.Length fwk
-                        (many |> List.map (fun e -> e.Name) |> String.concat ", ")
+            let entry = entryOfFramework lockPath fwk doc
             // the entry's output: what msbuild named it when recorded, else either extension (a
             // generated lock does not say whether it is an exe)
             let outputs =
@@ -618,38 +732,14 @@ module Locks =
                 | Lock.Compilation.Fsc _, _ -> recipe { return c }
 
             let! c =
-                if not (c.Generated |> List.exists (fun (_, text) -> text.Contains VersionToken)) then recipe { return c } else
+                if not (carriesVersion c) then recipe { return c } else
                 recipe {
-                    let guessed () =
-                        c.Sources |> List.tryFind (fun s -> not (c.Generated |> List.exists (fst >> (=) s)) && not (s.StartsWith "!"))
-                        |> Option.map (fun s ->
-                            let parts = (normal s).Split '/' |> List.ofArray
-                            let fixedParts = parts |> List.takeWhile (fun p -> not (p.Contains "*" || p.Contains "?"))
-                            String.concat "/" (if fixedParts.Length = parts.Length then List.truncate (parts.Length - 1) parts else fixedParts))
-                        |> Option.defaultValue root
-                    // the project's folder from the lock; the project root is what a lock written with no project says
-                    let projectDir =
-                        match (if c.Directory = "" then "" else (normal (Path.GetFullPath c.Directory)).TrimEnd '/') with
-                        | dir when dir <> "" && dir <> root -> dir
-                        | _ -> guessed ()
-                    let relative =
-                        if projectDir = root then ""
-                        elif projectDir.StartsWith (root + "/") then projectDir.Substring (root.Length + 1)
-                        else projectDir
-                    let projectPath = if relative = "" then Description.FileName else relative + "/" + Description.FileName
-                    // the masks may start with a script root (`$(Sibling)/**`)
-                    let! roots = Roots.currentWith extraRoots
-                    match versionFor (versions |> List.map (fun (mask, var) -> Roots.expand roots mask, var)) projectPath with
-                    | None ->
-                        return failwithf "'%s': the lock '%s' needs a version (%s) and no mask of `versions` matches '%s' (%s)"
-                                    entry.Name lockPath VersionToken projectPath (versions |> List.map fst |> String.concat ", ")
-                    | Some var ->
-                        let! version = var
-                        let subst (path, (text: string)) = path, text.Replace (VersionToken, version)
-                        return
-                            match c with
-                            | Lock.Compilation.Fsc f -> Lock.Compilation.Fsc { f with Generated = f.Generated |> List.map subst }
-                            | Lock.Compilation.Csc x -> Lock.Compilation.Csc { x with Generated = x.Generated |> List.map subst } }
+                    let! version = versionIn settings root lockPath entry c
+                    let subst (text: string) = text.Replace (VersionToken, version)
+                    return
+                        match c with
+                        | Lock.Compilation.Fsc f -> Lock.Compilation.Fsc (Fsc.mapText subst f)
+                        | Lock.Compilation.Csc x -> Lock.Compilation.Csc (Csc.mapText subst x) }
 
             // a `.resx` edited since its `.resources` was compiled (Xake 3.8's runner still compiles a missing one only)
             Described.refreshResources c.Resources

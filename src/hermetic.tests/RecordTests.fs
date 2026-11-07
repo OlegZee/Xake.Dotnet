@@ -579,24 +579,28 @@ module internal RecordKit =
 
     let recordDefault = { Import.RecordOptions.Default with LockOf = lockOf; OutOf = outOf }
 
-    /// The fixture's outputs of configuration `cfg`, built from the locks.
-    let build (options: ExecOptions) (label: string) (cfg: string) =
+    /// The fixture's outputs of configuration `cfg`, built from the locks with `settings`.
+    let buildWith (options: ExecOptions) (label: string) (cfg: string) (settings: Locks.Settings) =
         let compile = recipe {
             let! cfg = getRuleMatch "cfg"
             let! fwk = getRuleMatch "fwk"
             let! name = getRuleMatch "name"
-            do! Locks.compileAs (lockOf name cfg) fwk [] }
+            do! Locks.compile settings (lockOf name cfg) fwk }
         let doc = recipe {
             let! cfg = getRuleMatch "cfg"
             let! fwk = getRuleMatch "fwk"
             let! name = getRuleMatch "name"
-            do! Locks.doc Locks.Settings.Default (lockOf name cfg) fwk }
+            do! Locks.doc settings (lockOf name cfg) fwk }
         run options label
             [ command "build" { do! Locks.needAll (!! "*/xake.project.json") cfg lockOf outOf }
               "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile
               "out/(cfg:*)/(fwk:*)/(name:*)/*.exe" ..> compile
               "out/(cfg:*)/(fwk:*)/(name:*)/*.xml" ..> doc ]
             [ "build" ]
+
+    /// The fixture's outputs of configuration `cfg`, built from the locks.
+    let build (options: ExecOptions) (label: string) (cfg: string) =
+        buildWith options label cfg Locks.Settings.Default
 
     /// The run folders (`run/<cfg>/<fwk>/<name>/`, `Locks.runFolderWith` by `mode`) of every
     /// application and test project of configuration `cfg`, over the fixture's per-project
@@ -935,6 +939,46 @@ type ``Import record WPF``() =
         let stale = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-wpf-stale" "Release")
         Assert.That(string stale, Does.Contain "run the import again")
 
+    /// Acceptance 9 of the version token: the BAML (`g.resources`) and `Recorded.Markup` name
+    /// `AssemblyVersion` only, which the marker does not reach, so they are the same with and
+    /// without `RecordOptions.VersionToken`. The library takes its version from `VersionPrefix`
+    /// here (the token reaches it); `VERSION` is emptied for the import without the option, which
+    /// would take it as `$(Version)`.
+    [<Test>]
+    member x.``the BAML and Recorded.Markup are the same with and without the version token``() =
+        let fwks = [ "net8.0-windows"; "net472" ]
+        let recordWith (label: string) (record: Import.RecordOptions) (settings: Locks.Settings) =
+            wpfFixture ()
+            File.WriteAllText ("lib/lib.csproj", RecordKit.sdkProject "<TargetFramework>netstandard2.0</TargetFramework><VersionPrefix>1.0.0</VersionPrefix>" "")
+            RecordKit.import x.TestOptions (label + "-lib") record [ "lib/lib.csproj" ] |> ignore
+            RecordKit.buildWith x.TestOptions (label + "-build-lib") "Release" settings
+            RecordKit.import x.TestOptions (label + "-wpf") record [ "wpf/wpf.csproj" ] |> ignore
+            let doc = Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "wpf" "Release")
+            let markup = [ for e in doc.Entries -> e.Framework, e.Recorded |> Option.map (fun r -> r.Markup) |> Option.defaultValue [] ] |> List.sort
+            let resources = [ for fwk in fwks -> fwk, File.ReadAllBytes (sprintf "locks/wpf/Release.files/%s/wpf.g.resources" fwk) ]
+            File.ReadAllText (RecordKit.lockOf "lib" "Release"), File.ReadAllText (RecordKit.lockOf "wpf" "Release"), markup, resources
+        let saved = Environment.GetEnvironmentVariable "VERSION"
+        Environment.SetEnvironmentVariable ("VERSION", null)
+        try
+            let libPlain, _, markupPlain, resourcesPlain = recordWith "plain" RecordKit.recordDefault Locks.Settings.Default
+            let token = { RecordKit.recordDefault with VersionToken = true }
+            let settings = { Locks.Settings.Default with VersionSuffixes = [ "**", recipe { return "ci.1" } ] }
+            let libToken, wpfToken, markupToken, resourcesToken = recordWith "token" token settings
+            // the option is in effect: both locks carry the token, the plain one does not
+            Assert.That(libPlain, Does.Not.Contain "$(Version)")
+            Assert.That(libToken, Does.Contain "\"Version\": \"$(Version)\"")
+            Assert.That(wpfToken, Does.Contain "\"Version\": \"$(Version)\"")
+            Assert.That(markupToken, Is.EqualTo markupPlain)
+            Assert.That(markupToken |> List.collect snd, Does.Contain "lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null")
+            for (fwk, plain), (_, token) in List.zip resourcesPlain resourcesToken do
+                Assert.That(token, Is.EqualTo plain, fwk + ": wpf.g.resources")
+            // and it builds with a suffix
+            RecordKit.buildWith x.TestOptions "token-build" "Release" settings
+            for fwk in fwks do
+                Assert.That(Apps.informationalVersion (Path.GetFullPath (sprintf "out/Release/%s/wpf/wpf.dll" fwk)), Is.EqualTo (Some "1.0.0-ci.1"), fwk)
+        finally
+            Environment.SetEnvironmentVariable ("VERSION", saved)
+
 
 /// `Import.record` takes `Page` items or `UseWPF` alone for no WPF project, and writes no host
 /// path into a description whose output folder lies outside the project (S70).
@@ -1049,7 +1093,7 @@ type ``Record entry``() =
         { Root = here (); ProjectFile = dir + "/X.csproj"; ProjectDir = dir; Description = description
           DescriptionFile = dir + "/xake.project.json"; PackageRoot = here () + "/pkgs"
           Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf
-          LockOf = (fun name cfg -> here () + "/" + RecordKit.lockOf name cfg); Imported = [ dir + "/X.csproj" ] }
+          LockOf = (fun name cfg -> here () + "/" + RecordKit.lockOf name cfg); Imported = [ dir + "/X.csproj" ]; VersionMarker = None }
     let context = contextIn "proj"
     let dumpIn (proj: string) (references: string list) (preserialized: bool) : Import.Dump =
         let dir = here () + "/" + proj
@@ -1390,3 +1434,268 @@ type ``Import masks with reserved characters``() =
         for m in [ here () + "/plain/p/**/*.cs"; "!" + here () + "/plain/p/obj/**/*" ] do
             Assert.That(Roots.tokenizeMask roots m, Is.EqualTo (Roots.tokenizeAll roots m))
             Assert.That(Roots.expandMask roots (Roots.tokenizeMask roots m), Is.EqualTo (Roots.expand roots (Roots.tokenizeAll roots m)))
+
+
+/// The version as a token (`Import.RecordOptions.VersionToken`), the pure parts: the
+/// project's own version in its texts, the projects' versions in a `deps.json`, the globals.
+/// Pure: no msbuild.
+[<TestFixture>]
+type ``Version tokens``() =
+
+    let m = Import.versionMarker
+
+    [<Test>]
+    member x.``the project's own version becomes the token, build metadata kept, a longer version left alone``() =
+        let t = Import.versionTokenize "1.4.0" m
+        Assert.That(t (sprintf "[assembly: AssemblyInformationalVersionAttribute(\"1.4.0-%s\")]" m), Is.EqualTo "[assembly: AssemblyInformationalVersionAttribute(\"$(Version)\")]")
+        Assert.That(t (sprintf "1.4.0-%s+0123abc" m), Is.EqualTo "$(Version)+0123abc")
+        Assert.That(t (sprintf "1.4.0-%s" m), Is.EqualTo "$(Version)")
+        // the prefix ends a longer version, or the marker continues: not this project's version
+        Assert.That(t (sprintf "11.4.0-%s" m), Is.EqualTo (sprintf "11.4.0-%s" m))
+        Assert.That(t (sprintf "1.4.0-%sx" m), Is.EqualTo (sprintf "1.4.0-%sx" m))
+        Assert.That(t "[assembly: AssemblyVersionAttribute(\"1.4.0.0\")]", Is.EqualTo "[assembly: AssemblyVersionAttribute(\"1.4.0.0\")]")
+
+    [<Test>]
+    member x.``a deps.json names each project's version by its runtime file``() =
+        let deps =
+            String.concat "\n"
+                [ "{"
+                  "  \"targets\": {"
+                  "    \".NETCoreApp,Version=v8.0\": {"
+                  sprintf "      \"app/3.1.0-%s\": {" m
+                  "        \"dependencies\": {"
+                  sprintf "          \"lib\": \"1.4.0-%s\"," m
+                  "          \"Newtonsoft.Json\": \"13.0.3\""
+                  "        },"
+                  "        \"runtime\": {"
+                  "          \"app.dll\": {}"
+                  "        }"
+                  "      },"
+                  sprintf "      \"lib/1.4.0-%s\": {" m
+                  "        \"runtime\": {"
+                  "          \"lib.dll\": {"
+                  sprintf "            \"assemblyVersion\": \"1.4.0-%s\"," m
+                  "            \"fileVersion\": \"$(FileVersion:lib.dll)\""
+                  "          }"
+                  "        }"
+                  "      }"
+                  "    }"
+                  "  },"
+                  "  \"libraries\": {"
+                  sprintf "    \"app/3.1.0-%s\": {" m
+                  "      \"type\": \"project\""
+                  "    },"
+                  sprintf "    \"lib/1.4.0-%s\": {" m
+                  "      \"type\": \"project\""
+                  "    }"
+                  "  }"
+                  "}" ]
+        let text = Import.depsVersionTokens "app.deps.json" m deps
+        Assert.That(text, Does.Not.Contain m)
+        Assert.That(text, Does.Contain "      \"app/$(Version:app.dll)\": {")
+        Assert.That(text, Does.Contain "          \"lib\": \"$(Version:lib.dll)\",")
+        Assert.That(text, Does.Contain "          \"Newtonsoft.Json\": \"13.0.3\"")
+        Assert.That(text, Does.Contain "      \"lib/$(Version:lib.dll)\": {")
+        Assert.That(text, Does.Contain "            \"assemblyVersion\": \"$(Version:lib.dll)\",")
+        Assert.That(text, Does.Contain "    \"app/$(Version:app.dll)\": {")
+        Assert.That(text, Does.Contain "    \"lib/$(Version:lib.dll)\": {")
+        // nothing to do without the marker
+        Assert.That(Import.depsVersionTokens "app.deps.json" m "{ \"a\": \"1.0.0\" }", Is.EqualTo "{ \"a\": \"1.0.0\" }")
+        // the marker where no version is known
+        let stray = Assert.Throws<exn>(fun () -> Import.depsVersionTokens "app.deps.json" m (sprintf "{\n  \"note\": \"built with %s\"\n}" m) |> ignore)
+        Assert.That(stray.Message, Does.Contain "app.deps.json")
+
+    [<Test>]
+    member x.``a suffix is a SemVer pre-release label``() =
+        for ok in [ ""; "alpha-7"; "ci.512"; "beta.3"; "0"; "ci.0"; "x-y-z"; "rc.1-eu"; "a-" ] do
+            Assert.That(Locks.suffixProblem ok, Is.EqualTo None, ok)
+        for bad, why in [ "ci+1", "build metadata"; "-eu", "starts with '-'"; "ci_512", "'ci_512' has a character"
+                          "feature/x", "'feature/x' has a character"; "ci..1", "empty identifier"; ".ci", "empty identifier"
+                          "ci.", "empty identifier"; "ci.0512", "leading zero"; "été", "has a character" ] do
+            match Locks.suffixProblem bad with
+            | Some message -> Assert.That(message, Does.Contain why, bad)
+            | None -> Assert.Fail (sprintf "'%s' passes" bad)
+
+    [<Test>]
+    member x.``VersionToken runs msbuild with the marker; the script's own VersionSuffix fails``() =
+        let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; VersionToken = true }
+        Assert.That(Import.recordGlobals "/r/proj" options, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", m ])
+        Assert.That(Import.recordGlobals "/r/proj" { options with VersionToken = false }, Is.EqualTo [ "NuGetAudit", "false" ])
+        Assert.That(Import.recordGlobals "/r/proj" { options with VersionToken = false; Properties = [ "VersionSuffix", "beta" ] }, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", "beta" ])
+        let e = Assert.Throws<exn>(fun () -> Import.recordGlobals "/r/proj" { options with Properties = [ "versionsuffix", "beta" ] } |> ignore)
+        Assert.That(e.Message, Does.Contain "RecordOptions.VersionToken")
+
+
+/// `Import.record` with the version as a token (`RecordOptions.VersionToken`) end to end: two
+/// groups of projects with their own prefixes (`app` 3.1.0; `core` 1.4.0 from its
+/// `Directory.Build.props`, two frameworks), an application whose `deps.json` names both, a
+/// project that sets its version itself; built with a suffix per group
+/// (`Locks.Settings.VersionSuffixes`).
+[<TestFixture>]
+type ``Import record version token``() =
+    inherit XakeTestBase("import-record-version")
+
+    let marker = Import.versionMarker
+    let appSuffix = Var.string (name = "APP_SUFFIX") |> withDefault "alpha-7"
+    let coreSuffix = Var.string (name = "CORE_SUFFIX") |> withDefault "beta-3"
+    let coreVersion = Var.string (name = "CORE_VERSION") |> withDefault "7.7.7"
+    let schema = {| AppSuffix = appSuffix; CoreSuffix = coreSuffix; CoreVersion = coreVersion |}
+    let record = { RecordKit.recordDefault with VersionToken = true }
+    let projects = [ "app/app.csproj"; "core/core.csproj"; "fixed/fixed.csproj" ]
+    let suffixes = [ "app/**", recipe { let! s = appSuffix in return s }; "**", recipe { let! s = coreSuffix in return s } ]
+    let dll cfg fwk name = sprintf "out/%s/%s/%s/%s.dll" cfg fwk name name
+
+    let fixture () =
+        RecordKit.write [ "app"; "core"; "fixed"; "odd"; "out"; "locks"; "obj" ]
+            [ "app/app.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><VersionPrefix>3.1.0</VersionPrefix>"
+                    "<ProjectReference Include=\"../core/core.csproj\" />"
+              "app/P.cs", "class P { static void Main () { System.Console.WriteLine (new Core.C ()); } }\n"
+              "core/Directory.Build.props", "<Project><PropertyGroup><VersionPrefix>1.4.0</VersionPrefix></PropertyGroup></Project>\n"
+              "core/core.csproj", RecordKit.sdkProject "<TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>" ""
+              "core/C.cs", "namespace Core { public class C { } }\n"
+              "fixed/fixed.csproj", RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><Version>9.9.9</Version>" ""
+              "fixed/F.cs", "namespace Fixed { public class C { } }\n" ]
+
+    /// The fixture's Release outputs with `settings`, and the versions `Locks.versionOf` gives;
+    /// the suffix variables in `vars` are given as `-d` (declared by the schema).
+    member private x.Build (label: string) (vars: (string * string) list) (settings: Locks.Settings) =
+        let versions = ResizeArray<string * string> ()
+        let compile = recipe {
+            let! cfg = getRuleMatch "cfg"
+            let! fwk = getRuleMatch "fwk"
+            let! name = getRuleMatch "name"
+            do! Locks.compile settings (RecordKit.lockOf name cfg) fwk }
+        let args = vars |> List.collect (fun (name, value) -> [ "-d"; name + "=" + value ])
+        xakeArgs args { x.TestOptions with FileLog = label + ".log"; ThrowOnError = true; ScriptVars = [ "CI", "off"; "CSC_SERVER", "off" ]; FileLogLevel = Loud } {
+            varschema schema
+            want [ "build" ]
+            rules [
+                command "build" {
+                    do! Locks.needAll (!! "*/xake.project.json") "Release" RecordKit.lockOf RecordKit.outOf
+                    for name, fwk in [ "app", "net8.0"; "core", "net8.0"; "core", "netstandard2.0"; "fixed", "net8.0" ] do
+                        let! v = Locks.versionOf settings (RecordKit.lockOf name "Release") fwk
+                        versions.Add ((name + "|" + fwk), v) }
+                "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile ]
+        }
+        Map.ofSeq versions
+
+    [<Test>]
+    member x.``the version is a token in the lock and the deps.json; the build stamps a suffix per group``() =
+        fixture ()
+        let lockText name = File.ReadAllText (RecordKit.lockOf name "Release")
+        let depsFile = "locks/app/Release.files/net8.0/app/app.deps.json"
+        RecordKit.import x.TestOptions "import-1" record projects |> ignore
+        let app, core, fixedLock = lockText "app", lockText "core", lockText "fixed"
+        for text in [ app; core; fixedLock ] do Assert.That(text, Does.Not.Contain marker)
+        // in a git checkout the SDK appends the commit (`+$(SourceRevisionId)`)
+        Assert.That(app, Does.Contain "AssemblyInformationalVersionAttribute(\\\"$(Version)")
+        Assert.That(app, Does.Contain "AssemblyVersionAttribute(\\\"3.1.0.0\\\")")
+        Assert.That(app, Does.Contain "AssemblyFileVersionAttribute(\\\"3.1.0.0\\\")")
+        Assert.That(app, Does.Contain "\"Version\": \"$(Version)\"")
+        Assert.That(app, Does.Contain "\"VersionPrefix\": \"3.1.0\"")
+        Assert.That(core, Does.Contain "\"VersionPrefix\": \"1.4.0\"")
+        Assert.That(core, Does.Contain "AssemblyVersionAttribute(\\\"1.4.0.0\\\")")
+        // the project that sets its version: a literal, as without the option
+        Assert.That(fixedLock, Does.Contain "\"Version\": \"9.9.9\"")
+        Assert.That(fixedLock, Does.Not.Contain "VersionPrefix")
+        let deps = File.ReadAllText depsFile
+        Assert.That(deps, Does.Not.Contain marker)
+        Assert.That(deps, Does.Contain "\"app/$(Version:app.dll)\"")
+        Assert.That(deps, Does.Contain "\"core/$(Version:core.dll)\"")
+        Assert.That(deps, Does.Contain "\"core\": \"$(Version:core.dll)\"")
+
+        // recorded again: the same locks
+        RecordKit.import x.TestOptions "import-2" record projects |> ignore
+        Assert.That(lockText "app", Is.EqualTo app)
+        Assert.That(lockText "core", Is.EqualTo core)
+        Assert.That(lockText "fixed", Is.EqualTo fixedLock)
+        Assert.That(File.ReadAllText depsFile, Is.EqualTo deps)
+
+        let settings = { Locks.Settings.Default with VersionSuffixes = suffixes }
+        let product path = Apps.informationalVersion (Path.GetFullPath path) |> Option.defaultValue ""
+        let versions = x.Build "build-1" [] settings
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0-alpha-7")
+        Assert.That(product (dll "Release" "net8.0" "core"), Is.EqualTo "1.4.0-beta-3")
+        Assert.That(product (dll "Release" "netstandard2.0" "core"), Is.EqualTo "1.4.0-beta-3")
+        Assert.That(product (dll "Release" "net8.0" "fixed"), Is.EqualTo "9.9.9")
+        Assert.That(Reflection.AssemblyName.GetAssemblyName(Path.GetFullPath (dll "Release" "net8.0" "app")).Version, Is.EqualTo (Version "3.1.0.0"))
+        Assert.That(Diagnostics.FileVersionInfo.GetVersionInfo(Path.GetFullPath (dll "Release" "net8.0" "app")).FileVersion, Is.EqualTo "3.1.0.0")
+        let written = File.ReadAllText "out/Release/net8.0/app/app.deps.json"
+        Assert.That(written, Does.Contain "\"app/3.1.0-alpha-7\"")
+        Assert.That(written, Does.Contain "\"core/1.4.0-beta-3\"")
+        Assert.That(written, Does.Contain "\"core\": \"1.4.0-beta-3\"")
+        Assert.That(written, Does.Not.Contain "$(")
+        Assert.That(versions, Is.EqualTo (Map.ofList [ "app|net8.0", "3.1.0-alpha-7"; "core|net8.0", "1.4.0-beta-3"; "core|netstandard2.0", "1.4.0-beta-3"; "fixed|net8.0", "9.9.9" ]))
+
+        // the same suffixes: nothing compiled; a new suffix of one group: that group's assemblies only
+        let stamp (path: string) = File.GetLastWriteTimeUtc path
+        let before = [ for d in [ dll "Release" "net8.0" "app"; dll "Release" "net8.0" "core"; dll "Release" "net8.0" "fixed" ] -> d, stamp d ]
+        x.Build "build-2" [] settings |> ignore
+        for d, t in before do Assert.That(stamp d, Is.EqualTo t, d + " unchanged")
+        let versions = x.Build "build-3" [ "APP_SUFFIX", "alpha-8" ] settings
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0-alpha-8")
+        Assert.That(versions.["app|net8.0"], Is.EqualTo "3.1.0-alpha-8")
+        Assert.That(stamp (dll "Release" "net8.0" "core"), Is.EqualTo (snd before.[1]), "core unchanged")
+        Assert.That(stamp (dll "Release" "net8.0" "fixed"), Is.EqualTo (snd before.[2]), "fixed unchanged")
+        Assert.That(File.ReadAllText "out/Release/net8.0/app/app.deps.json", Does.Contain "\"app/3.1.0-alpha-8\"")
+
+        // a new suffix of core: core and the application that references it, whose deps.json
+        // names core's new version; fixed unchanged
+        let before = [ for d in [ dll "Release" "net8.0" "app"; dll "Release" "net8.0" "core"; dll "Release" "net8.0" "fixed" ] -> d, stamp d ]
+        let vars = [ "APP_SUFFIX", "alpha-8"; "CORE_SUFFIX", "beta-4" ]
+        let versions = x.Build "build-4" vars settings
+        Assert.That(product (dll "Release" "net8.0" "core"), Is.EqualTo "1.4.0-beta-4")
+        Assert.That(product (dll "Release" "netstandard2.0" "core"), Is.EqualTo "1.4.0-beta-4")
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0-alpha-8")
+        Assert.That(versions.["core|net8.0"], Is.EqualTo "1.4.0-beta-4")
+        Assert.That(stamp (dll "Release" "net8.0" "core"), Is.Not.EqualTo (snd before.[1]), "core rebuilt")
+        Assert.That(stamp (dll "Release" "net8.0" "app"), Is.Not.EqualTo (snd before.[0]), "app rebuilt")
+        Assert.That(stamp (dll "Release" "net8.0" "fixed"), Is.EqualTo (snd before.[2]), "fixed unchanged")
+        let written = File.ReadAllText "out/Release/net8.0/app/app.deps.json"
+        Assert.That(written, Does.Contain "\"core/1.4.0-beta-4\"")
+        Assert.That(written, Does.Contain "\"core\": \"1.4.0-beta-4\"")
+        Assert.That(written, Does.Not.Contain "beta-3")
+
+        // a mask of Versions wins over VersionSuffixes: the whole version for core (the masks
+        // are no dependency, so from clean outputs)
+        Directory.Delete ("out", true)
+        let versions = x.Build "build-versions" vars { settings with Versions = [ "core/**", coreVersion ] }
+        Assert.That(product (dll "Release" "net8.0" "core"), Is.EqualTo "7.7.7")
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0-alpha-8")
+        Assert.That(versions.["core|netstandard2.0"], Is.EqualTo "7.7.7")
+        Assert.That(File.ReadAllText "out/Release/net8.0/app/app.deps.json", Does.Contain "\"core/7.7.7\"")
+
+        // a suffix that is not a SemVer pre-release label fails the build, naming the mask
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-metadata" [ "CORE_SUFFIX", "ci+1" ] settings |> ignore)
+        Assert.That(e.Data0, Does.Contain "the version suffix 'ci+1'")
+        Assert.That(e.Data0, Does.Contain "mask '**'")
+        Assert.That(e.Data0, Does.Contain "build metadata")
+
+        // an empty suffix: the prefix alone
+        Directory.Delete ("out", true)
+        let versions = x.Build "build-empty" [] { settings with VersionSuffixes = [ "**", recipe { return "" } ] }
+        Assert.That(product (dll "Release" "net8.0" "app"), Is.EqualTo "3.1.0")
+        Assert.That(versions.["core|net8.0"], Is.EqualTo "1.4.0")
+
+        // no mask for a tokenized lock: the build fails, naming the masks
+        Directory.Delete ("out", true)
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-none" [] Locks.Settings.Default |> ignore)
+        Assert.That(e.Data0, Does.Contain "needs a version")
+
+        // a new prefix is a new import: the lock is stale, as without the token
+        let entries () = (Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "core" "Release")).Entries
+        Assert.That(entries () |> List.collect Locks.staleOf, Is.Empty)
+        File.WriteAllText ("core/Directory.Build.props", "<Project><PropertyGroup><VersionPrefix>1.5.0</VersionPrefix></PropertyGroup></Project>\n")
+        Assert.That(entries () |> List.collect Locks.staleOf |> List.map Path.GetFileName |> List.distinct, Is.EqualTo [ "Directory.Build.props" ])
+
+    [<Test>]
+    member x.``a version made from VersionSuffix alone fails the import, naming the file``() =
+        RecordKit.write [ "app"; "core"; "fixed"; "odd"; "out"; "locks"; "obj" ]
+            [ "odd/odd.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>"
+                    "<AssemblyAttribute Include=\"System.Reflection.AssemblyMetadataAttribute\"><_Parameter1>Suffix</_Parameter1><_Parameter2>$(VersionSuffix)</_Parameter2></AssemblyAttribute>"
+              "odd/O.cs", "namespace Odd { public class C { } }\n" ]
+        let e = Assert.Throws<XakeException>(fun () -> RecordKit.import x.TestOptions "import-odd" record [ "odd/odd.csproj" ] |> ignore)
+        Assert.That(e.Data0, Does.Contain "odd.AssemblyInfo.cs")
+        Assert.That(e.Data0, Does.Contain marker)

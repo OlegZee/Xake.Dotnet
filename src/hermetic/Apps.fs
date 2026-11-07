@@ -279,15 +279,32 @@ module Apps =
             with _ -> None
         assembly, file
 
+    /// The informational version of the assembly at `path` (its `ProductVersion`, which csc
+    /// takes from `AssemblyInformationalVersionAttribute`) without build metadata (`+<sha>`): the
+    /// project version msbuild built it with. `None` when it has none.
+    let informationalVersion (path: string) : string option =
+        try
+            match System.Diagnostics.FileVersionInfo.GetVersionInfo(path).ProductVersion with
+            | null | "" -> None
+            | v -> Some (match v.IndexOf '+' with -1 -> v | i -> v.Substring (0, i))
+        with _ -> None
+
     /// `text` (a recorded `deps.json`) with each `$(AssemblyVersion:<file>)` and
     /// `$(FileVersion:<file>)` replaced by the versions of `fileOf <file>` (the copy in the
-    /// output), as msbuild reads them from the built file.
+    /// output), as msbuild reads them from the built file, and each `$(Version:<file>)` (a
+    /// project's version, `Import.RecordOptions.VersionToken`) by its informational version.
     let depsResolved (fileOf: string -> string) (text: string) : string =
-        System.Text.RegularExpressions.Regex.Replace (text, @"\$\((AssemblyVersion|FileVersion):([^)]+)\)", fun m ->
+        System.Text.RegularExpressions.Regex.Replace (text, @"\$\((AssemblyVersion|FileVersion|Version):([^)]+)\)", fun m ->
             let path = fileOf m.Groups.[2].Value
             if not (File.Exists path) then failwithf "the deps.json names '%s', which is not in the output ('%s')" m.Groups.[2].Value path
-            let a, f = assemblyVersions path
-            (if m.Groups.[1].Value = "AssemblyVersion" then a else f) |> Option.defaultValue "")
+            match m.Groups.[1].Value with
+            | "Version" ->
+                match informationalVersion path with
+                | Some v -> v
+                | None -> failwithf "the deps.json takes the version of '%s' from its InformationalVersion, which '%s' does not have" m.Groups.[2].Value path
+            | kind ->
+                let a, f = assemblyVersions path
+                (if kind = "AssemblyVersion" then a else f) |> Option.defaultValue "")
 
     /// <summary>
     /// The project outputs an application copies (`Copy` items without a hash): the rule needs
