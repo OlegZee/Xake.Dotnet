@@ -45,6 +45,9 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 - The test rules (`test`, `test-build::<project>`, `test::<project>/<slice>`) are typed
   commands in `testjobs.fsx`, shared by both scripts; a command always runs, so `test` never
   skips a stale `dotnet build` (the old `.xake` trap is gone).
+- The test projects share `src/dotnet`: `test-restore` restores them one after another, then
+  `test-build::<project>` builds with `--no-restore` (two restores at once raced on
+  `src/dotnet/obj/project.assets.json`, seen in CI's `xake-latest`).
 - The locks name the SDK compiler by version: SDK 10.0.403, pinned in `build.yml`'s `build-fsc`.
 - The hermetic tests that describe "the repository's own projects" (`DescriptionImportTests`,
   `DescribedTests`, `LocksTests`, `BuildFromLockTests`) use `src/dotnet` and `src/hermetic`
