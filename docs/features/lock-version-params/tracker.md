@@ -1,12 +1,9 @@
 # Tracker: lock-version-params
 
-One line per item. Status as of 2026-11-07.
+One line per item. Status as of 2026-11-07: released in 4.2.0.
 
 ## Open
 
-- [ ] PR `feature/lock-version-params` -> `dev` (draft, after the owner's OK); release 4.2.0
-      with this feature only, public, no preview (`release.md`); `feature/import-file-casing`
-      (#12) stays out (2026-11-07: the owner is unsure the fix belongs in the import)
 - [ ] Later, if asked for: `FileVersion` as a token too, for the scheme that puts the build
       number into its fourth part (`1.4.0.512`); it does not change an assembly's identity, unlike
       `AssemblyVersion`. Out of scope of 4.2.0 (owner, 2026-11-07): the consumer's CI keeps
@@ -67,3 +64,7 @@ One line per item. Status as of 2026-11-07.
 - [x] `RecordOptions.VersionToken: bool` instead of `VersionSuffix: string option`; the marker
       internal, its format check gone (owner, 2026-11-07, before the release)
 - [x] CI: `test-restore` before the parallel test builds (a restore race in `xake-latest`)
+- [x] PR #13 squash-merged into `dev`; tag `v4.2.0` (`22d61e0`), published to nuget.org
+      2026-11-07, this feature only (#12 stays out: the owner is unsure the fix belongs in the
+      import)
+- [x] Handed to the consumer's session: switch to 4.2.0, release and dev build setup, its docs, a PR
