@@ -44,5 +44,7 @@ items: `tracker.md`.
   Test `a satellite built from the lock is msbuild's, byte for byte` (generated and hand-written
   attributes). Suites green: hermetic 343, dotnet 151.
 
-1. `Pack` and SBOM with satellites (a test), then the PR to `dev` (4.3.0). A consumer check
-   (re-import and build of a localized project) before the release.
+- Pack and SBOM tested; `build.fsc.fsx build check` green (SDK 10.0.403).
+
+1. CI of the PR to `dev`; the consumer check on the preview package `4.3.0-sat.1` (handed to the
+   consumer's session); then merge, `dev` -> `master`, tag `v4.3.0`.

@@ -1917,6 +1917,22 @@ type ``Import record satellites``() =
                     Is.EqualTo (File.ReadAllBytes "hand/obj/Release/net8.0/ja/hand.resources.dll"))
         let name = Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath "out/Release/net8.0/hand/ja/hand.resources.dll")
         Assert.That((name.CultureName, string name.Version), Is.EqualTo (("ja", "2.0.0.0")))
+        // packed from a nuspec, one wildcard per culture folder, and listed by the SBOM
+        File.WriteAllText ("lib.nuspec",
+            "<?xml version=\"1.0\"?>\n<package><metadata><id>Lib</id><version>1.2.3</version><authors>a</authors><description>d</description></metadata>\n<files>\n"
+            + ([ "fr"; "ja"; "zh-CN" ] |> List.map (fun c -> sprintf "  <file src=\"out/Release/net8.0/lib/%s/*.resources.dll\" target=\"lib/net8.0/%s\" />\n" c c) |> String.concat "")
+            + "</files>\n</package>\n")
+        Pack.fromNuspec "Lib.1.2.3.nupkg" "lib.nuspec" Map.empty (Pack.libOf "lib" [ "net8.0", "out/Release/net8.0/lib" ]) Pack.Options.Default
+        use zip = IO.Compression.ZipFile.OpenRead "Lib.1.2.3.nupkg"
+        let packed = [ for e in zip.Entries do if e.FullName.StartsWith "lib/" then yield e.FullName ] |> List.sort
+        Assert.That(packed, Is.EqualTo [ "lib/net8.0/fr/lib.resources.dll"; "lib/net8.0/ja/lib.resources.dll"; "lib/net8.0/lib.dll"; "lib/net8.0/zh-CN/lib.resources.dll" ])
+        use packedJa = (zip.GetEntry "lib/net8.0/ja/lib.resources.dll").Open ()
+        use copy = new MemoryStream ()
+        packedJa.CopyTo copy
+        Assert.That(copy.ToArray (), Is.EqualTo (File.ReadAllBytes "out/Release/net8.0/lib/ja/lib.resources.dll"))
+        let bom = Sbom.forPackageScoped (Path.GetFullPath "Lib.1.2.3.nupkg") "net8.0" []
+        let listed = bom.Root.Components |> List.map (fun c -> c.Properties |> List.find (fun p -> p.Name = "xake:nuget:path") |> fun p -> p.Value)
+        Assert.That(listed, Is.SupersetOf [ "lib/net8.0/fr/lib.resources.dll"; "lib/net8.0/ja/lib.resources.dll"; "lib/net8.0/zh-CN/lib.resources.dll" ])
         // a second build does nothing
         let before = File.GetLastWriteTimeUtc "out/Release/net8.0/lib/ja/lib.resources.dll"
         x.BuildSatellites "build-sat-again"

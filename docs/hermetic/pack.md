@@ -68,7 +68,7 @@ Nothing checks a stable package against a pre-release dependency (NuGet's NU5104
 
 Not covered: symbols packages, a `<files>` element with
 `exclude`. Satellite assemblies built by `Locks.satellite` (4.3.0) go in like any built file, one
-wildcard per culture folder (`lib/net8.0/ja/*.resources.dll`); not tested yet.
+wildcard per culture folder (`lib/net8.0/ja/*.resources.dll`); the SBOM lists them (tier 1).
 
 ## What `Pack.nupkg`/`Pack.zip` fix, and how
 

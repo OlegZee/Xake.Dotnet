@@ -5,8 +5,9 @@ One line per item. Status as of 2026-11-07: started.
 ## Open
 
 - [ ] Probe: Windows `FileVersionInfo` of hand-written attributes
-- [ ] `Pack` and the SBOM take the satellites (a test)
-- [ ] PR `feature/satellites` -> `dev` (release 4.3.0)
+- [ ] PR `feature/satellites` -> `dev` (release 4.3.0), CI green
+- [ ] Consumer check on a preview package (`4.3.0-sat.1`): a localized project re-imported, satellites built, translations found
+- [ ] Windows: hand-written attributes (`FileVersionInfo`) not checked
 
 ## Later
 
@@ -14,6 +15,7 @@ One line per item. Status as of 2026-11-07: started.
 
 ## Done
 
+- [x] `Pack.fromNuspec` (a wildcard per culture folder) and the SBOM take the satellites (test); `build.fsc.fsx build check` green (2026-11-08)
 - [x] Build: `Locks.satellite` (on request) and `Locks.satellitesOf`; the SDK's recipe read at import (`Satellites.References`, `/pathmap`, `/features`); byte-identical to `dotnet build` with generated and hand-written attributes; docs (lock.md, pack.md, README, release notes) (2026-11-08)
 - [x] Import: `Recorded.Satellites` from the culture resources, the main compile's switches and its generated assembly info; F# reported and left out; invariant globalization fails; fixture test against `dotnet build` (2026-11-07)
 - [x] Lock: `Recorded.Satellites` (`Options`, `Attributes`, `Cultures`), written only when present, round trip and `mapText` tested; `lock.md` (2026-11-07)
