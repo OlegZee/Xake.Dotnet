@@ -26,6 +26,8 @@ items: `tracker.md`.
   (referenced ones in run folders later); the composed path keeps its refusal; release 4.3.0,
   #12 untouched. No open decisions left.
 
-1. Probe signing on the fixture (key file, public/delay sign): the satellite's public key token.
-2. The lock's per-culture section (`Lock.fs`) with a write/read round trip, then the import,
+- Signing probed (`probe.md`, E): the satellite's key switches are the main compile's; tokens
+  equal in all three modes; a composed signed satellite is byte-identical.
+
+1. The lock's per-culture section (`Lock.fs`) with a write/read round trip, then the import,
    then the satellite rule.

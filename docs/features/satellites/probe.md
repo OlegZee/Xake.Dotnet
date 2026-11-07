@@ -52,6 +52,23 @@ not the source attributes: the blanks are the version resource's defaults. There
 `*.AssemblyInfo.cs` to derive from, so deriving from the main entry's `Generated` text covers
 only projects with generated assembly info.
 
+## E. Signing (2026-11-07)
+
+The same library with `SignAssembly`, `AssemblyOriginatorKeyFile` (a 1024-bit test key) in
+three modes, SDK 8.0.427 and 10.0.403, a full build:
+
+| mode | main `csc` key switches | satellite `csc` key switches | tokens |
+|---|---|---|---|
+| key file | `/keyfile:<key>` | `/keyfile:<key>` | equal |
+| `PublicSign` | `/keyfile:<key> /publicsign+` | `/keyfile:<key> /publicsign+` | equal |
+| `DelaySign` | `/delaysign+ /keyfile:<key>` | `/delaysign+ /keyfile:<key>` | equal |
+
+The satellite's key switches are the main compile's, as the target's recipe says
+(`KeyOriginatorFile`, `PublicSign`, `DelaySign`). Version 1.2.3.0 and culture `ja` as expected.
+A satellite composed by hand with the key file (the derived source, the switches of C plus
+`/keyfile`) is **byte-identical** to msbuild's signed one (SDK 10; real signing is
+deterministic). `KeyContainerName` not probed (Windows only).
+
 ## Consequences
 
 1. The satellite's `Csc` call cannot be captured by the design-time record (B). Its switches are
@@ -70,5 +87,5 @@ only projects with generated assembly info.
    becomes "record the satellite's inputs and settings, compose the `Csc` call by the SDK target's
    recipe". This needs the owner's answer.
 
-Not probed: signing (key file, public/delay sign), Windows, `net472` (the `al`-free route of
+Not probed: Windows (`FileVersionInfo`, key containers), `net472` (the `al`-free route of
 `dotnet msbuild` assumed), F#.
