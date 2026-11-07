@@ -32,7 +32,12 @@ items: `tracker.md`.
 - Lock format done: `Lock.Satellites` in `Recorded` (`src/hermetic/Lock.fs`), tests in
   `RecordTests.fs`; hermetic suite green (336).
 
-1. The import (`src/hermetic/Import.fs`): stop dropping culture resources (`describe`/`resourcesOf`,
-   `entryOf`), fill `Recorded.Satellites` (the switches from the target's properties, the
-   attributes from the entry's generated assembly info), fail under invariant globalization.
-2. Then the satellite rule.
+- Import done (`src/hermetic/Import.fs`: `satelliteAttributesOf`, `satelliteOptions`,
+  `cultureSuspects`, in `entryOf`; three properties added to the dump). Tests:
+  `Satellite composition`, `Import record satellites` (the attributes equal `dotnet build`'s
+  satellite source, the commit a token). Hermetic suite green (340).
+
+1. The satellite rule (`src/hermetic/Locks.fs`): requested explicitly, after the main assembly;
+   writes the source (the attributes, or those read from the built assembly when `Attributes`
+   is absent), compiles each `.resx` (`Resx`), runs csc with the entry's compiler and
+   references to `<out>/<culture>/<asm>.resources.dll`. Test: byte-identical to `dotnet build`.

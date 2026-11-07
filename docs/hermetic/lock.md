@@ -359,8 +359,10 @@ Switching to NuGet changes every lock with a pack reference once, on its next im
 - `Recorded.Markup` (since 4.1.0) is written only when the BAML names a referenced project's
   assembly: `"Markup": [ "lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" ]`. Every
   other lock is byte-identical to one written before the key existed.
-- `Recorded.Satellites` (4.3.0, in progress: the import does not write it yet) is written only
-  for a project with culture-specific resources. The satellites' compile is composed by the
+- `Recorded.Satellites` (4.3.0, in progress: the import writes it, no rule builds it yet) is
+  written only for a C# project with culture-specific resources (an F# project's are reported
+  and left out). Under invariant globalization the import fails on a resource whose second
+  extension looks like a culture (`Strings.ja.resx`): msbuild cannot tell it is one. The satellites' compile is composed by the
   recipe of the SDK's `CoreGenerateSatelliteAssemblies` (msbuild's own call cannot be recorded):
   `Options` (the switches but the references, resources, output and source), `Attributes` (the
   source's attribute lines but `AssemblyCulture`, the version as a token; absent when the

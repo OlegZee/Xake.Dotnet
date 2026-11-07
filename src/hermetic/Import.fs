@@ -415,7 +415,7 @@ module Import =
                 match fromTargets with
                 | Some _ ->
                     if isTrue (meta "WithCulture" m) then
-                        drop (sprintf "%s: EmbeddedResource %s (culture %s: a satellite assembly, not built)" name file (meta "Culture" m)); None
+                        drop (sprintf "%s: EmbeddedResource %s (culture %s: a satellite assembly, left out of the description; a C# project's lock records it)" name file (meta "Culture" m)); None
                     else
                         // csc embeds a resx as the `.resources` it compiles to, named
                         // `<ManifestResourceName>.resources`; any other file by its `LogicalName`
@@ -864,7 +864,9 @@ module Import =
           "ProjectDepsFilePath"; "ProjectRuntimeConfigFilePath"; "AutoGenerateBindingRedirects"; "GenerateBindingRedirectsOutputType"
           "_GenerateBindingRedirectsIntermediateAppConfig"; "IsTestProject"; "OutDir"; "UseWPF"
           // the sources of an application's recorded files: its `App.config`, `runtimeconfig.template.json`
-          "AppConfig"; "UserRuntimeConfig" ]
+          "AppConfig"; "UserRuntimeConfig"
+          // a satellite assembly's attributes and switches (`satellitesOf`)
+          "GenerateAssemblyInfo"; "GeneratedAssemblyInfoFile"; "DisabledWarnings" ]
 
     /// <summary>
     /// The targets file `record` hands every project (`CustomAfterMicrosoftCommonTargets`; the
@@ -1452,6 +1454,73 @@ module Import =
     /// </list>
     /// Pure but for reading the generated files and hashing.
     /// </summary>
+    /// The attributes `GetAssemblyAttributes` hands a satellite assembly, in its order: what the
+    /// SDK reads back from the built assembly's file version info (`docs/features/satellites/probe.md`).
+    /// A copyright or a title the assembly does not state reads as " ".
+    let private satelliteAttributes =
+        [ "System.Reflection.AssemblyCompanyAttribute", None
+          "System.Reflection.AssemblyCopyrightAttribute", Some " "
+          "System.Reflection.AssemblyDescriptionAttribute", None
+          "System.Reflection.AssemblyFileVersionAttribute", None
+          "System.Reflection.AssemblyInformationalVersionAttribute", None
+          "System.Reflection.AssemblyProductAttribute", None
+          "System.Reflection.AssemblyTitleAttribute", Some " "
+          "System.Reflection.AssemblyVersionAttribute", None ]
+
+    /// <summary>
+    /// A satellite assembly's attribute lines (`Lock.Satellites.Attributes`) from the text of the
+    /// assembly info msbuild generated for the main assembly (`[assembly: X("v")]` lines, as
+    /// `WriteCodeFragment` writes them): those of `satelliteAttributes`, in its order, the main
+    /// assembly's `AssemblyConfiguration`, `NeutralResourcesLanguage`, `InternalsVisibleTo`, ...
+    /// left out, as the SDK's target does. Pure.
+    /// </summary>
+    let internal satelliteAttributesOf (assemblyInfo: string) : string list =
+        let stated =
+            [ for line in assemblyInfo.Split '\n' do
+                let line = line.Trim ()
+                if line.StartsWith "[assembly: " && line.EndsWith ")]" then
+                    let body = line.Substring (11, line.Length - 12)
+                    match body.IndexOf '(' with
+                    | -1 -> ()
+                    | i -> yield body.Substring (0, i), body ]
+            |> Map.ofList
+        [ for name, blank in satelliteAttributes do
+            match Map.tryFind name stated, blank with
+            | Some body, _ when not (body.EndsWith "(\"\")") -> yield body
+            | _, Some value -> yield sprintf "%s(\"%s\")" name value
+            | _ -> () ]
+
+    /// <summary>
+    /// The switches of a satellite assembly's compile (`Lock.Satellites.Options`) by the recipe of
+    /// the SDK's `CoreGenerateSatelliteAssemblies`: `/noconfig`, the main compile's switches the
+    /// target passes on (the key, `/nostdlib`, `/warn`, `/optimize`, `/deterministic`,
+    /// `/warnaserror` with a list), `/nowarn` from `DisabledWarnings` (not the main compile's
+    /// `NoWarn`), `/target:library`. Pure.
+    /// </summary>
+    let internal satelliteOptions (mainOptions: string list) (disabledWarnings: string) : string list =
+        let passed = set [ "nostdlib"; "warn"; "keyfile"; "keycontainer"; "publicsign"; "delaysign"; "optimize"; "deterministic" ]
+        [ yield "/noconfig"
+          for o in mainOptions do
+              match CscArgs.parse o with
+              | CscArgs.Switch (name, value) ->
+                  let bare = name.TrimEnd ('+', '-')
+                  if passed.Contains bare || (bare = "warnaserror" && value <> "") then yield o
+              | CscArgs.Source _ -> ()
+          if disabledWarnings <> "" then yield "/nowarn:" + disabledWarnings
+          yield "/target:library" ]
+
+    /// <summary>
+    /// The resources of a project whose culture msbuild cannot tell under invariant
+    /// globalization (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`): a second extension shaped like a
+    /// culture name (`Strings.ja.resx`, `Logo.zh-CN.png`) that `AssignCulture` did not take. The
+    /// same project would give another lock on a machine with cultures. Pure.
+    /// </summary>
+    let internal cultureSuspects (files: string list) : string list =
+        let shaped = Text.RegularExpressions.Regex "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+        files |> List.filter (fun f ->
+            let ext = Path.GetExtension (Path.GetFileNameWithoutExtension f)
+            ext.Length > 1 && shaped.IsMatch (ext.Substring 1))
+
     let internal entryOf (ctx: RecordContext) (cfg: string) (framework: string) (scratch: string) (binaryDir: string) (d: Dump)
                          : Lock.Entry * string list * (string * byte[]) list =
         let warnings = ResizeArray<string> ()
@@ -1576,6 +1645,49 @@ module Import =
                     if named compiled then yield absoluteIn ctx.ProjectDir id, compiled ]
             |> List.distinct
 
+        // the satellite assemblies (`Lock.Satellites`): the SDK's `CoreGenerateSatelliteAssemblies`
+        // reads the built assembly, so it cannot run here; its compile is composed by the target's
+        // recipe from the culture resources (`_SatelliteAssemblyResourceInputs`: a resx's
+        // `.resources`, any other file as is), the main compile's switches and its generated
+        // assembly info (none: the build reads the built assembly, as msbuild does). C# only
+        if Globalization.CultureInfo.GetCultures(Globalization.CultureTypes.AllCultures).Length <= 1 then
+            let plain = [ for id, m in items d "EmbeddedResource" do if not (isTrue (meta "WithCulture" m)) then yield id ]
+            match cultureSuspects plain with
+            | [] -> ()
+            | suspects ->
+                failwithf "'%s' (%s|%s): globalization is invariant, so msbuild cannot tell whether %s are culture-specific (satellite assemblies); run the import where cultures are available (ICU; DOTNET_SYSTEM_GLOBALIZATION_INVARIANT unset)"
+                    ctx.ProjectFile cfg framework (suspects |> List.map Path.GetFileName |> String.concat ", ")
+        let satellites : Lock.Satellites option =
+            let cultured =
+                [ for id, m in items d "EmbeddedResource" do
+                    if isTrue (meta "WithCulture" m) && meta "Culture" m <> "" then
+                        let file = absoluteIn ctx.ProjectDir id
+                        let resx = meta "Type" m = "Resx" || (meta "Type" m = "" && isResx id)
+                        let compiled = if resx then moved (absoluteIn ctx.ProjectDir (meta "OutputResource" m)) else ""
+                        let name =
+                            match meta "LogicalName" m with
+                            | "" -> Path.GetFileName (if resx then meta "OutputResource" m else id)
+                            | logical -> logical
+                        yield meta "Culture" m, ({ File = file; Compiled = compiled; Name = name } : Lock.SatelliteResource) ]
+                |> List.distinct
+            if List.isEmpty cultured then None
+            elif isFSharp then
+                warnings.Add (sprintf "'%s' (%s|%s): satellite assemblies of an F# project are not built (%s)"
+                                  ctx.Description.Name cfg framework (cultured |> List.map (fun (_, r) -> Path.GetFileName r.File) |> String.concat ", "))
+                None
+            else
+                let attributes =
+                    match p "GenerateAssemblyInfo", p "GeneratedAssemblyInfoFile" with
+                    | "false", _ | _, "" -> None
+                    | _, info ->
+                        let info = moved (absoluteIn ctx.ProjectDir info)
+                        generated |> List.tryFind (fst >> (=) info) |> Option.map (snd >> satelliteAttributesOf)
+                Some { Options = satelliteOptions c.Options (p "DisabledWarnings")
+                       Attributes = attributes
+                       Cultures =
+                         cultured |> List.map fst |> List.distinct
+                         |> List.map (fun culture -> culture, [ for cu, r in cultured do if cu = culture then yield r ]) }
+
         // the hashes: a project's output and the SDK's own files carry none
         let isProjectOutput (path: string) = projects |> List.exists (fun (o, _) -> o.Path = path)
         let hash (path: string) = if isProjectOutput path || inSdk path then "" else FileHash.sha256 path
@@ -1678,7 +1790,7 @@ module Import =
                   Properties = d.Props |> Map.filter (fun k v -> List.contains k keptProperties && v <> "") }
               Packages = packages
               Prerequisites = []
-              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup; Satellites = None } }
+              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup; Satellites = satellites } }
         // the SDK the entry was recorded with, when it names a file of that SDK (its compiler,
         // analyzers, shims, its apphost): the prerequisite follows the content
         let entry =

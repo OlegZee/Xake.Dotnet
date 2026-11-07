@@ -69,6 +69,16 @@ A satellite composed by hand with the key file (the derived source, the switches
 `/keyfile`) is **byte-identical** to msbuild's signed one (SDK 10; real signing is
 deterministic). `KeyContainerName` not probed (Windows only).
 
+## F. Which attributes (2026-11-07)
+
+A project with `Description`, `AssemblyTitle`, `NeutralLanguage`, `Authors`, a version with a
+suffix, `InternalsVisibleTo`, `AssemblyMetadata` and an `AssemblyTrademark` attribute (SDK 10):
+the satellite takes Company, Copyright, Description, FileVersion, InformationalVersion, Product,
+Title, Version, in that order, and nothing else (no Trademark, Configuration,
+`NeutralResourcesLanguage`, `InternalsVisibleTo`, `AssemblyMetadata`). A copyright the assembly
+does not state reads as `" "`; a description it does not state is left out. This is the file
+version info `GetAssemblyAttributes` reads (`Import.satelliteAttributesOf` follows it).
+
 ## Consequences
 
 1. The satellite's `Csc` call cannot be captured by the design-time record (B). Its switches are
