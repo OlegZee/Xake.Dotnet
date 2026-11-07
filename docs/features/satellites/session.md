@@ -29,5 +29,10 @@ items: `tracker.md`.
 - Signing probed (`probe.md`, E): the satellite's key switches are the main compile's; tokens
   equal in all three modes; a composed signed satellite is byte-identical.
 
-1. The lock's per-culture section (`Lock.fs`) with a write/read round trip, then the import,
-   then the satellite rule.
+- Lock format done: `Lock.Satellites` in `Recorded` (`src/hermetic/Lock.fs`), tests in
+  `RecordTests.fs`; hermetic suite green (336).
+
+1. The import (`src/hermetic/Import.fs`): stop dropping culture resources (`describe`/`resourcesOf`,
+   `entryOf`), fill `Recorded.Satellites` (the switches from the target's properties, the
+   attributes from the entry's generated assembly info), fail under invariant globalization.
+2. Then the satellite rule.

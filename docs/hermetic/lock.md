@@ -31,7 +31,8 @@ open Xake.Hermetic.Dotnet
 |---|---|---|
 | `Lock.Compilation = Csc of Csc \| Fsc of Fsc` | type | what the compiler is handed, C# or F#; `[<RequireQualifiedAccess>]`, so `Lock.Compilation.Csc c`. Members `Name`, `Framework`, `Directory`, `Options`, `Defines`, `Sources`, `Generated`, `Resources`, `Dependencies`, `Args`, `Output` |
 | `Lock.Entry = { Compilation; Evaluation; Packages; Prerequisites; Recorded }` | type | one project's compilation, where the answer came from, the restore graph, what the environment must provide ([Prerequisites](#prerequisites)), and `Recorded` (`Some` for an entry recorded from msbuild by `Import.record`, `None` for a composed one). Members `Name`, `Framework`, `Dependencies`, `Args`, `Output` (the compilation's), and `Csc` / `Fsc`, which return that case and fail for the other |
-| `Lock.Recorded = { Projects; Masks; Placed; App; Markup }`, `Lock.ProjectOutput = { Name; Configuration; Framework; Path }` | type | the marker of a recorded entry: the referenced projects' outputs (`project:<name>`), the description's source masks, and for a WPF project the referenced assemblies its BAML names (`Markup`) ([Recorded locks](#recorded-locks-importrecord)) |
+| `Lock.Recorded = { Projects; Masks; Placed; App; Markup; Satellites }`, `Lock.ProjectOutput = { Name; Configuration; Framework; Path }` | type | the marker of a recorded entry: the referenced projects' outputs (`project:<name>`), the description's source masks, for a WPF project the referenced assemblies its BAML names (`Markup`), and the satellite assemblies (`Satellites`) ([Recorded locks](#recorded-locks-importrecord)) |
+| `Lock.Satellites = { Options; Attributes; Cultures }`, `Lock.SatelliteResource = { File; Compiled; Name }` | type | the satellite assemblies of a recorded entry: the switches of their compile, the assembly attributes (`None`: read from the built assembly), the resources per culture |
 | `Lock.Identity.ofPath ctx path` / `toPath ctx id` | pure (`toPath` reads one directory) | the portable name of a file of a recorded entry (`pkg:`, `pack:`, `sdk:`, `project:`, or the tokenized path) and back |
 | `Lock.FormatVersion` | literal | `2`: the version `format` writes as `"Format"` |
 | `Import.record RecordOptions projects` | recipe | descriptions and recorded locks from msbuild's design-time builds ([Recorded locks](#recorded-locks-importrecord)) |
@@ -358,6 +359,22 @@ Switching to NuGet changes every lock with a pack reference once, on its next im
 - `Recorded.Markup` (since 4.1.0) is written only when the BAML names a referenced project's
   assembly: `"Markup": [ "lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" ]`. Every
   other lock is byte-identical to one written before the key existed.
+- `Recorded.Satellites` (4.3.0, in progress: the import does not write it yet) is written only
+  for a project with culture-specific resources. The satellites' compile is composed by the
+  recipe of the SDK's `CoreGenerateSatelliteAssemblies` (msbuild's own call cannot be recorded):
+  `Options` (the switches but the references, resources, output and source), `Attributes` (the
+  source's attribute lines but `AssemblyCulture`, the version as a token; absent when the
+  project writes its attributes itself, read from the built assembly then), and `Cultures`:
+  ```json
+  "Satellites": {
+    "Options": [ "/noconfig", "/nostdlib+", "/warn:8", "/optimize+", "/target:library", "/deterministic+" ],
+    "Attributes": [ "System.Reflection.AssemblyVersionAttribute(\"$(Version)\")" ],
+    "Cultures": {
+      "ja": [ { "File": "$(ProjectRoot)/src/Strings.ja.resx", "Compiled": "...", "Name": "App.Strings.ja.resources" } ]
+    }
+  }
+  ```
+  Every other lock is byte-identical to one written before the key existed.
 - `Evaluation.Properties` keeps a few of msbuild's properties, among them `TargetFileName`:
   `Locks.needAll` and `Locks.compileAs` name the output after it (`app.exe` for a .NET Framework
   application, `app.dll` for .NET).

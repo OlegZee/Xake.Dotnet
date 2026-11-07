@@ -1678,7 +1678,7 @@ module Import =
                   Properties = d.Props |> Map.filter (fun k v -> List.contains k keptProperties && v <> "") }
               Packages = packages
               Prerequisites = []
-              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup } }
+              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup; Satellites = None } }
         // the SDK the entry was recorded with, when it names a file of that SDK (its compiler,
         // analyzers, shims, its apphost): the prerequisite follows the content
         let entry =

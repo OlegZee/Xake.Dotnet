@@ -62,7 +62,7 @@ type ``Recorded lock identities``() =
         { Lock.ofCsc c with
             Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/src/App.csproj"; ProjectRefs = [ "Lib" ]; Sdk = "8.0.425" }
             Prerequisites = [ { Kind = Lock.DotnetSdk; Version = "8.0.425"; Pin = "$(ProjectRoot)/global.json" } ]
-            Recorded = Some { Projects = [ lib ]; Masks = [ "/r/proj/src/**/*.cs"; "!/r/proj/src/obj/**/*" ]; Placed = None; App = None; Markup = [] } }
+            Recorded = Some { Projects = [ lib ]; Masks = [ "/r/proj/src/**/*.cs"; "!/r/proj/src/obj/**/*" ]; Placed = None; App = None; Markup = []; Satellites = None } }
 
     [<Test>]
     member x.``a recorded entry is written with identities and the Recorded section, and reads back to paths``() =
@@ -92,6 +92,9 @@ type ``Recorded lock identities``() =
         // no XAML: no `Markup` key, as before it existed
         Assert.That(text, Does.Not.Contain "\"Markup\"")
         Assert.That(e.Recorded.Value.Markup, Is.Empty)
+        // no culture resources: no `Satellites` key, as before it existed
+        Assert.That(text, Does.Not.Contain "\"Satellites\"")
+        Assert.That(e.Recorded.Value.Satellites, Is.EqualTo None)
 
     [<Test>]
     member x.``a WPF entry's Markup is written in the Recorded section and reads back``() =
@@ -103,6 +106,40 @@ type ``Recorded lock identities``() =
         let back = Lock.parse roots text
         Assert.That(back.Entries.Head.Recorded.Value.Markup, Is.EqualTo markup)
         Assert.That(Lock.format roots back, Is.EqualTo text)
+
+    [<Test>]
+    member x.``an entry's Satellites are written in the Recorded section and read back``() =
+        let entry = x.Recorded [ lib.Path ]
+        let satellites : Lock.Satellites =
+            { Options = [ "/noconfig"; "/nostdlib+"; "/warn:8"; "/keyfile:/r/proj/src/key.snk"; "/optimize+"; "/target:library"; "/deterministic+" ]
+              Attributes = Some [ "System.Reflection.AssemblyCompanyAttribute(\"Co\")"; "System.Reflection.AssemblyVersionAttribute(\"$(Version)\")" ]
+              Cultures =
+                [ "ja", [ { File = "/r/proj/src/Strings.ja.resx"; Compiled = "/r/proj/src/obj/App.Strings.ja.resources"; Name = "App.Strings.ja.resources" } ]
+                  "zh-CN", [ { File = "/r/proj/src/Strings.zh-CN.resx"; Compiled = "/r/proj/src/obj/App.Strings.zh-CN.resources"; Name = "App.Strings.zh-CN.resources" }
+                             { File = "/r/proj/src/Logo.zh-CN.png"; Compiled = ""; Name = "App.Logo.zh-CN.png" } ] ] }
+        let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some satellites } }
+        let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
+        Assert.That(text, Does.Contain "\"/keyfile:$(ProjectRoot)/src/key.snk\"")
+        Assert.That(text, Does.Contain "\"ja\": [\n              { \"File\": \"$(ProjectRoot)/src/Strings.ja.resx\", \"Compiled\": \"$(ProjectRoot)/src/obj/App.Strings.ja.resources\", \"Name\": \"App.Strings.ja.resources\" }\n            ]")
+        Assert.That(text, Does.Contain "\"System.Reflection.AssemblyVersionAttribute(\\\"$(Version)\\\")\"")
+        Assert.That(text, Does.Not.Contain "/r/")
+        let back = Lock.parse roots text
+        Assert.That(back.Entries.Head.Recorded.Value.Satellites, Is.EqualTo (Some satellites))
+        Assert.That(Lock.format roots back, Is.EqualTo text)
+        // attributes read from the built assembly: no `Attributes` key
+        let fromAssembly = { satellites with Attributes = None }
+        let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some fromAssembly } }
+        let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
+        Assert.That(text, Does.Not.Contain "\"Attributes\"")
+        Assert.That((Lock.parse roots text).Entries.Head.Recorded.Value.Satellites, Is.EqualTo (Some fromAssembly))
+
+    [<Test>]
+    member x.``mapText reaches a satellite's attributes``() =
+        let entry = x.Recorded [ lib.Path ]
+        let satellites : Lock.Satellites = { Options = []; Attributes = Some [ "A(\"1.2.3-m\")" ]; Cultures = [] }
+        let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some satellites } }
+        let mapped = entry |> Lock.mapText (fun t -> t.Replace ("1.2.3-m", "$(Version)"))
+        Assert.That(mapped.Recorded.Value.Satellites.Value.Attributes, Is.EqualTo (Some [ "A(\"$(Version)\")" ]))
 
     [<Test>]
     member x.``the BAML's AssemblyInfo records are its assembly names; a byte 0x1C elsewhere is not``() =
@@ -221,7 +258,7 @@ type ``Recorded lock identities``() =
             Assert.That(resolve "00", Is.EqualTo package)
             let c = { Csc.ofArgs [ "/noconfig"; "/reference:" + package; "/r/proj/A.cs" ] with Name = "App"; Framework = "net8.0"; Directory = "/r/proj" }
             let c = { c with Dependencies = { c.Dependencies with References = c.Dependencies.References |> List.map (fun r -> { r with Sha256 = "00" }) } }
-            let entry = { Lock.ofCsc c with Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = [] } }
+            let entry = { Lock.ofCsc c with Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = []; Satellites = None } }
             match Lock.packMismatches (Some dotnet) pkgs entry with
             | [ message ] ->
                 Assert.That(message, Does.Contain identity)
@@ -257,7 +294,7 @@ type ``Recorded lock identities``() =
         let entry =
             { Lock.ofCsc c with
                 Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/App.csproj"; Sdk = "8.0.425" }
-                Recorded = Some { Projects = []; Masks = masks; Placed = None; App = None; Markup = [] } }
+                Recorded = Some { Projects = []; Masks = masks; Placed = None; App = None; Markup = []; Satellites = None } }
         let rootsHere = [ "$(ProjectRoot)", "/r/proj"; "$(Shared)", "/r/shared"; "$(DotnetRoot)", "/r/dotnet"; "$(NuGetPackageRoot)", "/r/pkgs" ]
         let text = Lock.format rootsHere { Configuration = "Release"; Properties = []; Entries = [ entry ] }
         Assert.That(text, Does.Contain "\"Sources\": [\n          \"$(ProjectRoot)/Z.cs\",\n          \"$(ProjectRoot)/obj/xake/App.AssemblyInfo.cs\"\n        ]")
@@ -1059,7 +1096,7 @@ type ``Import record switch files``() =
         let c =
             { Csc.ofArgs [ "/noconfig"; "/keyfile:/opt/keys/k.snk"; "/analyzerconfig:/r/dotnet/sdk/8.0.425/x.globalconfig"; "/ruleset:/r/proj/a.ruleset"
                            "/pathmap:/r/proj/=/_/,/opt/src/=/_2/"; "/r/proj/A.cs" ] with Name = "A"; Framework = "net8.0" }
-        let entry = { Lock.ofCsc c with Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/A.csproj"; Sdk = "8.0.425" }; Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = [] } }
+        let entry = { Lock.ofCsc c with Evaluation = { Lock.Evaluation.Empty with Project = "/r/proj/A.csproj"; Sdk = "8.0.425" }; Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = []; Satellites = None } }
         let problems = Import.unportablePaths roots entry
         Assert.That(problems, Has.Length.EqualTo 2)
         Assert.That(problems.[0], Does.Contain "'/opt/keys/k.snk'")

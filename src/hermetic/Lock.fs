@@ -323,6 +323,28 @@ module Lock =
         BindingRedirects: bool
     }
 
+    /// One culture-specific resource of a satellite assembly: the file (`Strings.ja.resx`,
+    /// `Logo.fr-FR.png`), the `.resources` a `.resx` compiles to ("" for any other file,
+    /// embedded as is) and the manifest name.
+    type SatelliteResource = { File: string; Compiled: string; Name: string }
+
+    /// The satellite assemblies of a recorded entry (`<out>/<culture>/<name>.resources.dll`),
+    /// composed by the recipe of the SDK's `CoreGenerateSatelliteAssemblies`: msbuild's own
+    /// call cannot be recorded (`docs/features/satellites/probe.md`). Built by a rule of their
+    /// own, on request; the compiler and the references are the entry's.
+    type Satellites = {
+        /// The switches of every satellite's compile but the references, the resources, the
+        /// output and the source (`/noconfig`, the key switches of the entry, `/optimize`, ...)
+        Options: string list
+        /// The assembly attributes of the satellite's source but `AssemblyCulture`, one per
+        /// line as `WriteCodeFragment` writes them (`System.Reflection.AssemblyVersionAttribute("1.2.3.0")`);
+        /// `None` when the project writes its attributes itself: the build reads them from the
+        /// built assembly then, as msbuild does
+        Attributes: string list option
+        /// Per culture, in msbuild's order, its resources
+        Cultures: (string * SatelliteResource list) list
+    }
+
     /// What only an entry recorded from msbuild (`Import.record`) carries. Its presence is the
     /// marker the SBOM and a staleness check read ("msbuild" against "composed"): such an
     /// entry is msbuild's resolution written down, never Xake's. On disk its references,
@@ -352,6 +374,9 @@ module Lock =
         /// output; another identity fails it, "run the import again" (`Locks.compileAs`). Empty
         /// otherwise
         Markup: string list
+        /// The satellite assemblies of a project with culture-specific resources; `None`
+        /// otherwise
+        Satellites: Satellites option
     }
 
     /// <summary>
@@ -605,7 +630,10 @@ module Lock =
         { entry with
             Compilation = entry.Compilation |> mapCompilation (Csc.mapText f) (Fsc.mapText f)
             Evaluation = { entry.Evaluation with Properties = entry.Evaluation.Properties |> Map.map (fun _ v -> f v) }
-            Prerequisites = entry.Prerequisites |> List.map (fun p -> { p with Pin = f p.Pin }) }
+            Prerequisites = entry.Prerequisites |> List.map (fun p -> { p with Pin = f p.Pin })
+            Recorded =
+                entry.Recorded |> Option.map (fun r ->
+                    { r with Satellites = r.Satellites |> Option.map (fun s -> { s with Attributes = s.Attributes |> Option.map (List.map f) }) }) }
 
     /// See `Csc.diffList`.
     let diffList (a: string list) (b: string list) : string list = Csc.diffList a b
@@ -1012,7 +1040,31 @@ module Lock =
                   // only when there is one: every lock without XAML stays byte-identical to what
                   // was written before the key existed
                   if not (List.isEmpty r.Markup) then
-                      yield stringsWith escape "Markup" r.Markup ]
+                      yield stringsWith escape "Markup" r.Markup
+                  // only when there is one: every lock without culture resources stays
+                  // byte-identical to what was written before the key existed
+                  match r.Satellites with
+                  | None -> ()
+                  | Some s ->
+                      let inner = indent + "  "
+                      let list (lines: string list) = lines |> List.map (sprintf "%s  %s" inner) |> String.concat ",\n"
+                      let cultures =
+                          s.Cultures
+                          |> List.map (fun (culture, resources) ->
+                              resources
+                              |> List.map (fun r ->
+                                  sprintf "{ \"File\": %s, \"Compiled\": %s, \"Name\": %s }" (str r.File) (str r.Compiled) (escape r.Name))
+                              |> List.map (sprintf "%s    %s" inner) |> String.concat ",\n"
+                              |> fun body -> sprintf "%s  %s: [\n%s\n%s  ]" inner (escape culture) body inner)
+                          |> String.concat ",\n"
+                      yield
+                          [ yield sprintf "%s\"Options\": [\n%s\n%s]" inner (list (s.Options |> List.map str)) inner
+                            match s.Attributes with
+                            | Some lines -> yield sprintf "%s\"Attributes\": [\n%s\n%s]" inner (list (lines |> List.map (Roots.tokenizeText roots >> escape))) inner
+                            | None -> ()
+                            yield sprintf "%s\"Cultures\": {\n%s\n%s}" inner cultures inner ]
+                          |> String.concat ",\n"
+                          |> fun body -> sprintf "%s\"Satellites\": {\n%s\n%s}" indent body indent ]
           // what msbuild makes of a project with runtime output besides the compile
           match entry.Recorded |> Option.bind (fun r -> r.App) with
           | None -> ()
@@ -1094,7 +1146,21 @@ module Lock =
                          | Some (JObject members) -> Some (members |> List.choose (fun (k, v) -> asString v |> Option.map (fun v -> expand k, expand v)))
                          | _ -> None
                        App = None
-                       Markup = field "Markup" r |> Option.map asArray |> Option.defaultValue [] |> List.choose asString }
+                       Markup = field "Markup" r |> Option.map asArray |> Option.defaultValue [] |> List.choose asString
+                       Satellites =
+                         match field "Satellites" r with
+                         | Some (JObject _ as s) ->
+                             Some { Options = strings "Options" s
+                                    Attributes = field "Attributes" s |> Option.map (asArray >> List.choose asString >> List.map expand)
+                                    Cultures =
+                                      match field "Cultures" s with
+                                      | Some (JObject members) ->
+                                          members |> List.map (fun (culture, resources) ->
+                                              culture,
+                                              asArray resources |> List.map (fun x ->
+                                                  { File = str "File" x |> expand; Compiled = str "Compiled" x |> expand; Name = str "Name" x }))
+                                      | _ -> [] }
+                         | _ -> None }
             | _ -> None
         let context : Identity.Context =
             { Roots = roots; Sdk = str "Sdk" e; Projects = recorded |> Option.map (fun r -> r.Projects) |> Option.defaultValue [] }

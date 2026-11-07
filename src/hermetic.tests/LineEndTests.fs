@@ -110,7 +110,7 @@ type ``Line-end neutral hashes``() =
         let recorded = Hash.sha256 package
         let c = { Csc.ofArgs [ "/noconfig"; "/reference:" + package; "/r/proj/A.cs" ] with Name = "App"; Framework = "net8.0"; Directory = "/r/proj" }
         let c = { c with Dependencies = { c.Dependencies with References = c.Dependencies.References |> List.map (fun r -> { r with Sha256 = recorded }) } }
-        let entry = { Lock.ofCsc c with Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = [] } }
+        let entry = { Lock.ofCsc c with Recorded = Some { Projects = []; Masks = []; Placed = None; App = None; Markup = []; Satellites = None } }
         let noDotnet = Path.Combine(dir, "no-dotnet").Replace ('\\', '/')
         Assert.That(Lock.packMismatches (Some noDotnet) pkgs entry, Is.Empty)
         write "pkgs/microsoft.netcore.app.ref/8.0.11/ref/net8.0/X.dll" "MZ\r\n\u0000binary\r\n" |> ignore
