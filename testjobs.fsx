@@ -102,13 +102,25 @@ let isTestSummary (line: string) =
     let l = line.TrimStart()
     l.StartsWith "Passed!" || l.StartsWith "Failed!" || l.StartsWith "Skipped!" || l.StartsWith "Failed "
 
-/// The test rules. The test projects are built once by msbuild (`buildArgs` are added to `dotnet
-/// build`), each job runs `dotnet test --no-build` with `testExtra` before its own arguments.
+/// The test rules. The test projects are restored once, one after another (`test-restore`: they
+/// share `src/dotnet`, and two restores of it at once race on its `project.assets.json`), then
+/// built by msbuild without a restore (`buildArgs` are added to both), each job runs `dotnet test
+/// --no-build` with `testExtra` before its own arguments.
 let testRules (buildArgs: Recipe<ExecContext, string list>) (testExtra: string list) (filter: OptionalVar<string>) = [
     "test" <== TestJob.For [ for j in testJobs -> j.Key ]
+    "test-restore" => recipe {
+        let! extra = buildArgs
+        for project in testJobs |> List.map (fun j -> j.Key.project) |> List.distinct do
+            do! sh $"dotnet restore {TestSrc.Format project} -p:Configuration=Release" {
+                args extra
+                logprefix $"[test-restore {project}]"
+                stdoutlevel (fun l -> if l.Contains ": error " then Level.Error else Level.Info)
+                failonerror }
+    }
     TestBuild.Rule <| fun project -> recipe {
         let! extra = buildArgs
-        do! sh $"dotnet build {TestSrc.Format project} -c Release" {
+        do! need [ "test-restore" ]
+        do! sh $"dotnet build {TestSrc.Format project} -c Release --no-restore" {
             args extra
             logprefix $"[test-build {project}]"
             stdoutlevel (fun l -> if l.Contains ": error " then Level.Error else Level.Info)

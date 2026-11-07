@@ -494,6 +494,11 @@ type ``Building from Xake-generated locks``() =
         Assert.That(File.ReadAllText path, Does.Contain "\"Directory\": \"$(ProjectRoot)/p/Cv\"")
         x.AddVersionSource (Roots.builtin (Directory.GetCurrentDirectory ())) (Path.GetFullPath "obj/xake/Cv/netstandard2.0/Cv.Version.cs" |> fun p -> p.Replace ('\\', '/')) path
         let out = dll "Release" "Cv"
+        // a suffix mask for a lock that records no VersionPrefix (not imported with the option)
+        let e = Assert.Throws<XakeException>(fun () ->
+            x.BuildWith (Locks.compile { Locks.Settings.Default with VersionSuffixes = [ "**", recipe { return "ci.1" } ] }) "folder-suffix" [] out)
+        Assert.That(e.Data0, Does.Contain "records no VersionPrefix")
+        Assert.That(e.Data0, Does.Contain "give 'p/Cv/xake.project.json' a mask of `Versions`")
         x.BuildWith (Locks.compile { Locks.Settings.Default with Versions = [ "p/Cv/**", defaultVersion; "**", otherVersion ] }) "folder" [] out
         let text = System.Text.Encoding.UTF8.GetString (File.ReadAllBytes out)
         Assert.That(text, Does.Contain "1.2.3")
@@ -526,16 +531,32 @@ type ``Building from Xake-generated locks``() =
         Assert.That(File.ReadAllText path, Does.Contain "\"Directory\": \"$(SiblingRoot)/P\"")
         let lockRoots = Roots.make root roots
         x.AddVersionSource lockRoots ((root </> "obj/xake/P/netstandard2.0/P.Version.cs").Replace ('\\', '/')) path
-        let settings = { Locks.Settings.Default with Roots = roots; Versions = [ "$(SiblingRoot)/P/**", defaultVersion; "**", otherVersion ] }
-        run "build" (dll "Release" "P")
-            [ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                let! cfg = getRuleMatch "cfg"
-                let! fwk = getRuleMatch "fwk"
-                let! name = getRuleMatch "name"
-                do! Locks.compile settings (lockOf name cfg) fwk } ]
-        let text = System.Text.Encoding.UTF8.GetString (File.ReadAllBytes (root </> dll "Release" "P"))
+        let build label (settings: Locks.Settings) =
+            run label (dll "Release" "P")
+                [ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
+                    let! cfg = getRuleMatch "cfg"
+                    let! fwk = getRuleMatch "fwk"
+                    let! name = getRuleMatch "name"
+                    do! Locks.compile settings (lockOf name cfg) fwk } ]
+            System.Text.Encoding.UTF8.GetString (File.ReadAllBytes (root </> dll "Release" "P"))
+        let text = build "build" { Locks.Settings.Default with Roots = roots; Versions = [ "$(SiblingRoot)/P/**", defaultVersion; "**", otherVersion ] }
         Assert.That(text, Does.Contain "1.2.3")
         Assert.That(text, Does.Not.Contain "9.9.9")
+        // a suffix mask with the root, over the prefix a recorded lock keeps
+        let doc = Lock.read lockRoots path
+        let withPrefix (e: Lock.Entry) = { e with Evaluation = { e.Evaluation with Properties = e.Evaluation.Properties |> Map.add "VersionPrefix" "2.0.0" } }
+        File.WriteAllText (path, Lock.format lockRoots { doc with Entries = doc.Entries |> List.map withPrefix })
+        let text = build "build-suffix" { Locks.Settings.Default with Roots = roots; VersionSuffixes = [ "$(SiblingRoot)/P/**", recipe { return "sib.1" }; "**", recipe { return "other.1" } ] }
+        Assert.That(text, Does.Contain "2.0.0-sib.1")
+        Assert.That(text, Does.Not.Contain "other.1")
+        // no mask matches: the message shows a mask with a root by its expansion too, to compare
+        // with the project's (absolute) path; the masks are no dependency, so from clean outputs
+        Directory.Delete (root </> "out", true)
+        let sibling = (Path.GetFullPath "sibmask/Sibling").Replace ('\\', '/')
+        let e = Assert.Throws<XakeException>(fun () ->
+            build "build-nomask" { Locks.Settings.Default with Roots = roots; VersionSuffixes = [ "$(SiblingRoot)/Q/**", recipe { return "q.1" } ] } |> ignore)
+        Assert.That(e.Data0, Does.Contain (sprintf "matches '%s/P/%s'" sibling Description.FileName))
+        Assert.That(e.Data0, Does.Contain (sprintf "($(SiblingRoot)/Q/** = %s/Q/**)" sibling))
 
     /// G10: a project whose sources and key file live in a sibling checkout, registered as the
     /// extra root `$(SiblingRoot)`: the generated lock names no absolute path (masks, keyfile,

@@ -652,7 +652,8 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
     do! compileTarget (lockOf name cfg) fwk }
 ```
 
-`Locks.Settings` is `{ Roots; Versions; Lock: Lock.Options }`: the extra roots and version masks
+`Locks.Settings` is `{ Roots; Versions; VersionSuffixes; Lock: Lock.Options }` (`VersionSuffixes`:
+the suffix of a version recorded as a token, [hermetic/versioning.md](hermetic/versioning.md)): the extra roots and version masks
 `compileAsWith roots lockPath fwk versions` takes (it is now `compile` with those two set), and
 `Lock.Options` (`Run` for csc, `FscRun` for fsc, `Restore`). `Lock.Run.Server` set there wins over
 `CSC_SERVER`; left at the default, `CSC_SERVER` is read as in the table. With a hermetic release
