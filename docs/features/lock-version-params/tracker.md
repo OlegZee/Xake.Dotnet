@@ -9,7 +9,10 @@ One line per item. Status as of 2026-11-07.
       (#12) stays out (2026-11-07: the owner is unsure the fix belongs in the import)
 - [ ] Later, if asked for: `FileVersion` as a token too, for the scheme that puts the build
       number into its fourth part (`1.4.0.512`); it does not change an assembly's identity, unlike
-      `AssemblyVersion`. Out of scope of 4.2.0
+      `AssemblyVersion`. Out of scope of 4.2.0 (owner, 2026-11-07): the consumer's CI keeps
+      `FileVersion = <prefix>.0` and puts the build number in `Version` only, which 4.2.0
+      reproduces; a number in `FileVersion` would be new behaviour (where the number comes
+      from, the 65535 limit of a Win32 version part)
 - [ ] Later, if asked for: a `Pack` helper for inter-package dependency versions / NU5104
       (decided 2026-11-07: docs only for now, `pack.md` and `versioning.md`)
 
