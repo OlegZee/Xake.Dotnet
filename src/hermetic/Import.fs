@@ -784,25 +784,43 @@ module Import =
         OutOf: string -> string -> string -> string
         /// Where the targeting, apphost and runtime packs come from: `NuGet` (the default) or `Installed`
         PacksFrom: PacksFrom
+        /// `Some marker`: the version as a token (`versionMarker`). msbuild runs with
+        /// `VersionSuffix=<marker>`, and every `<prefix>-<marker>` it writes becomes `$(Version)`
+        /// (`Locks.Settings.VersionSuffixes` resolves it), so the lock does not depend on the
+        /// build's version suffix. `None` (the default): the version msbuild computes, as a literal
+        VersionSuffix: string option
     } with
         static member Default =
             { Configurations = [ "Release" ]; Properties = []; Roots = []
               DescriptionOf = Description.beside
               LockOf = (fun name cfg -> sprintf "locks/%s/%s.json" name cfg)
               OutOf = (fun cfg fwk name -> sprintf "out/%s/%s/%s" cfg fwk name)
-              PacksFrom = NuGet }
+              PacksFrom = NuGet
+              VersionSuffix = None }
+
+    /// The marker `RecordOptions.VersionSuffix` usually takes: a SemVer pre-release label no
+    /// version has otherwise.
+    let versionMarker = "xakeversionmarker"
 
     /// The global properties of every msbuild run of an import under the project root `root`:
     /// `NuGetAudit=false`, the script's `Properties`, and for `PacksFrom = NuGet` a
     /// `NetCoreTargetingPackRoot` that does not exist (a fixed path under `obj/`, so the
     /// intermediate folders keyed by the globals stay the same between imports), unless the
-    /// script sets that property itself.
+    /// script sets that property itself; with `VersionSuffix = Some marker`, `VersionSuffix=<marker>`
+    /// (the script's own `VersionSuffix` then fails: the lock could not say which it holds).
     let internal recordGlobals (root: string) (options: RecordOptions) : (string * string) list =
-        let setsPackRoot = options.Properties |> List.exists (fun (k, _) -> k.Equals ("NetCoreTargetingPackRoot", StringComparison.OrdinalIgnoreCase))
+        let sets name = options.Properties |> List.exists (fun (k, _) -> k.Equals (name, StringComparison.OrdinalIgnoreCase))
         [ "NuGetAudit", "false" ]
         @ (match options.PacksFrom with
-           | NuGet when not setsPackRoot -> [ "NetCoreTargetingPackRoot", root.TrimEnd('/') + "/obj/xake/no-installed-packs" ]
+           | NuGet when not (sets "NetCoreTargetingPackRoot") -> [ "NetCoreTargetingPackRoot", root.TrimEnd('/') + "/obj/xake/no-installed-packs" ]
            | _ -> [])
+        @ (match options.VersionSuffix with
+           | None -> []
+           | Some _ when sets "VersionSuffix" ->
+               failwith "the import is asked to record the version as a token (RecordOptions.VersionSuffix) and the script sets the property VersionSuffix too; drop one"
+           | Some marker when not (Text.RegularExpressions.Regex.IsMatch (marker, "^[0-9A-Za-z]+$")) || Char.IsDigit marker.[0] ->
+               failwithf "the version marker '%s' (RecordOptions.VersionSuffix) must be letters and digits, starting with a letter" marker
+           | Some marker -> [ "VersionSuffix", marker ])
         @ options.Properties
 
     /// The targets of the design-time build: what `CoreBuild` runs up to the compiler, but the
@@ -1024,6 +1042,8 @@ module Import =
         OutOf: string -> string -> string -> string
         /// the lock of a project (by its name) and configuration, absolute (`RecordOptions.LockOf`)
         LockOf: string -> string -> string
+        /// the version marker msbuild runs with (`RecordOptions.VersionSuffix`), turned into `$(Version)`
+        VersionMarker: string option
     }
 
     /// The file a design-time build reported, absolute, '/'.
@@ -1148,6 +1168,24 @@ module Import =
             else i <- i + 1
         bytes
 
+    /// The key a line of msbuild's indented `deps.json` opens at `indent` spaces (`"key": {`).
+    let private depsKeyAt (indent: int) (line: string) =
+        let m = Text.RegularExpressions.Regex.Match (line, sprintf "^ {%d}\"([^\"]+)\": \\{" indent)
+        if m.Success then Some m.Groups.[1].Value else None
+
+    /// Each library's (`name/version`) runtime file, its first one, from the targets of a `deps.json`'s lines.
+    let private depsRuntimeFiles (lines: string[]) =
+        let map = Collections.Generic.Dictionary<string, string> ()
+        let mutable library = ""
+        let mutable section = ""
+        for line in lines do
+            match depsKeyAt 6 line, depsKeyAt 8 line, depsKeyAt 10 line with
+            | Some k, _, _ -> library <- k; section <- ""
+            | _, Some k, _ -> section <- k
+            | _, _, Some f when section = "runtime" && library <> "" && not (map.ContainsKey library) -> map.[library] <- f
+            | _ -> ()
+        map
+
     /// <summary>
     /// A `deps.json` msbuild wrote with stand-ins for the referenced projects (`stubAssembly`),
     /// with every version it read from them as a token the build replaces by the version of
@@ -1166,21 +1204,7 @@ module Import =
             failwithf "'%s': %s; this SDK's deps.json layout is not known to the import (the stand-in version %s of a referenced project would be recorded as msbuild's)"
                 file what stubVersion
         let lines = text.Split '\n'
-        let keyAt (indent: int) (line: string) =
-            let m = Text.RegularExpressions.Regex.Match (line, sprintf "^ {%d}\"([^\"]+)\": \\{" indent)
-            if m.Success then Some m.Groups.[1].Value else None
-        // each library's runtime file (its first one), from the targets
-        let fileOf =
-            let map = Collections.Generic.Dictionary<string, string> ()
-            let mutable library = ""
-            let mutable section = ""
-            for line in lines do
-                match keyAt 6 line, keyAt 8 line, keyAt 10 line with
-                | Some k, _, _ -> library <- k; section <- ""
-                | _, Some k, _ -> section <- k
-                | _, _, Some f when section = "runtime" && library <> "" && not (map.ContainsKey library) -> map.[library] <- f
-                | _ -> ()
-            map
+        let fileOf = depsRuntimeFiles lines
         let marker = Text.RegularExpressions.Regex.Escape stubVersion
         let library (name: string) =
             match fileOf.TryGetValue (name + "/" + stubVersion) with
@@ -1188,7 +1212,7 @@ module Import =
             | _ -> unknown (sprintf "the library '%s/%s' has no runtime file in the targets" name stubVersion)
         let mutable file = ""
         [ for line in lines do
-            match keyAt 10 line with
+            match depsKeyAt 10 line with
             | Some f -> file <- f
             | None -> ()
             let line = Text.RegularExpressions.Regex.Replace (line, sprintf "^(\\s*)\"assemblyVersion\": \"%s\"" marker, sprintf "$1\"assemblyVersion\": \"$(AssemblyVersion:%s)\"" (file.Replace ("$", "$$")))
@@ -1202,6 +1226,59 @@ module Import =
             yield line ]
         |> String.concat "\n"
         |> fun result -> if result.Contains stubVersion then unknown "the stand-in version is left after its versions became tokens" else result
+
+    /// <summary>
+    /// `text` (a project's generated text, option, define or property) with the project's own
+    /// version `&lt;prefix&gt;-&lt;marker&gt;` as the token `$(Version)` (`RecordOptions.VersionSuffix`),
+    /// build metadata after it kept (`+&lt;sha&gt;`), but not where the prefix ends a longer version
+    /// (`11.4.0-&lt;marker&gt;` for the prefix `1.4.0`). Pure.
+    /// </summary>
+    let internal versionTokenize (prefix: string) (marker: string) (text: string) : string =
+        if not (text.Contains marker) then text else
+        let version = Text.RegularExpressions.Regex.Escape (prefix + "-" + marker)
+        Text.RegularExpressions.Regex.Replace (text, "(?<![0-9A-Za-z.-])" + version + "(?![0-9A-Za-z.-])", fun _ -> "$(Version)")
+
+    /// <summary>
+    /// A recorded `deps.json` (after `depsTokens`) with every version msbuild wrote with the
+    /// marker suffix (`RecordOptions.VersionSuffix`) -- the application's own and each
+    /// referenced project's, each with its own prefix: a library key `name/&lt;v&gt;-&lt;marker&gt;`,
+    /// a dependency on it, SDK 8's `"assemblyVersion"` of a referenced project -- as
+    /// `$(Version:&lt;file&gt;)`, where the file is that library's runtime file: the build reads the
+    /// version from the file it copies (`Apps.depsResolved`), as it reads the assembly versions.
+    /// Fails, naming `file`, when the marker is left elsewhere. Pure.
+    /// </summary>
+    let internal depsVersionTokens (file: string) (marker: string) (text: string) : string =
+        if not (text.Contains marker) then text else
+        let lines = text.Split '\n'
+        let fileOf = depsRuntimeFiles lines
+        let version = sprintf "[0-9][0-9A-Za-z.]*-%s" (Text.RegularExpressions.Regex.Escape marker)
+        let token (library: string) =
+            match fileOf.TryGetValue library with
+            | true, f -> sprintf "$(Version:%s)" f
+            | _ -> failwithf "'%s': the library '%s' has no runtime file in the targets, so its version cannot be read at build time" file library
+        let mutable runtimeFile = ""
+        [ for line in lines do
+            match depsKeyAt 10 line with
+            | Some f -> runtimeFile <- f
+            | None -> ()
+            // a library key
+            let line =
+                Text.RegularExpressions.Regex.Replace (line, sprintf "\"([^\"/]+)/(%s)\"" version, fun m ->
+                    sprintf "\"%s/%s\"" m.Groups.[1].Value (token (m.Groups.[1].Value + "/" + m.Groups.[2].Value)))
+            // SDK 8: a referenced project's version as the assembly version of its runtime file
+            let line =
+                Text.RegularExpressions.Regex.Replace (line, sprintf "^(\\s*)\"assemblyVersion\": \"%s\"" version, fun m ->
+                    sprintf "%s\"assemblyVersion\": \"$(Version:%s)\"" m.Groups.[1].Value runtimeFile)
+            // a dependency on a library
+            let line =
+                Text.RegularExpressions.Regex.Replace (line, sprintf "^(\\s*)\"([^\"]+)\": \"(%s)\"" version, fun m ->
+                    sprintf "%s\"%s\": \"%s\"" m.Groups.[1].Value m.Groups.[2].Value (token (m.Groups.[2].Value + "/" + m.Groups.[3].Value)))
+            yield line ]
+        |> String.concat "\n"
+        |> fun result ->
+            if result.Contains marker then
+                failwithf "'%s': the version marker %s is left where the import knows no version (RecordOptions.VersionSuffix)" file marker
+            result
 
     /// msbuild generates binding redirects for the project of `d` (`AutoGenerateBindingRedirects`
     /// and `GenerateBindingRedirectsOutputType`: a .NET Framework application or test library, a
@@ -1339,7 +1416,8 @@ module Import =
         let files =
             [ if runtime then
                   generated appRuntimeConfig (named "ProjectRuntimeConfigFileName" (assemblyName + ".runtimeconfig.json")) id
-                  generated appDeps (named "ProjectDepsFileName" (assemblyName + ".deps.json")) (depsTokens (scratch + appDeps))
+                  generated appDeps (named "ProjectDepsFileName" (assemblyName + ".deps.json"))
+                      (depsTokens (scratch + appDeps) >> (match ctx.VersionMarker with Some m -> depsVersionTokens (scratch + appDeps) m | None -> id))
               config ]
             |> List.choose id
         let recorded = [ for name, bytes in files -> binaryDir + "app/" + name, bytes ]
@@ -1611,6 +1689,15 @@ module Import =
             | root -> entry |> Lock.withRecordedPrerequisites ((slash root).TrimEnd '/') ctx.Pin'
         // the commit a SourceLink-free AssemblyInfo still names (`InformationalVersion`): a token
         let entry = match p "SourceRevisionId" with "" -> entry | sha -> entry |> Lock.mapText (Git.tokenize sha)
+        // the version as a token (`RecordOptions.VersionSuffix`): msbuild ran with the marker as
+        // `VersionSuffix`; a project that sets `Version` itself never had it and keeps its literal
+        let entry =
+            match ctx.VersionMarker, p "Version" with
+            | Some marker, version when version.EndsWith ("-" + marker) ->
+                let prefix = version.Substring (0, version.Length - marker.Length - 1)
+                let entry = entry |> Lock.mapText (versionTokenize prefix marker)
+                { entry with Evaluation = { entry.Evaluation with Properties = entry.Evaluation.Properties |> Map.add "VersionPrefix" prefix } }
+            | _ -> entry
 
         // .NET Framework reads preserialized resources only through System.Resources.Extensions:
         // msbuild writes them so when the project asks for it, so the recorded references must hold it
@@ -1619,7 +1706,27 @@ module Import =
            && not (entry.Dependencies.References |> List.exists (fun r -> (Path.GetFileName r.Path).Equals ("System.Resources.Extensions.dll", StringComparison.OrdinalIgnoreCase))) then
             failwithf "'%s' (%s|%s): msbuild writes the .resx as preserialized resources (GenerateResourceUsePreserializedResources), which .NET Framework reads only through System.Resources.Extensions, and the recorded references do not have it; reference the package System.Resources.Extensions"
                 ctx.Description.Name cfg framework
-        entry, List.ofSeq warnings, (binaries |> List.map (fun (source, copy) -> copy, File.ReadAllBytes source)) @ appFiles
+        let files = (binaries |> List.map (fun (source, copy) -> copy, File.ReadAllBytes source)) @ appFiles
+        match ctx.VersionMarker with
+        | None -> ()
+        | Some marker ->
+            // the marker anywhere else is a version the token does not stand for: a target that
+            // uses `$(VersionSuffix)` alone, a version made some other way
+            let contains (text: string) = text.Contains marker
+            let generated = entry.Compilation.Generated |> List.filter (snd >> contains) |> List.map fst
+            let mutable elsewhere = false
+            entry |> Lock.mapText (fun t -> (if contains t then elsewhere <- true); t) |> ignore
+            let binary =
+                let ascii, utf16 = Text.Encoding.UTF8.GetBytes marker, Text.Encoding.Unicode.GetBytes marker
+                let has (needle: byte[]) (bytes: byte[]) = MemoryExtensions.IndexOf (ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> needle) >= 0
+                files |> List.filter (fun (_, bytes) -> has ascii bytes || has utf16 bytes) |> List.map fst
+            let where =
+                generated @ binary
+                @ (if elsewhere && List.isEmpty generated then [ "its options, defines or properties" ] else [])
+            if not (List.isEmpty where) then
+                failwithf "'%s' (%s|%s): the version marker %s is left where it is not the project's version <prefix>-%s (%s); a version made from $(VersionSuffix) alone cannot be a token"
+                    ctx.Description.Name cfg framework marker marker (String.concat ", " where)
+        entry, List.ofSeq warnings, files
 
     /// <summary>
     /// What a recorded entry's command line names that no portable name covers, as messages:
@@ -1742,6 +1849,12 @@ module Import =
             // msbuild restores into the build's package folder (the build variable
             // `NUGET_PACKAGES`, else `.packages`), whatever the environment says
             let environment = [ "NUGET_PACKAGES", packageRoot ]
+            // a version token needs msbuild's own `Version` (`<prefix>-<marker>`): an environment
+            // variable `VERSION` (a release workflow's) would be `$(Version)` instead, so it is emptied
+            let environment =
+                if options.VersionSuffix.IsNone then environment else
+                let names = [ for k in Environment.GetEnvironmentVariables().Keys -> string k ] |> List.filter (fun k -> k.Equals ("VERSION", StringComparison.OrdinalIgnoreCase))
+                environment @ (("VERSION" :: names) |> List.distinct |> List.map (fun k -> k, ""))
             let! roots = Roots.currentWith options.Roots
             let globals = recordGlobals root options
             let primary = List.head options.Configurations
@@ -2023,6 +2136,7 @@ module Import =
                           Pin = pin; PinFile = pinFile; Inputs = inputs; OutOf = options.OutOf
                           LockOf = fun name cfg -> full (options.LockOf name cfg)
                           Imported = projectFiles |> List.map slash
+                          VersionMarker = options.VersionSuffix
                           Pin' =
                             match pinFile |> Option.map (Roots.tokenize roots) with
                             | Some t when t.StartsWith "$(" -> t
@@ -2049,6 +2163,12 @@ module Import =
                             for w in warnings do do! trace Warning "%s" w
                         let entries = built |> List.map (fun (_, (e, _, _)) -> e)
                         warnPin entries
+                        // a project that sets `Version` itself: the marker never reached it
+                        if options.VersionSuffix.IsSome then
+                            for e in entries do
+                                if not (e.Evaluation.Properties.ContainsKey "VersionPrefix") then
+                                    do! trace Info "'%s' (%s|%s): the project sets its version itself (%s); it is recorded as a literal, the build's version suffix does not change it"
+                                            description.Name cfg e.Framework (e.Evaluation.Properties |> Map.tryFind "Version" |> Option.defaultValue "")
                         match entries |> List.collect (unportablePaths roots) |> List.distinct with
                         | [] -> ()
                         | problems -> failwith (String.concat "\n" problems)

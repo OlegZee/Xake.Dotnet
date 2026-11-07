@@ -70,6 +70,7 @@ open Xake.Hermetic.Dotnet
 | `Locks.compile settings lockPath fwk` | recipe | the layout's assembly rule (`.dll`, `.exe`): the lock's entry for `fwk` compiled into the rule's target, which must be the entry's output (`TargetFileName`, else `<Name>.dll`/`.exe`); an `.xml` target fails, that is `Locks.doc`. `settings` (`Locks.Settings`): extra roots, version masks, `Lock.Options` ([Building from Xake-generated locks](#building-from-xake-generated-locks)) |
 | `Locks.doc settings lockPath fwk` | recipe | the layout's `.xml` rule: needs the assembly beside it, whose `compile` rule writes the doc, and fails when the lock asks for no doc; takes `compile`'s parameters, only `Roots` is used |
 | `Locks.compileAs lockPath fwk versions` | recipe | `compile { Settings.Default with Versions = versions }`; `compileAsWith roots` adds `Roots = roots` |
+| `Locks.versionOf settings lockPath fwk` | recipe | the entry's `Version` property as the build stamps it: `$(Version)` resolved by `Versions`/`VersionSuffixes` ([recorded version token](#building-from-xake-generated-locks)), else the recorded literal; what a package takes |
 | `Locks.needAll descriptions cfg lockOf outOf` | recipe | needs the layout `.dll` of every framework of every described project; a project without a lock fails naming `update-locks`; the packages all locks name and the folder lacks are fetched first in one restore |
 | `Lock.compileFrom lockPath options entry` | recipe | `compileWith` of an entry read from the lock at `lockPath` (named by the HERMETIC refusal) |
 | `Lock.recorded path unhashed entry` | recipe | the record-time step of `record` (hashes, prerequisites, the HERMETIC gate) without writing; the references in `unhashed` keep an empty hash |
@@ -453,7 +454,8 @@ copy-to-output items go into a run folder (`Locks.runFolderWith`, [Run folders](
   (`OutDir`) where each referenced project's output is a stand-in: an empty library of that
   assembly name and of version `65534.65533.65532.65531` (`Import.stubAssembly`). Every version
   msbuild read from a stand-in becomes a token, `$(AssemblyVersion:<file>)` or
-  `$(FileVersion:<file>)` (also in SDK 8's `<assembly>.Reference/<version>` library names), and
+  `$(FileVersion:<file>)` (also in SDK 8's `<assembly>.Reference/<version>` library names; a
+  project's own version, recorded as a token, is `$(Version:<file>)`), and
   the build replaces it by the version of the file it copied into the output
   (`Import.depsTokens`, `Apps.depsResolved`). When the stand-in version is still in the text
   after that (a `deps.json` layout the import does not know, from another SDK's writer), the
@@ -1854,7 +1856,25 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   its first source lies; it is a path in the project tree, not where the description lives. A mask
   may start with a script root, `$(Sibling)/**`, expanded through the script's roots before
   matching. The variable is read (and so a dependency) only when the token is there; the lock keeps the token. The locks
-  `Locks.generate` writes today carry none (assembly versioning is an open topic).
+  `Locks.generate` writes carry none.
+- **A recorded version token** (`Import.RecordOptions.VersionSuffix = Some Import.versionMarker`):
+  the import runs msbuild with `VersionSuffix=<marker>`, so the SDK derives
+  `Version = <prefix>-<marker>` and carries it wherever `$(Version)` goes, while
+  `AssemblyVersion` and `FileVersion` stay `<prefix>.0` (the BAML and `Recorded.Markup` name only
+  those). Every `<prefix>-<marker>` in the entry's texts (`Generated`, `Options`, `Defines`,
+  `Properties`) becomes `$(Version)`, the prefix goes into `Properties.VersionPrefix`, and a
+  `deps.json` names each project's version (the application's and each referenced project's, each
+  with its own prefix) as `$(Version:<file>)`, the informational version of that library's
+  runtime file in the output. The marker anywhere else (a target that uses `$(VersionSuffix)`
+  alone) fails the import, naming the file. A project that sets `Version` itself is recorded
+  with its literal (an `Info` line says so); an environment variable `VERSION`, which msbuild
+  would take as `$(Version)`, is emptied for the import. At build time `$(Version)` is the
+  variable of the first `Versions` mask, else the recorded prefix with the suffix of the first
+  `Settings.VersionSuffixes` mask (`-<suffix>`, the prefix alone for an empty one): the lock no
+  longer depends on the build's suffix, so a CI build number needs no import. A new suffix
+  rebuilds the tokenized entries (their bytes change), a constant one nothing; a new prefix is
+  an edit of an import input, so the lock is stale as before. `Locks.versionOf settings lockPath
+  fwk` gives the version a package of the project takes.
 - **Extra roots**: a script whose locks were generated with `generateWith roots` builds with
   `needAllWith roots` and `compileAsWith roots` ([above](#extra-roots-for-generated-locks)).
 - **Settings**: `Locks.compile settings lockPath fwk` is the entry point the others wrap. The

@@ -6,6 +6,18 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
+## Unreleased
+
+- **The version as a token in a recorded lock** (`Import.RecordOptions.VersionSuffix`,
+  `Locks.Settings.VersionSuffixes`, `Locks.versionOf`). The import runs msbuild with a marker
+  suffix and writes `$(Version)` where the project's version went (`InformationalVersion`, the
+  `Version` property) and `$(Version:<file>)` for the projects' versions in a `deps.json`; the
+  build fills in the recorded prefix and a suffix per project mask. A CI build stamps its build
+  number into assemblies, `deps.json` and packages without an import, and imports with any
+  suffix write the same lock. `AssemblyVersion` and `FileVersion` stay literals. Without the
+  option nothing changes; with it a re-import changes each entry once.
+- The SBOM's root component takes a tokenized version from the built assembly.
+
 ## 4.1.0 (2026-11-06)
 
 - **WPF projects are recorded** (S69; `Import.record` refused them). A project compiling XAML
