@@ -46,3 +46,4 @@ paket-files/
 /out
 .claude/worktrees/
 .packages/
+TestResults/
