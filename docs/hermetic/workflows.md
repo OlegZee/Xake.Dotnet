@@ -286,7 +286,7 @@ Run `update-locks` after a change to a project file, `Directory.Build.props`/`.t
 or the framework list. Files the import read are listed under `Evaluation.Imports`; a change to
 any of them shows in `check-locks` as `~ Import <path>`.
 
-A new build number is not a reason: with `Import.RecordOptions.VersionSuffix` the lock holds the
+A new build number is not a reason: with `Import.RecordOptions.VersionToken` the lock holds the
 version as a token and the build supplies the suffix ([versioning.md](versioning.md)). A new
 `VersionPrefix` is (it is in `Directory.Build.props`).
 

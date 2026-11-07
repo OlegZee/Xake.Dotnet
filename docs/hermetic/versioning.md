@@ -44,7 +44,7 @@ command "import" {
     let! _ = Import.record
                 { Import.RecordOptions.Default with
                     LockOf = lockOf; OutOf = outOf
-                    VersionSuffix = Some Import.versionMarker }
+                    VersionToken = true }
                 [ for f in files -> f.FullName ]
     () }
 ```
@@ -84,9 +84,9 @@ were. The token also replaces the version in an option or a define that carried 
   Change the project to `<VersionPrefix>` if it should take the suffix.
 - **An environment variable `VERSION`** (a release workflow exports one) would become msbuild's
   `$(Version)`; the import empties it for its msbuild runs.
-- **The marker** is `Import.versionMarker`. Another one must be letters and digits, starting with a
-  letter. The script's own `VersionSuffix` in `RecordOptions.Properties` fails the import
-  (*... and the script sets the property VersionSuffix too; drop one*).
+- **The marker** is internal (`xakeversionmarker`) and never reaches a lock. The script's own
+  `VersionSuffix` in `RecordOptions.Properties` fails the import (*... and the script sets the
+  property VersionSuffix too; drop one*).
 - **A stray marker fails the import**, naming the file: a target that writes `$(VersionSuffix)` on
   its own (an `AssemblyMetadata` item, a custom generated file), or a version built some other
   way. The lock cannot say what that text should be at build time:
@@ -424,9 +424,8 @@ NuGet clients before 4.3 do not see.
 |---|---|---|
 | `'<name>' (<cfg>\|<fwk>): the project sets its version itself (<v>); it is recorded as a literal, ...` (Info) | import | nothing, or `<VersionPrefix>` in the project |
 | `'<name>' (<cfg>\|<fwk>): the version marker <m> is left where it is not the project's version <prefix>-<m> (<files>); ...` | import | build that text from `$(Version)`, not `$(VersionSuffix)` |
-| `'<file>': the version marker <m> is left where the import knows no version (RecordOptions.VersionSuffix)` | import, `deps.json` | a `deps.json` layout the import does not know; report it |
-| `the import is asked to record the version as a token (RecordOptions.VersionSuffix) and the script sets the property VersionSuffix too; drop one` | import | remove `VersionSuffix` from `RecordOptions.Properties` |
-| `the version marker '<m>' (RecordOptions.VersionSuffix) must be letters and digits, starting with a letter` | import | use `Import.versionMarker` |
+| `'<file>': the version marker <m> is left where the import knows no version (RecordOptions.VersionToken)` | import, `deps.json` | a `deps.json` layout the import does not know; report it |
+| `the import is asked to record the version as a token (RecordOptions.VersionToken) and the script sets the property VersionSuffix too; drop one` | import | remove `VersionSuffix` from `RecordOptions.Properties` |
 | ``'<name>': the lock '<lock>' needs a version ($(Version)) and no mask of `Versions` or `VersionSuffixes` matches '<path>' (<masks>)`` | build | add a mask; `**` last |
 | ``'<name>': the version suffix '<s>' (`VersionSuffixes`, mask '<mask>') for '<path>' is not a SemVer pre-release label: <why>`` | build | fix the suffix ([A valid suffix](#a-valid-suffix)) |
 | ``'<name>': the lock '<lock>' needs a version ($(Version)) and records no VersionPrefix for the suffix of `VersionSuffixes` ...`` | build | a `Versions` mask for that project, or re-import with the option |

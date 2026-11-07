@@ -941,7 +941,7 @@ type ``Import record WPF``() =
 
     /// Acceptance 9 of the version token: the BAML (`g.resources`) and `Recorded.Markup` name
     /// `AssemblyVersion` only, which the marker does not reach, so they are the same with and
-    /// without `RecordOptions.VersionSuffix`. The library takes its version from `VersionPrefix`
+    /// without `RecordOptions.VersionToken`. The library takes its version from `VersionPrefix`
     /// here (the token reaches it); `VERSION` is emptied for the import without the option, which
     /// would take it as `$(Version)`.
     [<Test>]
@@ -961,7 +961,7 @@ type ``Import record WPF``() =
         Environment.SetEnvironmentVariable ("VERSION", null)
         try
             let libPlain, _, markupPlain, resourcesPlain = recordWith "plain" RecordKit.recordDefault Locks.Settings.Default
-            let token = { RecordKit.recordDefault with VersionSuffix = Some Import.versionMarker }
+            let token = { RecordKit.recordDefault with VersionToken = true }
             let settings = { Locks.Settings.Default with VersionSuffixes = [ "**", recipe { return "ci.1" } ] }
             let libToken, wpfToken, markupToken, resourcesToken = recordWith "token" token settings
             // the option is in effect: both locks carry the token, the plain one does not
@@ -1436,7 +1436,7 @@ type ``Import masks with reserved characters``() =
             Assert.That(Roots.expandMask roots (Roots.tokenizeMask roots m), Is.EqualTo (Roots.expand roots (Roots.tokenizeAll roots m)))
 
 
-/// The version as a token (`Import.RecordOptions.VersionSuffix`), the pure parts: the
+/// The version as a token (`Import.RecordOptions.VersionToken`), the pure parts: the
 /// project's own version in its texts, the projects' versions in a `deps.json`, the globals.
 /// Pure: no msbuild.
 [<TestFixture>]
@@ -1517,15 +1517,16 @@ type ``Version tokens``() =
             | None -> Assert.Fail (sprintf "'%s' passes" bad)
 
     [<Test>]
-    member x.``the marker is a global property of the import; the script's own VersionSuffix fails``() =
-        let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; VersionSuffix = Some m }
+    member x.``VersionToken runs msbuild with the marker; the script's own VersionSuffix fails``() =
+        let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; VersionToken = true }
         Assert.That(Import.recordGlobals "/r/proj" options, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", m ])
-        Assert.That(Import.recordGlobals "/r/proj" { options with VersionSuffix = None }, Is.EqualTo [ "NuGetAudit", "false" ])
-        Assert.Throws<exn>(fun () -> Import.recordGlobals "/r/proj" { options with Properties = [ "versionsuffix", "beta" ] } |> ignore) |> ignore
-        Assert.Throws<exn>(fun () -> Import.recordGlobals "/r/proj" { options with VersionSuffix = Some "with-dash" } |> ignore) |> ignore
+        Assert.That(Import.recordGlobals "/r/proj" { options with VersionToken = false }, Is.EqualTo [ "NuGetAudit", "false" ])
+        Assert.That(Import.recordGlobals "/r/proj" { options with VersionToken = false; Properties = [ "VersionSuffix", "beta" ] }, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", "beta" ])
+        let e = Assert.Throws<exn>(fun () -> Import.recordGlobals "/r/proj" { options with Properties = [ "versionsuffix", "beta" ] } |> ignore)
+        Assert.That(e.Message, Does.Contain "RecordOptions.VersionToken")
 
 
-/// `Import.record` with the version as a token (`RecordOptions.VersionSuffix`) end to end: two
+/// `Import.record` with the version as a token (`RecordOptions.VersionToken`) end to end: two
 /// groups of projects with their own prefixes (`app` 3.1.0; `core` 1.4.0 from its
 /// `Directory.Build.props`, two frameworks), an application whose `deps.json` names both, a
 /// project that sets its version itself; built with a suffix per group
@@ -1539,7 +1540,7 @@ type ``Import record version token``() =
     let coreSuffix = Var.string (name = "CORE_SUFFIX") |> withDefault "beta-3"
     let coreVersion = Var.string (name = "CORE_VERSION") |> withDefault "7.7.7"
     let schema = {| AppSuffix = appSuffix; CoreSuffix = coreSuffix; CoreVersion = coreVersion |}
-    let record = { RecordKit.recordDefault with VersionSuffix = Some marker }
+    let record = { RecordKit.recordDefault with VersionToken = true }
     let projects = [ "app/app.csproj"; "core/core.csproj"; "fixed/fixed.csproj" ]
     let suffixes = [ "app/**", recipe { let! s = appSuffix in return s }; "**", recipe { let! s = coreSuffix in return s } ]
     let dll cfg fwk name = sprintf "out/%s/%s/%s/%s.dll" cfg fwk name name

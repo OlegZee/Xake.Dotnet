@@ -1857,7 +1857,7 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   may start with a script root, `$(Sibling)/**`, expanded through the script's roots before
   matching. The variable is read (and so a dependency) only when the token is there; the lock keeps the token. The locks
   `Locks.generate` writes carry none.
-- **A recorded version token** (`Import.RecordOptions.VersionSuffix = Some Import.versionMarker`):
+- **A recorded version token** (`Import.RecordOptions.VersionToken = true`):
   the import runs msbuild with `VersionSuffix=<marker>`, so the SDK derives
   `Version = <prefix>-<marker>` and carries it wherever `$(Version)` goes, while
   `AssemblyVersion` and `FileVersion` stay `<prefix>.0` (the BAML and `Recorded.Markup` name only

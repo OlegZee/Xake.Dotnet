@@ -7,7 +7,7 @@ Branch `feature/lock-version-params` from `dev` at `f5294e0`. Goal and design: `
 
 - Commits: `944d942` (code, tests, `lock.md`), `1981406` (`docs/hermetic/versioning.md`), then
   the suffix check and test gaps (the commit after it). Not pushed, no PR. The worktree is `.claude/worktrees/lock-version-params-xake-8fa981`.
-- Implemented: `src/hermetic/Import.fs` (`RecordOptions.VersionSuffix`, `versionMarker`,
+- Implemented: `src/hermetic/Import.fs` (`RecordOptions.VersionToken`, `versionMarker`,
   `recordGlobals`, `versionTokenize`, `depsVersionTokens`, `entryOf`, `record`: `VERSION`
   emptied, the `Info` line), `Locks.fs` (`Settings.VersionSuffixes`, `carriesVersion`,
   `versionIn`, `entryOfFramework`, `versionOf`), `Apps.fs` (`informationalVersion`,

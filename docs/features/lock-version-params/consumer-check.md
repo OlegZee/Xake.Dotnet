@@ -32,7 +32,7 @@ the import command (nothing else changes):
 ```fsharp
 { Import.RecordOptions.Default with
     LockOf = lockOf; OutOf = outOf
-    VersionSuffix = Some Import.versionMarker }
+    VersionToken = true }
 ```
 
 Do not pass `VersionSuffix` in `RecordOptions.Properties` (the import refuses both). A `VERSION`

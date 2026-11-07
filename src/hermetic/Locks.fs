@@ -29,7 +29,7 @@ module Locks =
         Versions: (string * RequiredVar<string>) list
         /// The version suffix per project mask, the first matching wins (`versionFor`), for a
         /// project no `Versions` mask matches: `$(Version)` is the prefix the import recorded
-        /// (`VersionPrefix`, `Import.RecordOptions.VersionSuffix`) and `-<suffix>`, or the prefix
+        /// (`VersionPrefix`, `Import.RecordOptions.VersionToken`) and `-<suffix>`, or the prefix
         /// alone for an empty suffix. A recipe, so the script composes it from its variables.
         VersionSuffixes: (string * Recipe<ExecContext, string>) list
         /// The options of the compile (`Lock.compileFromWith`).
@@ -626,7 +626,7 @@ module Locks =
                                     entry.Name suffix (shown mask) projectPath why
                     | None -> return (if suffix = "" then prefix else prefix + "-" + suffix)
                 | Some _, None ->
-                    return failwithf "'%s': the lock '%s' needs a version (%s) and records no VersionPrefix for the suffix of `VersionSuffixes` (a lock not imported with Import.RecordOptions.VersionSuffix); give '%s' a mask of `Versions`"
+                    return failwithf "'%s': the lock '%s' needs a version (%s) and records no VersionPrefix for the suffix of `VersionSuffixes` (a lock not imported with Import.RecordOptions.VersionToken); give '%s' a mask of `Versions`"
                                 entry.Name lockPath VersionToken projectPath
                 | None, _ ->
                     let masks = (settings.Versions |> List.map fst) @ (settings.VersionSuffixes |> List.map fst)

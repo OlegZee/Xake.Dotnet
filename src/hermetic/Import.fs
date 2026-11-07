@@ -784,11 +784,12 @@ module Import =
         OutOf: string -> string -> string -> string
         /// Where the targeting, apphost and runtime packs come from: `NuGet` (the default) or `Installed`
         PacksFrom: PacksFrom
-        /// `Some marker`: the version as a token (`versionMarker`). msbuild runs with
-        /// `VersionSuffix=<marker>`, and every `<prefix>-<marker>` it writes becomes `$(Version)`
-        /// (`Locks.Settings.VersionSuffixes` resolves it), so the lock does not depend on the
-        /// build's version suffix. `None` (the default): the version msbuild computes, as a literal
-        VersionSuffix: string option
+        /// `true`: record the project's version as the token `$(Version)`, the prefix as
+        /// `VersionPrefix`; the build fills it in (`Locks.Settings.VersionSuffixes`), so the lock
+        /// does not depend on the build's version suffix. msbuild runs with an internal marker as
+        /// `VersionSuffix` (`versionMarker`), and every `<prefix>-<marker>` it writes becomes the
+        /// token. `false` (the default): the version msbuild computes, as a literal
+        VersionToken: bool
     } with
         static member Default =
             { Configurations = [ "Release" ]; Properties = []; Roots = []
@@ -796,31 +797,28 @@ module Import =
               LockOf = (fun name cfg -> sprintf "locks/%s/%s.json" name cfg)
               OutOf = (fun cfg fwk name -> sprintf "out/%s/%s/%s" cfg fwk name)
               PacksFrom = NuGet
-              VersionSuffix = None }
+              VersionToken = false }
 
-    /// The marker `RecordOptions.VersionSuffix` usually takes: a SemVer pre-release label no
-    /// version has otherwise.
-    let versionMarker = "xakeversionmarker"
+    /// The marker msbuild runs with as `VersionSuffix` for `RecordOptions.VersionToken`: a SemVer
+    /// pre-release label no version has otherwise. It never reaches a lock.
+    let internal versionMarker = "xakeversionmarker"
 
     /// The global properties of every msbuild run of an import under the project root `root`:
     /// `NuGetAudit=false`, the script's `Properties`, and for `PacksFrom = NuGet` a
     /// `NetCoreTargetingPackRoot` that does not exist (a fixed path under `obj/`, so the
     /// intermediate folders keyed by the globals stay the same between imports), unless the
-    /// script sets that property itself; with `VersionSuffix = Some marker`, `VersionSuffix=<marker>`
-    /// (the script's own `VersionSuffix` then fails: the lock could not say which it holds).
+    /// script sets that property itself; with `VersionToken`, `VersionSuffix=<marker>` (the
+    /// script's own `VersionSuffix` then fails: the lock could not say which it holds).
     let internal recordGlobals (root: string) (options: RecordOptions) : (string * string) list =
         let sets name = options.Properties |> List.exists (fun (k, _) -> k.Equals (name, StringComparison.OrdinalIgnoreCase))
         [ "NuGetAudit", "false" ]
         @ (match options.PacksFrom with
            | NuGet when not (sets "NetCoreTargetingPackRoot") -> [ "NetCoreTargetingPackRoot", root.TrimEnd('/') + "/obj/xake/no-installed-packs" ]
            | _ -> [])
-        @ (match options.VersionSuffix with
-           | None -> []
-           | Some _ when sets "VersionSuffix" ->
-               failwith "the import is asked to record the version as a token (RecordOptions.VersionSuffix) and the script sets the property VersionSuffix too; drop one"
-           | Some marker when not (Text.RegularExpressions.Regex.IsMatch (marker, "^[0-9A-Za-z]+$")) || Char.IsDigit marker.[0] ->
-               failwithf "the version marker '%s' (RecordOptions.VersionSuffix) must be letters and digits, starting with a letter" marker
-           | Some marker -> [ "VersionSuffix", marker ])
+        @ (if not options.VersionToken then []
+           elif sets "VersionSuffix" then
+               failwith "the import is asked to record the version as a token (RecordOptions.VersionToken) and the script sets the property VersionSuffix too; drop one"
+           else [ "VersionSuffix", versionMarker ])
         @ options.Properties
 
     /// The targets of the design-time build: what `CoreBuild` runs up to the compiler, but the
@@ -1042,7 +1040,7 @@ module Import =
         OutOf: string -> string -> string -> string
         /// the lock of a project (by its name) and configuration, absolute (`RecordOptions.LockOf`)
         LockOf: string -> string -> string
-        /// the version marker msbuild runs with (`RecordOptions.VersionSuffix`), turned into `$(Version)`
+        /// the version marker msbuild runs with (`RecordOptions.VersionToken`), turned into `$(Version)`
         VersionMarker: string option
     }
 
@@ -1229,7 +1227,7 @@ module Import =
 
     /// <summary>
     /// `text` (a project's generated text, option, define or property) with the project's own
-    /// version `&lt;prefix&gt;-&lt;marker&gt;` as the token `$(Version)` (`RecordOptions.VersionSuffix`),
+    /// version `&lt;prefix&gt;-&lt;marker&gt;` as the token `$(Version)` (`RecordOptions.VersionToken`),
     /// build metadata after it kept (`+&lt;sha&gt;`), but not where the prefix ends a longer version
     /// (`11.4.0-&lt;marker&gt;` for the prefix `1.4.0`). Pure.
     /// </summary>
@@ -1240,7 +1238,7 @@ module Import =
 
     /// <summary>
     /// A recorded `deps.json` (after `depsTokens`) with every version msbuild wrote with the
-    /// marker suffix (`RecordOptions.VersionSuffix`) -- the application's own and each
+    /// marker suffix (`RecordOptions.VersionToken`) -- the application's own and each
     /// referenced project's, each with its own prefix: a library key `name/&lt;v&gt;-&lt;marker&gt;`,
     /// a dependency on it, SDK 8's `"assemblyVersion"` of a referenced project -- as
     /// `$(Version:&lt;file&gt;)`, where the file is that library's runtime file: the build reads the
@@ -1277,7 +1275,7 @@ module Import =
         |> String.concat "\n"
         |> fun result ->
             if result.Contains marker then
-                failwithf "'%s': the version marker %s is left where the import knows no version (RecordOptions.VersionSuffix)" file marker
+                failwithf "'%s': the version marker %s is left where the import knows no version (RecordOptions.VersionToken)" file marker
             result
 
     /// msbuild generates binding redirects for the project of `d` (`AutoGenerateBindingRedirects`
@@ -1689,7 +1687,7 @@ module Import =
             | root -> entry |> Lock.withRecordedPrerequisites ((slash root).TrimEnd '/') ctx.Pin'
         // the commit a SourceLink-free AssemblyInfo still names (`InformationalVersion`): a token
         let entry = match p "SourceRevisionId" with "" -> entry | sha -> entry |> Lock.mapText (Git.tokenize sha)
-        // the version as a token (`RecordOptions.VersionSuffix`): msbuild ran with the marker as
+        // the version as a token (`RecordOptions.VersionToken`): msbuild ran with the marker as
         // `VersionSuffix`; a project that sets `Version` itself never had it and keeps its literal
         let entry =
             match ctx.VersionMarker, p "Version" with
@@ -1852,7 +1850,7 @@ module Import =
             // a version token needs msbuild's own `Version` (`<prefix>-<marker>`): an environment
             // variable `VERSION` (a release workflow's) would be `$(Version)` instead, so it is emptied
             let environment =
-                if options.VersionSuffix.IsNone then environment else
+                if not options.VersionToken then environment else
                 let names = [ for k in Environment.GetEnvironmentVariables().Keys -> string k ] |> List.filter (fun k -> k.Equals ("VERSION", StringComparison.OrdinalIgnoreCase))
                 environment @ (("VERSION" :: names) |> List.distinct |> List.map (fun k -> k, ""))
             let! roots = Roots.currentWith options.Roots
@@ -2136,7 +2134,7 @@ module Import =
                           Pin = pin; PinFile = pinFile; Inputs = inputs; OutOf = options.OutOf
                           LockOf = fun name cfg -> full (options.LockOf name cfg)
                           Imported = projectFiles |> List.map slash
-                          VersionMarker = options.VersionSuffix
+                          VersionMarker = (if options.VersionToken then Some versionMarker else None)
                           Pin' =
                             match pinFile |> Option.map (Roots.tokenize roots) with
                             | Some t when t.StartsWith "$(" -> t
@@ -2164,7 +2162,7 @@ module Import =
                         let entries = built |> List.map (fun (_, (e, _, _)) -> e)
                         warnPin entries
                         // a project that sets `Version` itself: the marker never reached it
-                        if options.VersionSuffix.IsSome then
+                        if options.VersionToken then
                             for e in entries do
                                 if not (e.Evaluation.Properties.ContainsKey "VersionPrefix") then
                                     do! trace Info "'%s' (%s|%s): the project sets its version itself (%s); it is recorded as a literal, the build's version suffix does not change it"

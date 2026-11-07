@@ -7,6 +7,9 @@ One line per item. Status as of 2026-11-07.
 - [ ] PR `feature/lock-version-params` -> `dev` (draft, after the owner's OK); release 4.2.0
       with this feature only, public, no preview (`release.md`); `feature/import-file-casing`
       (#12) stays out (2026-11-07: the owner is unsure the fix belongs in the import)
+- [ ] Later, if asked for: `FileVersion` as a token too, for the scheme that puts the build
+      number into its fourth part (`1.4.0.512`); it does not change an assembly's identity, unlike
+      `AssemblyVersion`. Out of scope of 4.2.0
 - [ ] Later, if asked for: a `Pack` helper for inter-package dependency versions / NU5104
       (decided 2026-11-07: docs only for now, `pack.md` and `versioning.md`)
 
@@ -14,6 +17,7 @@ One line per item. Status as of 2026-11-07.
 
 - [x] Probe: SDK 8.0.427 with `VersionSuffix=<marker>` (AssemblyInfo, `deps.json`, `VERSION` env)
 - [x] `RecordOptions.VersionSuffix`, `Import.versionMarker`, the marker in `recordGlobals`
+      (later `RecordOptions.VersionToken: bool`, the marker internal)
 - [x] `versionTokenize` over the entry's texts, `Properties.VersionPrefix`; the marker left
       anywhere else fails naming the file; a project with its own `Version`: literal + `Info`
 - [x] `depsVersionTokens`: `$(Version:<file>)` in a recorded `deps.json`; `Apps.depsResolved`
@@ -57,3 +61,6 @@ One line per item. Status as of 2026-11-07.
 - [x] Checked: SDK 8.0.427's own `deps.json` with a suffix has the project's full version in a
       referenced project's `"assemblyVersion"` (`1.4.0-ci.1-b`, `fileVersion` `1.4.0.0`), as
       the recorded `$(Version:<file>)` resolves
+- [x] `RecordOptions.VersionToken: bool` instead of `VersionSuffix: string option`; the marker
+      internal, its format check gone (owner, 2026-11-07, before the release)
+- [x] CI: `test-restore` before the parallel test builds (a restore race in `xake-latest`)

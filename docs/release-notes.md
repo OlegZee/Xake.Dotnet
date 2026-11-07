@@ -14,8 +14,8 @@ A CI build stamps its own version (`3.1.0-ci.512`) into the assemblies, an appli
 `deps.json` and the packages without an import: the lock stays the same for every build. How-to:
 [hermetic/versioning.md](hermetic/versioning.md).
 
-- **Record** with `Import.RecordOptions.VersionSuffix = Some Import.versionMarker`: msbuild runs
-  with a marker suffix, and the import writes `$(Version)` where the project's version went
+- **Record** with `Import.RecordOptions.VersionToken = true`: msbuild runs with an
+  internal marker suffix, and the import writes `$(Version)` where the project's version went
   (`InformationalVersion`, the `Version` property), the prefix as `Properties.VersionPrefix`, and
   `$(Version:<file>)` for each project's version in a recorded `deps.json`. `AssemblyVersion` and
   `FileVersion` stay literals (`<prefix>.0`), so BAML, `Recorded.Markup` and binding redirects

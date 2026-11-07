@@ -190,8 +190,10 @@ take different suffixes (a distribution variant adds `-eu` to one group only).
 
 ## Decisions taken (2026-11-07, implementation)
 
-- **Marker**, as recommended; `Import.versionMarker` = `xakeversionmarker`. The marker must be
-  letters and digits starting with a letter; a script that also sets `VersionSuffix` fails.
+- **Marker**, as recommended; `xakeversionmarker`, internal. The option is
+  `RecordOptions.VersionToken: bool` (not `VersionSuffix: string option` as proposed above): a
+  marker of the script's own choice buys nothing, it never reaches a lock and a stray one fails
+  the import anyway (owner, 2026-11-07). A script that also sets `VersionSuffix` fails.
 - **`deps.json` gets `$(Version:<file>)`, not `$(Version)`.** A probe on SDK 8.0.427 showed
   that an application's `deps.json` names every project with its own prefix
   (`app/3.1.0-<marker>`, `lib/1.4.0-<marker>`), and SDK 8 writes a referenced project's version

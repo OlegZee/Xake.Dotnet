@@ -292,7 +292,7 @@ module Apps =
     /// `text` (a recorded `deps.json`) with each `$(AssemblyVersion:<file>)` and
     /// `$(FileVersion:<file>)` replaced by the versions of `fileOf <file>` (the copy in the
     /// output), as msbuild reads them from the built file, and each `$(Version:<file>)` (a
-    /// project's version, `Import.RecordOptions.VersionSuffix`) by its informational version.
+    /// project's version, `Import.RecordOptions.VersionToken`) by its informational version.
     let depsResolved (fileOf: string -> string) (text: string) : string =
         System.Text.RegularExpressions.Regex.Replace (text, @"\$\((AssemblyVersion|FileVersion|Version):([^)]+)\)", fun m ->
             let path = fileOf m.Groups.[2].Value

@@ -338,7 +338,7 @@ module Sbom =
             [ "Version"; "InformationalVersion" ]
             |> List.tryPick (fun k -> entry.Evaluation.Properties |> Map.tryFind k |> Option.filter ((<>) ""))
             |> Option.defaultValue ""
-        // a version the build stamps (`$(Version)`, `Import.RecordOptions.VersionSuffix`): the assembly's own
+        // a version the build stamps (`$(Version)`, `Import.RecordOptions.VersionToken`): the assembly's own
         let version =
             if not (version.Contains Locks.VersionToken) then version
             else Apps.informationalVersion assemblyPath |> Option.defaultValue version
