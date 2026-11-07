@@ -61,6 +61,11 @@ msbuild properties. Xake records none of them (no pack emulation: a repository's
 }
 ```
 
+For a lock recorded with the version as a token, `version` is `Locks.versionOf settings lockPath
+fwk` (the version the assemblies carry), and a dependency on another project's package takes that
+project's `Locks.versionOf` through a token of the script's: [versioning.md](versioning.md#packages).
+Nothing checks a stable package against a pre-release dependency (NuGet's NU5104).
+
 Not covered: satellite assemblies (not built yet), symbols packages, a `<files>` element with
 `exclude`.
 

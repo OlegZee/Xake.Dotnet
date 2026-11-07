@@ -286,6 +286,10 @@ Run `update-locks` after a change to a project file, `Directory.Build.props`/`.t
 or the framework list. Files the import read are listed under `Evaluation.Imports`; a change to
 any of them shows in `check-locks` as `~ Import <path>`.
 
+A new build number is not a reason: with `Import.RecordOptions.VersionSuffix` the lock holds the
+version as a token and the build supplies the suffix ([versioning.md](versioning.md)). A new
+`VersionPrefix` is (it is in `Directory.Build.props`).
+
 ### Projects that reference each other
 
 `build` above compiles entries in lock order. With `ProjectReference`s, a reference in the lock
@@ -677,6 +681,11 @@ scope) and `Sbom.forPackageScoped` (what the customer receives), checked by
 `Verify.compare` and `Verify.verdict` name the differing fields. Use it to show that a shipped
 binary is the lock-built one. Byte identity needs the same checkout path (csc embeds absolute
 source paths in the PDB) or a `/pathmap`. See [verify.md](verify.md).
+
+**Version.** The build's version comes from the script, not from a new import: the lock records
+the prefix and a token, `Locks.Settings.VersionSuffixes` gives the suffix per project group
+(an empty suffix for the prefix alone), `Locks.versionOf` the package version. See
+[versioning.md](versioning.md).
 
 **Pack.** `Pack.nupkg` and `Pack.zip` write deterministic archives (sorted entries,
 1980-01-01, or the build variable `SOURCE_DATE_EPOCH` through `Pack.Options.current ()`, content-derived ids). See [pack.md](pack.md).

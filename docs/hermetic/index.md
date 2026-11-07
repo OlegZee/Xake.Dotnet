@@ -20,6 +20,7 @@ own are in [README.md](README.md). The engine's docs:
 | File | What it is | Read when | Lines | Date | Status |
 |---|---|---|---|---|---|
 | [lock.md](lock.md) | the lock: format, "API at a glance" table, F# entries, prerequisites, hermetic mode, replay (`Lock.compile`), `Project.import`, `csc/fsc { lock }`, CI flag, `nofetch` | any work with locks; the API table (top ~60 lines) is usually enough | ~1910 | 2026-11-03 | current |
+| [versioning.md](versioning.md) | the version as a token in a recorded lock: `RecordOptions.VersionSuffix`, the suffix per build (`Locks.Settings.VersionSuffixes`, `Versions`), mask order, rebuilds, `Locks.versionOf` for packages | setting up CI versioning (build numbers, channels, a suffix per project group) | ~430 | 2026-11-07 | current, unreleased |
 | [restore.md](restore.md) | `Restore`: fetch the packages a lock names into a chosen folder, verify sha512 | clean machine, package folder, `NUGET_PACKAGES`/`NUGET_FETCH` | ~240 | 2026-10-11 | current |
 
 ## Evidence and release steps

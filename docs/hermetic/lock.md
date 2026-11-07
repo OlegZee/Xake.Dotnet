@@ -70,7 +70,7 @@ open Xake.Hermetic.Dotnet
 | `Locks.compile settings lockPath fwk` | recipe | the layout's assembly rule (`.dll`, `.exe`): the lock's entry for `fwk` compiled into the rule's target, which must be the entry's output (`TargetFileName`, else `<Name>.dll`/`.exe`); an `.xml` target fails, that is `Locks.doc`. `settings` (`Locks.Settings`): extra roots, version masks, `Lock.Options` ([Building from Xake-generated locks](#building-from-xake-generated-locks)) |
 | `Locks.doc settings lockPath fwk` | recipe | the layout's `.xml` rule: needs the assembly beside it, whose `compile` rule writes the doc, and fails when the lock asks for no doc; takes `compile`'s parameters, only `Roots` is used |
 | `Locks.compileAs lockPath fwk versions` | recipe | `compile { Settings.Default with Versions = versions }`; `compileAsWith roots` adds `Roots = roots` |
-| `Locks.versionOf settings lockPath fwk` | recipe | the entry's `Version` property as the build stamps it: `$(Version)` resolved by `Versions`/`VersionSuffixes` ([recorded version token](#building-from-xake-generated-locks)), else the recorded literal; what a package takes |
+| `Locks.versionOf settings lockPath fwk` | recipe | the entry's `Version` property as the build stamps it: `$(Version)` resolved by `Versions`/`VersionSuffixes` ([recorded version token](#building-from-xake-generated-locks)), else the recorded literal; what a package takes ([versioning.md](versioning.md#packages)) |
 | `Locks.needAll descriptions cfg lockOf outOf` | recipe | needs the layout `.dll` of every framework of every described project; a project without a lock fails naming `update-locks`; the packages all locks name and the folder lacks are fetched first in one restore |
 | `Lock.compileFrom lockPath options entry` | recipe | `compileWith` of an entry read from the lock at `lockPath` (named by the HERMETIC refusal) |
 | `Lock.recorded path unhashed entry` | recipe | the record-time step of `record` (hashes, prerequisites, the HERMETIC gate) without writing; the references in `unhashed` keep an empty hash |
@@ -1874,7 +1874,8 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   longer depends on the build's suffix, so a CI build number needs no import. A new suffix
   rebuilds the tokenized entries (their bytes change), a constant one nothing; a new prefix is
   an edit of an import input, so the lock is stale as before. `Locks.versionOf settings lockPath
-  fwk` gives the version a package of the project takes.
+  fwk` gives the version a package of the project takes. How to supply the suffix (variables, CI
+  build numbers, a suffix per group, mask order, packages): [versioning.md](versioning.md).
 - **Extra roots**: a script whose locks were generated with `generateWith roots` builds with
   `needAllWith roots` and `compileAsWith roots` ([above](#extra-roots-for-generated-locks)).
 - **Settings**: `Locks.compile settings lockPath fwk` is the entry point the others wrap. The
@@ -1883,8 +1884,9 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   type Locks.Settings = {
       Roots: (string * string) list                 // compileAsWith's extraRoots
       Versions: (string * RequiredVar<string>) list // compileAs's versions
+      VersionSuffixes: (string * Recipe<ExecContext, string>) list  // a recorded token's suffix
       Lock: Lock.Options }                          // Run (csc), FscRun (fsc), Restore
-  // Settings.Default = { Roots = []; Versions = []; Lock = Lock.Options.Default }
+  // Settings.Default = { Roots = []; Versions = []; VersionSuffixes = []; Lock = Lock.Options.Default }
 
   let settings = { Locks.Settings.Default with Roots = roots; Versions = versions }
   let compileTarget = Locks.compile settings   // the script's own compile, partially applied
