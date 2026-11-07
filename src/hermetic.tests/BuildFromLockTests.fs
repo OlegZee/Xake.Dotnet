@@ -549,6 +549,14 @@ type ``Building from Xake-generated locks``() =
         let text = build "build-suffix" { Locks.Settings.Default with Roots = roots; VersionSuffixes = [ "$(SiblingRoot)/P/**", recipe { return "sib.1" }; "**", recipe { return "other.1" } ] }
         Assert.That(text, Does.Contain "2.0.0-sib.1")
         Assert.That(text, Does.Not.Contain "other.1")
+        // no mask matches: the message shows a mask with a root by its expansion too, to compare
+        // with the project's (absolute) path; the masks are no dependency, so from clean outputs
+        Directory.Delete (root </> "out", true)
+        let sibling = (Path.GetFullPath "sibmask/Sibling").Replace ('\\', '/')
+        let e = Assert.Throws<XakeException>(fun () ->
+            build "build-nomask" { Locks.Settings.Default with Roots = roots; VersionSuffixes = [ "$(SiblingRoot)/Q/**", recipe { return "q.1" } ] } |> ignore)
+        Assert.That(e.Data0, Does.Contain (sprintf "matches '%s/P/%s'" sibling Description.FileName))
+        Assert.That(e.Data0, Does.Contain (sprintf "($(SiblingRoot)/Q/** = %s/Q/**)" sibling))
 
     /// G10: a project whose sources and key file live in a sibling checkout, registered as the
     /// extra root `$(SiblingRoot)`: the generated lock names no absolute path (masks, keyfile,

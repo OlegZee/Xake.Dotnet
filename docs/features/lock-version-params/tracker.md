@@ -4,11 +4,9 @@ One line per item. Status as of 2026-11-07.
 
 ## Open
 
-- [ ] A consumer solution recorded with the option (two brands, 93 projects): one diff per
-      entry, a second import changes nothing, builds with two suffix groups (the owner runs it
-      with the preview package; steps and expectations in `consumer-check.md`)
-- [ ] PR `feature/lock-version-params` -> `dev` (draft, after the owner's OK); release (4.2.0,
-      together with or after `feature/import-file-casing`, which also changes `Import.fs`)
+- [ ] PR `feature/lock-version-params` -> `dev` (draft, after the owner's OK); release 4.2.0
+      with this feature only, public, no preview (`release.md`); `feature/import-file-casing`
+      (#12) stays out (2026-11-07: the owner is unsure the fix belongs in the import)
 - [ ] Later, if asked for: a `Pack` helper for inter-package dependency versions / NU5104
       (decided 2026-11-07: docs only for now, `pack.md` and `versioning.md`)
 
@@ -43,3 +41,19 @@ One line per item. Status as of 2026-11-07.
 - [x] `brief.md`, "Lock format changes": `$(Version:<file>)` in `deps.json`
 - [x] Local preview package `out/pkg/Xake.Dotnet.4.2.0-version.1.nupkg` (not published)
 - [x] Full `src/hermetic.tests`: 334 passed (2026-11-07)
+- [x] Consumer check with `4.2.0-version.1` (2026-11-07; 93 projects, 186 locks, 9 prefix
+      groups, SDK 8.0.427): first import changed only the version (plus an unrelated SDK pin
+      8.0.426 -> 8.0.427), no marker left, no project with its own `Version`, WPF `g.resources`
+      unchanged; second import and one with `VERSION` set: no change; builds with a
+      `$(Root)/<folder>/**` group and `**`: 65 + 125 assemblies with their group's suffix, the
+      same suffix rebuilt nothing, a new one all 190; no `$(` in 40 `deps.json`, each project
+      with its own group's version; the `+` and no-mask failures as documented. Packages
+      (`Pack.fromNuspec`, version from `Locks.versionOf`): 46 packages follow the suffix;
+      dependencies on other groups' packages are literals in the consumer's nuspecs (the
+      script's to move to `Locks.versionOf`, not this feature's)
+- [x] The "no mask matches" and "not a SemVer pre-release label" messages show a mask with a
+      root by its expansion (`$(Root)/x/** = /abs/x/**`) next to the project's absolute path
+      (found by the consumer check); tested in `a version mask may start with a script root`
+- [x] Checked: SDK 8.0.427's own `deps.json` with a suffix has the project's full version in a
+      referenced project's `"assemblyVersion"` (`1.4.0-ci.1-b`, `fileVersion` `1.4.0.0`), as
+      the recorded `$(Version:<file>)` resolves

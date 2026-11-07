@@ -17,11 +17,11 @@ Branch `feature/lock-version-params` from `dev` at `f5294e0`. Goal and design: `
   closed (acceptance 9 included), `brief.md` corrected; full hermetic tests green (334).
 - Preview package: `out/pkg/Xake.Dotnet.4.2.0-version.1.nupkg` (local only, rebuild with
   `dotnet fsi build.fsx -- -- pack -d VERSION=4.2.0-version.1`).
-- `feature/import-file-casing` (not merged) rewrites much of `Import.fs`: expect conflicts in
-  `entryOf` and `record` when both land. Do not merge it here without the owner's word.
+- `feature/import-file-casing` (#12, not merged, not in 4.2.0) rewrites much of `Import.fs`; the
+  conflicts it would meet are in `release.md`. Do not merge it here without the owner's word.
 
 ## Next step
 
-The owner runs `consumer-check.md` on the consumer solution; act on what it reports. Then, on
-the owner's OK only: push `origin feature/lock-version-params` and a draft PR to `dev` (the
-feature, a link to `docs/hermetic/versioning.md`, the open items).
+Release 4.2.0 with this feature only, public, no preview: `release.md` (push, draft PR to
+`dev`, merge, release commit, tag). `feature/import-file-casing` (#12) is not merged and not
+part of 4.2.0. The PR text is prepared; push and PR only on the owner's OK.

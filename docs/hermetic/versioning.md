@@ -432,3 +432,7 @@ NuGet clients before 4.3 do not see.
 | ``'<name>': the lock '<lock>' needs a version ($(Version)) and records no VersionPrefix for the suffix of `VersionSuffixes` ...`` | build | a `Versions` mask for that project, or re-import with the option |
 | `the deps.json takes the version of '<file>' from its InformationalVersion, which '<path>' does not have` | build, application | the referenced output was built without one |
 | `'<name>' (<fwk>): the lock '<lock>' is stale: '.../Directory.Build.props' changed since the import that wrote it; run the import again` | build | a new prefix: re-import, commit |
+
+In the build's messages a mask that starts with a root is shown with its expansion
+(`$(Sibling)/core/** = /src/sibling/core/**`), and a project outside the project root by its
+absolute path, so the two compare directly.

@@ -606,6 +606,11 @@ module Locks =
             // the masks may start with a script root (`$(Sibling)/**`)
             let! roots = Roots.currentWith settings.Roots
             let expanded masks = masks |> List.map (fun (mask, v) -> Roots.expand roots mask, v)
+            // a mask with a root as the message shows it: with its expansion, to compare with the path
+            let shown (mask: string) =
+                match normal (Roots.expand roots mask) with
+                | e when e = normal mask -> mask
+                | e -> sprintf "%s = %s" mask e
             match versionFor (expanded settings.Versions) projectPath with
             | Some var ->
                 let! version = var
@@ -618,7 +623,7 @@ module Locks =
                     match suffixProblem suffix with
                     | Some why ->
                         return failwithf "'%s': the version suffix '%s' (`VersionSuffixes`, mask '%s') for '%s' is not a SemVer pre-release label: %s"
-                                    entry.Name suffix mask projectPath why
+                                    entry.Name suffix (shown mask) projectPath why
                     | None -> return (if suffix = "" then prefix else prefix + "-" + suffix)
                 | Some _, None ->
                     return failwithf "'%s': the lock '%s' needs a version (%s) and records no VersionPrefix for the suffix of `VersionSuffixes` (a lock not imported with Import.RecordOptions.VersionSuffix); give '%s' a mask of `Versions`"
@@ -626,7 +631,7 @@ module Locks =
                 | None, _ ->
                     let masks = (settings.Versions |> List.map fst) @ (settings.VersionSuffixes |> List.map fst)
                     return failwithf "'%s': the lock '%s' needs a version (%s) and no mask of `Versions` or `VersionSuffixes` matches '%s' (%s)"
-                                entry.Name lockPath VersionToken projectPath (String.concat ", " masks)
+                                entry.Name lockPath VersionToken projectPath (masks |> List.map shown |> String.concat ", ")
         }
 
     /// The entry of the lock document `doc` (of `lockPath`) for the framework `fwk`.

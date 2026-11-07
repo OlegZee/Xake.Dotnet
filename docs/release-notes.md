@@ -6,21 +6,35 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
-## Unreleased
+## 4.2.0 (unreleased)
 
-- **The version as a token in a recorded lock** (`Import.RecordOptions.VersionSuffix`,
-  `Locks.Settings.VersionSuffixes`, `Locks.versionOf`). The import runs msbuild with a marker
-  suffix and writes `$(Version)` where the project's version went (`InformationalVersion`, the
-  `Version` property) and `$(Version:<file>)` for the projects' versions in a `deps.json`; the
-  build fills in the recorded prefix and a suffix per project mask. A CI build stamps its build
-  number into assemblies, `deps.json` and packages without an import, and imports with any
-  suffix write the same lock. `AssemblyVersion` and `FileVersion` stay literals; a suffix that is
-  not a SemVer pre-release label (`+`, `_`, a leading `-`) fails the build. Without the
-  option nothing changes; with it a re-import changes each entry once. How-to:
-  [hermetic/versioning.md](hermetic/versioning.md). `Locks.Settings` and `Import.RecordOptions`
-  have a new field each: a script that builds them as a full record literal no longer compiles;
-  `{ Locks.Settings.Default with ... }` and `{ Import.RecordOptions.Default with ... }` do.
+### The version as a token in a recorded lock
+
+A CI build stamps its own version (`3.1.0-ci.512`) into the assemblies, an application's
+`deps.json` and the packages without an import: the lock stays the same for every build. How-to:
+[hermetic/versioning.md](hermetic/versioning.md).
+
+- **Record** with `Import.RecordOptions.VersionSuffix = Some Import.versionMarker`: msbuild runs
+  with a marker suffix, and the import writes `$(Version)` where the project's version went
+  (`InformationalVersion`, the `Version` property), the prefix as `Properties.VersionPrefix`, and
+  `$(Version:<file>)` for each project's version in a recorded `deps.json`. `AssemblyVersion` and
+  `FileVersion` stay literals (`<prefix>.0`), so BAML, `Recorded.Markup` and binding redirects
+  do not change. Imports with any suffix write the same lock; the first one changes each entry
+  once. Without the option nothing changes. A project that sets `<Version>` itself stays a
+  literal (an Info line says so).
+- **Build** with `Locks.Settings.VersionSuffixes` (a project mask to a suffix recipe, the first
+  matching wins, masks may start with a root): the version is the prefix and `-<suffix>`, or the
+  prefix alone for an empty suffix. `Versions` still gives a whole version and wins. A tokenized
+  lock with no matching mask fails the build, and so does a suffix that is not a SemVer 2.0
+  pre-release label (`+`, `_`, a leading `-`). A new suffix recompiles the entries with the token
+  and what references them; the same suffix compiles nothing.
+- **Packages**: `Locks.versionOf settings lockPath fwk` is the entry's version as the build
+  stamps it, for `Pack.tokensOf`. `Pack` sets no versions of dependencies between packages: the
+  nuspec's tokens do, from the dependency's `Locks.versionOf`.
 - The SBOM's root component takes a tokenized version from the built assembly.
+- **API**: `Locks.Settings` and `Import.RecordOptions` have a new field each: a script that
+  builds them as a full record literal adds it; `{ Locks.Settings.Default with ... }` and
+  `{ Import.RecordOptions.Default with ... }` need nothing.
 
 ## 4.1.0 (2026-11-06)
 
