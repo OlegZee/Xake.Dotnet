@@ -5,6 +5,24 @@ open System.IO
 open Xake
 open Xake.Dotnet
 
+/// <summary>
+/// What `Locks.satellite` is given besides the lock: files besides the lock's culture resources
+/// (`Resources`, resource sets as `csc`'s `resources`, named with the target's culture put in:
+/// `Satellite.resourcesOf`), attributes replacing (or adding to) those read from the assembly
+/// (`Attributes`, `"AssemblyFileVersion", "4.3.0.512"`), and what a resource without its
+/// neutral one in the assembly does (`NeutralCheck`: a warning, or a failure). `Default`: none
+/// of them, a warning.
+/// </summary>
+type SatelliteInputs = {
+    /// Files besides the lock's culture resources: translations kept outside the project
+    Resources: ResourceFileset list
+    /// Attributes replacing (or adding to) the ones read from the assembly, by name
+    /// (`AssemblyFileVersion`, `AssemblyCopyrightAttribute` or a full type name)
+    Attributes: (string * string) list
+    /// A satellite resource without its neutral one in the assembly: `Warn` or `Fail`
+    NeutralCheck: NeutralCheck
+} with static member Default = { Resources = []; Attributes = []; NeutralCheck = NeutralCheck.Warn }
+
 /// The locks of described projects (`xake.project.json`): one lock per project and
 /// configuration, written by the script's lock rule (`generate`, one lock per call; the
 /// script orders projects by `need` and runs it from an explicit `update-locks` target). A lock
@@ -846,6 +864,123 @@ module Locks =
         recipe {
             let! target = getTargetFile ()
             do! docOf settings.Roots lockPath fwk (normal target.FullName)
+        }
+
+    /// <summary>
+    /// The satellite assemblies the entry of `lockPath` for `fwk` has
+    /// (`Lock.Recorded.Satellites`: the cultures it records), as the targets `satellite` builds
+    /// beside its output in `dir`: `&lt;dir&gt;/&lt;culture&gt;/&lt;assembly&gt;.resources.dll`;
+    /// none for a lock without culture resources. A culture not spelled as .NET spells it fails
+    /// (`Satellite.checkCulture`). Cultures from elsewhere (translations kept outside the
+    /// project) are the script's to list. What a script needs to have them built:
+    /// <code>
+    /// let! satellites = Locks.satellitesOf settings (lockOf name cfg) fwk (outOf cfg fwk name)
+    /// do! need satellites
+    /// </code>
+    /// </summary>
+    let satellitesOf (settings: Settings) (lockPath: string) (fwk: string) (dir: string) : Recipe<ExecContext, string list> =
+        recipe {
+            let! doc = Lock.loadWith settings.Roots lockPath
+            let entry = entryOfFramework lockPath fwk doc
+            match entry.Recorded |> Option.bind (fun r -> r.Satellites) with
+            | None -> return []
+            | Some s ->
+                return
+                    [ for culture, _ in s.Cultures do
+                        let target = normal (Path.Combine (dir, culture, entry.Name + ".resources.dll"))
+                        Satellite.checkCulture target culture
+                        yield target ]
+        }
+
+    /// <summary>
+    /// Builds the satellite assembly the target of the calling file rule names,
+    /// `&lt;dir&gt;/&lt;culture&gt;/&lt;assembly&gt;.resources.dll`, for the entry of `lockPath`
+    /// for `fwk`, by the recipe of SDK 10's `CoreGenerateSatelliteAssemblies` on every SDK
+    /// (`Xake.Dotnet.Satellite`, the core of `satellite { }`). Only on request: the assembly's own
+    /// rule (`compile`) does not build satellites. A rule of its own beside the assembly's:
+    /// <code>
+    /// type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
+    /// let Satellite = Target&lt;SatelliteG&gt; "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
+    /// Satellite.Rule (fun m -> Locks.satellite settings (lockOf m.name m.cfg) m.fwk SatelliteInputs.Default)
+    /// </code>
+    /// <list type="bullet">
+    /// <item>checks the culture: the folder must be a culture's name as .NET spells it
+    /// (`Satellite.checkCulture`); an F# entry fails (its satellites are not built yet);</item>
+    /// <item>needs the assembly in `&lt;dir&gt;` (its `compile` rule), the template: the
+    /// satellite's version and attributes (read from its metadata, `Satellite.attributesOf`;
+    /// `inputs.Attributes` replace or add to them), public key and neutral resources;</item>
+    /// <item>the resources: the lock's of the culture (`Lock.Recorded.Satellites`) and those of
+    /// `inputs.Resources` (`Satellite.resourcesOf`, read with `getFiles`: an added, removed or
+    /// edited file rebuilds); none, or a manifest name twice, fails; a resource without its
+    /// neutral one in the assembly warns or fails (`inputs.NeutralCheck`);</item>
+    /// <item>the main compile's switches the target passes on (`Satellite.options`; the key
+    /// switches checked against the assembly, `Satellite.checkKey`), the entry's `mscorlib`,
+    /// `netstandard`, `System.Runtime` (`Satellite.references`; none of them fails);</item>
+    /// <item>writes the source under `obj/xake/satellites/` (`Satellite.source`), compiles each
+    /// `.resx` of the culture to `.resources`, embeds any other file as is, and runs the entry's
+    /// compiler (`Lock.compileFromWith`: prerequisites, the `HERMETIC=on` gate, the restore, the
+    /// csc throttle of `settings.Lock.Run`);</item>
+    /// <item>checks the satellite's public key token against the assembly's
+    /// (`Satellite.checkToken`): another token is no error at run time, `ResourceManager`
+    /// silently falls back to the neutral resources.</item>
+    /// </list>
+    /// </summary>
+    let satellite (settings: Settings) (lockPath: string) (fwk: string) (inputs: SatelliteInputs) : Recipe<ExecContext, unit> =
+        recipe {
+            let! options = getCtxOptions ()
+            let root = normal (Path.GetFullPath options.ProjectRoot)
+            let! target = getTargetFile ()
+            let target = normal target.FullName
+            let! doc = Lock.loadWith settings.Roots lockPath
+            let entry = entryOfFramework lockPath fwk doc
+            let fileName = Path.GetFileName target
+            let cultureDir = Path.GetDirectoryName target
+            let culture = Path.GetFileName cultureDir
+            let dir = normal (Path.GetDirectoryName cultureDir)
+            if not (same fileName (entry.Name + ".resources.dll")) then
+                failwithf "'%s': the target '%s' is not a satellite of the lock '%s' (%s/%s.resources.dll)" entry.Name target lockPath culture entry.Name
+            Satellite.checkCulture target culture
+            let main =
+                match entry.Compilation with
+                | Lock.Compilation.Csc main -> main
+                | Lock.Compilation.Fsc _ -> failwithf "'%s': the lock '%s' is an F# entry; its satellite assemblies are not built" entry.Name lockPath
+            let relative = if dir.StartsWith (root + "/") then dir.Substring (root.Length + 1) else (dir.Replace (":", "")).TrimStart '/'
+            let generatedDir = normal (Path.Combine (root, "obj", "xake", "satellites", relative, culture))
+
+            // the resources: the lock's of the culture, then the script's
+            let recorded = entry.Recorded |> Option.bind (fun r -> r.Satellites) |> Option.map (fun s -> s.Cultures) |> Option.defaultValue []
+            let fromLock =
+                recorded |> List.tryFind (fst >> same culture) |> Option.map snd |> Option.defaultValue []
+                |> List.map (fun r -> ({ File = r.File; Compiled = r.Compiled; Name = r.Name } : Satellite.Resource))
+            let! fromScript = Satellite.resourcesOf culture generatedDir inputs.Resources
+            let resources = fromLock @ fromScript
+            if List.isEmpty resources then
+                failwithf "'%s': no resources for the satellite '%s': the lock '%s' records none for '%s' (%s) and the script names no file (SatelliteInputs.Resources)"
+                    entry.Name target lockPath culture
+                    (match recorded with [] -> "it records no culture resources" | cs -> "it records " + (cs |> List.map fst |> String.concat ", "))
+
+            // the assembly first: the template of the version, the attributes, the key and the
+            // neutral resources
+            let assembly = normal (Path.Combine (dir, outputName entry))
+            do! needFiles (Filelist [ File.make assembly ])
+            let template = Satellite.readTemplate assembly
+            do! Satellite.checkResources target template culture inputs.NeutralCheck resources
+            let switches = Satellite.options main.Options
+            Satellite.checkKey target template switches
+            let references = Satellite.references target main.Dependencies.References
+            let source = generatedDir + "/" + entry.Name + ".resources.cs"
+            let text = Satellite.source (Satellite.attributesOf template inputs.Attributes) culture
+            let composed = Satellite.compose switches references target source text resources
+            let compiled =
+                { composed with
+                    Name = entry.Name; Framework = entry.Framework; Directory = main.Directory
+                    Dependencies = { main.Dependencies with References = references; Analyzers = [] } }
+            Described.refreshResources compiled.Resources
+            let run = settings.Lock.Run
+            let! server = CompilerServer.resolve (if run.Server = Lock.Options.Default.Run.Server then None else Some run.Server)
+            let lockOptions = { settings.Lock with Run = { run with Server = server } }
+            do! Lock.compileFromWith settings.Roots lockPath lockOptions { entry with Compilation = Lock.Compilation.Csc compiled; Recorded = None }
+            Satellite.checkToken template target
         }
 
     /// `compile` with the extra roots `extraRoots`, the version masks `versions` and the

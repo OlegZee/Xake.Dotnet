@@ -6,6 +6,35 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
+## 4.3.0 (2026-11-08)
+
+### Satellite assemblies (S71 reopened)
+
+A C# project's culture-specific resources (`Strings.ja.resx`) are no longer dropped by the
+import: the lock records them, and a script builds satellite assemblies on request, from the lock
+or without one. [hermetic/lock.md](hermetic/lock.md#satellite-assemblies), [tasks.md](tasks.md#satellite).
+
+- **`satellite { }`** (`Xake.Dotnet`): a satellite from a built main assembly (`template`) and
+  resource sets, no project or lock: the version, attributes, public key and framework read from
+  the template's metadata, the culture and output from the rule's target.
+- **Record**: `Recorded.Satellites` with the resources per culture, written only for a project
+  with culture resources (every other lock is unchanged). An F# project's are reported and left
+  out; under invariant globalization a culture-shaped resource fails the import. A re-import adds
+  the key to the locks of such projects.
+- **Build**: `Locks.satellite settings lockPath fwk inputs`, the rule of
+  `<dir>/<culture>/<Name>.resources.dll`, and `Locks.satellitesOf` to list the lock's; the
+  assembly's rule builds none. `SatelliteInputs` adds translations kept outside the project
+  (`resourceset`, read with `getFiles`), attributes, and whether a resource without its neutral
+  one warns or fails.
+- One recipe for every SDK, SDK 10's: no SDK targets read, no installed SDK needed. Byte-identical
+  to `dotnet build` (SDK 8 and 10) on Linux and macOS; on Windows too, but the FileVersion of
+  hand-written attributes without one. The satellites load on .NET Framework 4.8 and .NET.
+- `.restext` resources are compiled (by `csc { }` too), as msbuild's `GenerateResource` does.
+- Checks: the culture's spelling, the public key token against the main assembly's, the neutral
+  resource names.
+- Not yet: a referenced project's satellites in a run folder and their `deps.json` lines; an F#
+  project's satellites from its lock.
+
 ## 4.2.0 (2026-11-07)
 
 ### The version as a token in a recorded lock

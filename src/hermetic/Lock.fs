@@ -323,6 +323,21 @@ module Lock =
         BindingRedirects: bool
     }
 
+    /// One culture-specific resource of a satellite assembly: the file (`Strings.ja.resx`,
+    /// `Logo.fr-FR.png`), the `.resources` a `.resx` compiles to ("" for any other file,
+    /// embedded as is) and the manifest name.
+    type SatelliteResource = { File: string; Compiled: string; Name: string }
+
+    /// The satellite assemblies of a recorded entry (`<out>/<culture>/<name>.resources.dll`):
+    /// what msbuild knew of them, the resources per culture. Their compile is composed at build
+    /// time (`Locks.satellite`, by the recipe of SDK 10's `CoreGenerateSatelliteAssemblies`):
+    /// msbuild's own call cannot be recorded (`docs/features/satellites/probe.md`). Built by a
+    /// rule of their own, on request.
+    type Satellites = {
+        /// Per culture, in msbuild's order, its resources
+        Cultures: (string * SatelliteResource list) list
+    }
+
     /// What only an entry recorded from msbuild (`Import.record`) carries. Its presence is the
     /// marker the SBOM and a staleness check read ("msbuild" against "composed"): such an
     /// entry is msbuild's resolution written down, never Xake's. On disk its references,
@@ -352,6 +367,9 @@ module Lock =
         /// output; another identity fails it, "run the import again" (`Locks.compileAs`). Empty
         /// otherwise
         Markup: string list
+        /// The satellite assemblies of a project with culture-specific resources; `None`
+        /// otherwise
+        Satellites: Satellites option
     }
 
     /// <summary>
@@ -1012,7 +1030,25 @@ module Lock =
                   // only when there is one: every lock without XAML stays byte-identical to what
                   // was written before the key existed
                   if not (List.isEmpty r.Markup) then
-                      yield stringsWith escape "Markup" r.Markup ]
+                      yield stringsWith escape "Markup" r.Markup
+                  // only when there is one: every lock without culture resources stays
+                  // byte-identical to what was written before the key existed
+                  match r.Satellites with
+                  | None -> ()
+                  | Some s ->
+                      let inner = indent + "  "
+                      let cultures =
+                          s.Cultures
+                          |> List.map (fun (culture, resources) ->
+                              resources
+                              |> List.map (fun r ->
+                                  sprintf "{ \"File\": %s, \"Compiled\": %s, \"Name\": %s }" (str r.File) (str r.Compiled) (escape r.Name))
+                              |> List.map (sprintf "%s    %s" inner) |> String.concat ",\n"
+                              |> fun body -> sprintf "%s  %s: [\n%s\n%s  ]" inner (escape culture) body inner)
+                          |> String.concat ",\n"
+                      yield
+                          sprintf "%s\"Cultures\": {\n%s\n%s}" inner cultures inner
+                          |> fun body -> sprintf "%s\"Satellites\": {\n%s\n%s}" indent body indent ]
           // what msbuild makes of a project with runtime output besides the compile
           match entry.Recorded |> Option.bind (fun r -> r.App) with
           | None -> ()
@@ -1094,7 +1130,21 @@ module Lock =
                          | Some (JObject members) -> Some (members |> List.choose (fun (k, v) -> asString v |> Option.map (fun v -> expand k, expand v)))
                          | _ -> None
                        App = None
-                       Markup = field "Markup" r |> Option.map asArray |> Option.defaultValue [] |> List.choose asString }
+                       Markup = field "Markup" r |> Option.map asArray |> Option.defaultValue [] |> List.choose asString
+                       Satellites =
+                         match field "Satellites" r with
+                         | Some (JObject _ as s) ->
+                             // `Options`, `References`, `Attributes` of a 4.3.0 preview are
+                             // ignored: the build composes the satellite (`Locks.satellite`)
+                             Some { Cultures =
+                                      match field "Cultures" s with
+                                      | Some (JObject members) ->
+                                          members |> List.map (fun (culture, resources) ->
+                                              culture,
+                                              asArray resources |> List.map (fun x ->
+                                                  { File = str "File" x |> expand; Compiled = str "Compiled" x |> expand; Name = str "Name" x }))
+                                      | _ -> [] }
+                         | _ -> None }
             | _ -> None
         let context : Identity.Context =
             { Roots = roots; Sdk = str "Sdk" e; Projects = recorded |> Option.map (fun r -> r.Projects) |> Option.defaultValue [] }

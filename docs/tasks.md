@@ -1,6 +1,6 @@
 # .NET tasks
 
-The `csc`, `fsc`, `msbuild`, `resgen` and `resourceset` builders of the `Xake.Dotnet` package, with
+The `csc`, `fsc`, `satellite`, `msbuild`, `resgen` and `resourceset` builders of the `Xake.Dotnet` package, with
 the script variables they read. The engine itself (rules, recipes, `sh`, copy and remove tasks,
 the variable model) is documented in [Xake's docs](https://github.com/OlegZee/Xake/blob/dev/docs/index.md).
 
@@ -339,6 +339,61 @@ for the compiler's own command line (a design-time build) and records it in a lo
 `Lock.compile` replays it through `Fsc.run`. See [hermetic/lock.md](hermetic/lock.md).
 `fsc { project "path"; config "Release"; packages p }` builds from a project description
 ([csc-syntax.md](csc-syntax.md#from-a-project-description-in-xakehermeticdotnet-project-config-packages)).
+
+## satellite
+
+A satellite assembly (`<out>/<culture>/<Asm>.resources.dll`) for a built main assembly, the
+template, without a project or a lock (4.3.0). The rule's target is the output and its folder the
+culture:
+
+```fsharp
+open Xake.Typed
+type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
+let Satellite = Target<SatelliteG> "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
+
+Satellite.Rule (fun m ->
+    satellite {
+        template $"out/{m.cfg}/{m.fwk}/{m.name}/{m.name}.dll"   // version, attributes, public key, framework
+        keyfile "key.snk"                                       // or publicsign / delaysign; none for an unsigned template
+        resources (resourceset { prefix "Lib"; basedir $"translations/{m.culture}"; includes "**/*.resx" })
+        attribute "AssemblyCopyright" "(c) 2026 Example"        // optional: replaces the read one
+    })
+```
+
+The compile is the one of SDK 10's `CoreGenerateSatelliteAssemblies`, the same core as the
+hermetic `Locks.satellite` ([hermetic/lock.md](hermetic/lock.md#satellite-assemblies)):
+
+- **the template** is `need`ed (a dll the script downloads and places is fine, it need not be
+  built here). From its metadata, the same on every OS: the version, the attributes (Company,
+  Description, FileVersion, Product when stated; Copyright and Title, else `" "`;
+  InformationalVersion, else the version; one stated as `""` left out), the public key, the target
+  framework and the neutral resources' names; and whether it was optimized, so a Debug assembly gets a Debug
+  satellite (`/optimize-`);
+- **the references**: `mscorlib`, `netstandard` and `System.Runtime` of the template's framework,
+  found as `csc { }` finds a framework (`targetfwk` given and different from the template's fails);
+- **the resources**: resource sets (`resourceset`), read with `getFiles`, so an added translation
+  rebuilds. A file is named as the set names it, the target's culture put in and the file's own
+  culture suffix taken out (`Strings.resx` and `Strings.ja.resx` in `ja/` ->
+  `Lib.Strings.ja.resources`; `Logo.png` -> `Lib.Logo.png`); a `.resx` or `.restext` is compiled,
+  any other file embedded as is. A file of another culture, a manifest name twice, or no file at
+  all fails;
+- **the checks**: the culture as .NET spells it (`zh-CN`); the satellite's public key token equal to
+  the template's (signed template without `keyfile` fails, and so does a key file of another key);
+  each `X.<culture>.resources` with its `X.resources` in the template, else a warning, or a failure
+  with `neutralcheck NeutralCheck.Fail`.
+
+| operation | meaning |
+|---|---|
+| `template path` | the main assembly (required) |
+| `resources set` | a `resourceset`; accumulates |
+| `keyfile path`, `publicsign`, `delaysign` | the key switches, as the main compile's |
+| `attribute name value` | an assembly attribute replacing (or adding to) the read one: `"AssemblyFileVersion"`, `"AssemblyCopyright"`, ... |
+| `neutralcheck NeutralCheck.Fail` | a resource without its neutral one fails (default `Warn`) |
+| `targetfwk fwk` | checked against the template's |
+| `args [...]` | more switches of those the SDK passes on from the main compile (`/pathmap:...`, `/features:...`); any other is left out with a warning |
+| `failonerror false` | as `csc`'s |
+
+Which satellites to build -- the cultures, the folders -- is the script's: it `need`s the targets.
 
 ## msbuild
 

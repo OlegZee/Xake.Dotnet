@@ -415,7 +415,7 @@ module Import =
                 match fromTargets with
                 | Some _ ->
                     if isTrue (meta "WithCulture" m) then
-                        drop (sprintf "%s: EmbeddedResource %s (culture %s: a satellite assembly, not built)" name file (meta "Culture" m)); None
+                        drop (sprintf "%s: EmbeddedResource %s (culture %s: a satellite assembly, left out of the description; a C# project's lock records it)" name file (meta "Culture" m)); None
                     else
                         // csc embeds a resx as the `.resources` it compiles to, named
                         // `<ManifestResourceName>.resources`; any other file by its `LogicalName`
@@ -1434,6 +1434,18 @@ module Import =
         Some app, recorded
 
     /// <summary>
+    /// The resources of a project whose culture msbuild cannot tell under invariant
+    /// globalization (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`): a second extension shaped like a
+    /// culture name (`Strings.ja.resx`, `Logo.zh-CN.png`) that `AssignCulture` did not take. The
+    /// same project would give another lock on a machine with cultures. Pure.
+    /// </summary>
+    let internal cultureSuspects (files: string list) : string list =
+        let shaped = Text.RegularExpressions.Regex "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+        files |> List.filter (fun f ->
+            let ext = Path.GetExtension (Path.GetFileNameWithoutExtension f)
+            ext.Length > 1 && shaped.IsMatch (ext.Substring 1))
+
+    /// <summary>
     /// The lock entry of one design-time build (`d`, of `cfg` and `framework`, whose
     /// intermediate folder was `scratch`): msbuild's compiler command line as recorded, with
     /// <list type="bullet">
@@ -1576,6 +1588,38 @@ module Import =
                     if named compiled then yield absoluteIn ctx.ProjectDir id, compiled ]
             |> List.distinct
 
+        // the satellite assemblies (`Lock.Satellites`): what msbuild knew of them, the culture
+        // resources (`_SatelliteAssemblyResourceInputs`: a resx's `.resources`, any other file as
+        // is). The SDK's `CoreGenerateSatelliteAssemblies` reads the built assembly, so it cannot
+        // run here; the build composes it (`Locks.satellite`). C# only
+        if Globalization.CultureInfo.GetCultures(Globalization.CultureTypes.AllCultures).Length <= 1 then
+            let plain = [ for id, m in items d "EmbeddedResource" do if not (isTrue (meta "WithCulture" m)) then yield id ]
+            match cultureSuspects plain with
+            | [] -> ()
+            | suspects ->
+                failwithf "'%s' (%s|%s): globalization is invariant, so msbuild cannot tell whether %s are culture-specific (satellite assemblies); run the import where cultures are available (ICU; DOTNET_SYSTEM_GLOBALIZATION_INVARIANT unset)"
+                    ctx.ProjectFile cfg framework (suspects |> List.map Path.GetFileName |> String.concat ", ")
+        let satellites : Lock.Satellites option =
+            let cultured =
+                [ for id, m in items d "EmbeddedResource" do
+                    if isTrue (meta "WithCulture" m) && meta "Culture" m <> "" then
+                        let file = absoluteIn ctx.ProjectDir id
+                        let resx = meta "Type" m = "Resx" || (meta "Type" m = "" && isResx id)
+                        let compiled = if resx then moved (absoluteIn ctx.ProjectDir (meta "OutputResource" m)) else ""
+                        let name =
+                            match meta "LogicalName" m with
+                            | "" -> Path.GetFileName (if resx then meta "OutputResource" m else id)
+                            | logical -> logical
+                        yield meta "Culture" m, ({ File = file; Compiled = compiled; Name = name } : Lock.SatelliteResource) ]
+                |> List.distinct
+            if List.isEmpty cultured then None
+            elif isFSharp then
+                warnings.Add (sprintf "'%s' (%s|%s): satellite assemblies of an F# project are not built (%s)"
+                                  ctx.Description.Name cfg framework (cultured |> List.map (fun (_, r) -> Path.GetFileName r.File) |> String.concat ", "))
+                None
+            else
+                Some { Cultures = cultured |> List.map fst |> List.distinct |> List.map (fun culture -> culture, [ for cu, r in cultured do if cu = culture then yield r ]) }
+
         // the hashes: a project's output and the SDK's own files carry none
         let isProjectOutput (path: string) = projects |> List.exists (fun (o, _) -> o.Path = path)
         let hash (path: string) = if isProjectOutput path || inSdk path then "" else FileHash.sha256 path
@@ -1678,7 +1722,7 @@ module Import =
                   Properties = d.Props |> Map.filter (fun k v -> List.contains k keptProperties && v <> "") }
               Packages = packages
               Prerequisites = []
-              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup } }
+              Recorded = Some { Projects = projects |> List.map fst; Masks = masks; Placed = None; App = app; Markup = markup; Satellites = satellites } }
         // the SDK the entry was recorded with, when it names a file of that SDK (its compiler,
         // analyzers, shims, its apphost): the prerequisite follows the content
         let entry =

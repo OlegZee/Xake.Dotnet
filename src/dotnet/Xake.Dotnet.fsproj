@@ -64,6 +64,11 @@
          never the other way round; it ships in this project's package. -->
     <Compile Include="Csc.fs" />
     <Compile Include="Fsc.fs" />
+    <!-- A satellite assembly's compile from the main assembly (its metadata) and resource sets:
+         the core of satellite {} and of the hermetic Locks.satellite. -->
+    <Compile Include="Satellite.fs" />
+    <!-- satellite {}: the core above over a template and resource sets, no lock -->
+    <Compile Include="Dotnet.satellite.fs" />
     <Compile Include="Dotnet.csc.fs" />
     <Compile Include="Dotnet.fsc.fs" />
     <Compile Include="Dotnet.resgen.fs" />
@@ -72,6 +77,9 @@
 
   <ItemGroup>
     <PackageReference Include="Xake" Version="$(XakeVersion)" />
+    <!-- A satellite's template read from its metadata, the same on every OS (Satellite.fs); part of
+         .NET's shared framework, so the version is the lowest one a script runs on (.NET 8). -->
+    <PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
