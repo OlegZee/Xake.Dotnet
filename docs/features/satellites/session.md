@@ -33,13 +33,30 @@ items: `tracker.md`.
   the output, the culture checked, no reference fallback, culture suffix stripped for every
   extension, `satellite { }` from its target and template, F# later) and the extended test list.
 
+## State at 2026-11-08 (night): the redesign implemented, local only
+
+- Commits on `feature/satellites`, **not pushed** (owner: push only when told): docs from the
+  brief (`lock.md`, `tasks.md` "satellite", release notes); the core `Satellite` in `src/dotnet`
+  (template read with `System.Reflection.Metadata` 8.0.0, a new package dependency: version,
+  attributes, public key, framework, `/optimize` from `DebuggableAttribute`, resource names;
+  checks of culture, key, token, neutral names); `satellite { }` (`Dotnet.satellite.fs`);
+  `.restext` compiled (`ResxFormat.readText`, also for `csc { }`); hermetic: `Lock.Satellites`
+  = cultures only (preview fields read past), the import without SDK targets,
+  `Locks.satellite settings lockPath fwk SatelliteInputs`; `satelliteWith`/`satelliteFrom` and
+  `src/hermetic/Satellite.fs` removed; descriptions and locks updated (`import update-locks`,
+  SDK 10.0.403), `build.fsc.fsx build check` green.
+- Verified: byte-identical to `dotnet build` on SDK 8 **and** 10 (net472, netstandard2.0, net8.0,
+  signed; generated and hand-written attributes; Debug template); `satellite { }` and
+  `Locks.satellite` give the same bytes; probe G (Windows, `probe.md`).
+- Found while implementing: ICU lists `zh-Hans-CN`, not `zh-CN` (`Satellite.isCulture` also
+  takes a name with a known LCID); a netstandard2.0 `mscorlib` is a facade (`satellite { }`
+  takes those of the three references the framework has).
+- Not tested: `publicsign`/`delaysign` of `satellite { }`; an F# entry's `Locks.satellite` refusal.
+
 ## Next step
 
-1. Rewrite `docs/hermetic/lock.md` "Satellite assemblies" (and `docs/tasks.md` for `satellite { }`,
-   release notes) from the brief's API examples and name table.
-2. Implement: the core and `satellite { }` in `src/dotnet` (move `Satellite.fs`), `Locks.satellite`
-   with `SatelliteInputs`, the import writing cultures only, the removals; adapt the tests (brief,
-   "Tests to keep or adapt"); `build.fsc.fsx import update-locks` when source files move.
-3. Suites, fsc `build check`, push to PR #15; preview `4.3.0-sat.3` to the consumer's session for
-   the same check as sat.2.
-4. Windows unchecked; SDK-independent locks (the `Sdk`, pack versions) are a separate brief.
+1. When the owner says so: push to PR #15, CI; preview `4.3.0-sat.3` to the consumer's session
+   (re-import changes the locks of localized projects once more; `satelliteWith`/`satelliteFrom`
+   callers move to `Locks.satellite ... { SatelliteInputs.Default with Resources = ... }`).
+2. Windows: run the satellite tests on the VM (`ssh win11`, SDK 8.0.301/9.0.304) if wanted.
+3. SDK-independent locks (the `Sdk`, pack versions) are a separate brief.

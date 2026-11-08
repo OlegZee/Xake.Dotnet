@@ -6,7 +6,8 @@ One line per item. Status as of 2026-11-07: started.
 
 - [ ] PR #15 `feature/satellites` -> `dev` (release 4.3.0): CI green (4/4); merge
 
-- [ ] Consumer check of `4.3.0-sat.3` (`satelliteFrom`; `satelliteWith` checked on sat.2)
+- [ ] Push the redesign (local commits) to PR #15 when the owner says so
+- [ ] Consumer check of `4.3.0-sat.3` (the redesigned API: `Locks.satellite` with `SatelliteInputs`, `satellite { }`)
 
 ## Later
 
@@ -14,6 +15,7 @@ One line per item. Status as of 2026-11-07: started.
 
 ## Done
 
+- [x] Redesign implemented (decisions 9-24): core `Satellite` and `satellite { }` in Xake.Dotnet, `.restext`, `Locks.satellite` with `SatelliteInputs`, lock = cultures only, removals, docs, locks; byte-identical on SDK 8 and 10, both layers equal (2026-11-08)
 - [x] Probe G (Windows 11, SDK 8.0.301/9.0.304): satellite attributes equal macOS's except FileVersion for hand-written attributes without one; empty-string attributes left out; macOS-built (SDK 10) satellites load on .NET Framework 4.8; another token falls back silently (`probe.md`, G, 2026-11-08)
 - [x] Critic's review of the redesign; accepted as decisions 16-24 (brief, 2026-11-08)
 - [x] Consumer check of `4.3.0-sat.2` (macOS, SDK 8.0.427, two brands): locks unchanged against sat.1; the orphan warning fires on exactly the one known project; `satelliteWith` over the whole translation table (19 folders, files via `getFiles` in the rule): 86 satellites per brand, version, culture and public key token of the main assembly, every resource named `*.<culture>.resources`, as many resources as translation files; the `.resources` streams byte-identical to the consumer's own per-culture project (whose net8 satellite even lacks `AssemblyCulture`); `ResourceManager` finds the strings (net8.0, netstandard2.0); full build, check, pack green (2026-11-08)
