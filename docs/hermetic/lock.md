@@ -595,9 +595,9 @@ A rule that takes both sources:
     match translationsOf name with
     | None -> do! Locks.satellite settings (lockOf name cfg) fwk
     | Some (folder, rootNamespace) ->
-        let! files = getFiles (fileset { basedir (folder + "/" + culture); includes "*.resx" })
+        let! (Filelist files) = getFiles (!! (sprintf "%s/%s/*.resx" folder culture))
         let resources =
-            [ for f in files.Files -> f.FullName, sprintf "%s.%s.%s.resources" rootNamespace (Path.GetFileNameWithoutExtension f.Name) culture ]
+            [ for f in files -> f.FullName, sprintf "%s.%s.%s.resources" rootNamespace (Path.GetFileNameWithoutExtension f.FullName) culture ]
         do! Locks.satelliteWith settings (lockOf name cfg) fwk resources }
 ```
 

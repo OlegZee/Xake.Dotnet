@@ -8,6 +8,8 @@ One line per item. Status as of 2026-11-07: started.
 - [ ] PR #15 `feature/satellites` -> `dev` (release 4.3.0): CI green (4/4); merge
 - [ ] Windows: hand-written attributes (`FileVersionInfo`) not checked
 
+- [ ] Consumer check of `4.3.0-sat.2` (translations outside the project)
+
 ## Later
 
 - [ ] Run folders: a referenced lock's satellites by name; `deps.json` `"resources"` lines (stand-ins in the app pass)
