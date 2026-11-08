@@ -67,14 +67,15 @@ conventions and discovery (which cultures, which folders) are the script's, show
     `System.Runtime` (filtered from the entry's or the toolchain's), `/pathmap` and `/features`
     passed on. No SDK targets are read, at import or at build time; no installed SDK is needed for
     a satellite. Consequence: on SDK 8 a satellite is not byte-identical to `dotnet build`'s (SDK 8
-    hands it every reference); version, culture, token and resources are the same. To be put to the
-    critic when the finished solution is reviewed.
+    hands it every reference); version, culture, token and resources are the same. Amended by 20
+    (critic): an empty filtered list fails clearly; the SDK 8 comparison is tried byte-wise first.
 11. **Attributes are read from the built main assembly's metadata** (`System.Reflection.Metadata`,
     the same code on every OS), never from Win32 resources and not from the lock's generated
     assembly info. The rules of the .NET (Linux/macOS) reader `GetAssemblyAttributes` uses, as
     probed: Company, Description, FileVersion, Product from their attribute when present;
     Copyright and Title from theirs, else `" "`; InformationalVersion from its attribute, else the
-    assembly version; Version = the assembly version. Linux containers are the main scenario. Any
+    assembly version; Version = the assembly version; an attribute given as `""` is left out
+    (`probe.md`, G, on both OS). Linux containers are the main scenario. Any
     attribute can be given explicitly and then replaces (or adds to) the read one. (csc writes the
     satellite's own Win32 version resource from its attributes on every OS: Explorer shows it.)
 12. **The lock records only what msbuild knew**: `Recorded.Satellites` = the resources per culture
@@ -82,14 +83,72 @@ conventions and discovery (which cultures, which folders) are the script's, show
     at build time (`DisabledWarnings` is lost: rare, no effect on the bytes). The import stops
     reading SDK targets. Locks of localized projects change once more (re-import).
 13. **Load guarantee**: the satellite's public key token must equal the template's (the main
-    assembly's); a mismatch fails the build. The token comes from the key switches, not from the
-    template, so without a lock the key is given explicitly.
+    assembly's); a mismatch fails the build. The key comes from the key switches, not from the
+    template, so without a lock the key is given explicitly. How it is checked: 18.
 14. **`resources`** are `ResourceFileset list` (`resourceset { prefix; basedir; includes; dynamic }`),
     read with `getFiles` (an added translation rebuilds); a file is named as `resourceset` names it,
     the target's culture put in. The lock's resources of the culture always go in too; a manifest
     name twice fails. No file and no recorded resource fails.
 15. **`Locks.satellitesOf settings lockPath fwk dir`** only reads the lock: the cultures it
     records. The script lists external cultures itself.
+
+### Critic's review (Fable, 2026-11-08) -- accepted by the owner
+
+16. **Parity is stated per OS.** Attributes from metadata (11) equal `dotnet build`'s on
+    Linux/macOS. On Windows `FileVersionInfo` reads csc's Win32 version resource, where csc puts
+    the assembly version into FileVersion when `AssemblyFileVersion` is absent: for hand-written
+    attributes without it, `dotnet build` on Windows gives a FileVersion and Xake does not
+    (generated assembly info always has one). msbuild of .NET Framework (Visual Studio) links
+    satellites with `al.exe`: never byte-identical. `lock.md` says so; the reader's rule table is
+    the spec and gets its own unit test. **Probed** on Windows (`probe.md`, G): this FileVersion
+    line is the only difference; satellites built on macOS load on .NET Framework 4.8.
+17. **Neutral names are checked at build time, against the template.** The core reads the
+    template's `ManifestResource` table (the metadata 11 opens anyway) and checks that each
+    satellite resource `X.<culture>.resources` has its `X.resources` in the main assembly (a
+    `DependentUpon`-named resx, a wrong `prefix` or `basedir` would otherwise build and never be
+    found by `ResourceManager`). A setting decides the outcome: **warn by default, fail on request**
+    (`SatelliteInputs.NeutralCheck = Warn | Fail`, `satellite { neutralcheck Fail }`; names to
+    settle in the implementation). Why a setting (owner): the lock path has few such resources;
+    the other common scenario builds satellites in a separate repository against a main assembly
+    that is downloaded and placed, not built, where the risk is translations not yet synchronized
+    with it. The synchronization adds and removes entries itself, so failing is right when it is
+    trusted, but without it everything would break. The import's orphan warning goes (12: the
+    import records only what msbuild knew).
+18. **The token is compared on the output.** After the compile the public key (token) of the
+    `*.resources.dll` is read with `MetadataReader` and compared with the template's; this also
+    catches a wrong key file and works for key containers. Before the compile a cheap check: a
+    signed template without a key switch fails, a key switch with an unsigned template fails.
+    Why it matters (`probe.md`, G): a satellite with another token is not an error at run time,
+    .NET Framework silently falls back to the neutral strings.
+19. **The culture is checked.** `CultureInfo.GetCultureInfo(c).Name = c` (ordinal), else the build
+    fails (`zh-cn/` is never found on Linux; .NET Framework rejects a mismatched `AssemblyCulture`);
+    in both layers, `satellitesOf` included (it returns the lock's casing). A file whose own
+    culture suffix is a different culture than the target's fails
+    (`translations/ja/Strings.zh-CN.resx`, today silently `Lib.Strings.zh-CN.ja.resources`).
+20. **References (10)**: when the filter leaves none of `mscorlib`, `netstandard`,
+    `System.Runtime` (`DisableImplicitFrameworkReferences`, a trimmed list), the build fails with a
+    clear message, no fallback. Loading is not affected by the shorter list (a resources-only
+    assembly references what its attributes use). csc emits no reference it does not use and there
+    is no PDB, so on SDK 8 the satellite is likely byte-identical too: the SDK 8 test tries the
+    byte comparison first.
+21. **Decision 12's loss is nil.** Only the satellite target reads `$(DisabledWarnings)` and no SDK
+    target sets it; the main compile passes `$(NoWarn)`. Bare `/warnaserror+` stays dropped (its
+    test kept). Reading a lock ignores the preview fields `Options`, `References`, `Attributes`;
+    `mapText` over `Attributes` goes; a preview lock builds under the new recipe without a
+    re-import (documented).
+22. **Culture suffix stripped for every extension.** msbuild names a culture non-resx file without
+    the culture (`Logo.ja.png` -> `Lib.Logo.png`); the script path does the same, so a merge with
+    the lock's resources finds the duplicate. `.restext` is a resx for msbuild (`Type=Resx`) and is
+    compiled like one.
+23. **`satellite { }` from its target and template** (closes "Open in the implementation"): the
+    output is the rule's target, the culture its parent folder; `targetfwk` defaults to the
+    template's `TargetFrameworkAttribute` (a different one given explicitly fails); the template is
+    `need`ed (a placed, not built, dll is fine). The reference lists of the two layers differ for
+    net472 (the lock: mscorlib and facades; the task: mscorlib): harmless by 20, covered by the
+    same-satellite test on net472 and net8.0.
+24. **Later**: satellites of an F# entry in `Locks.satellite` (the SDK's satellite target uses
+    `Csc` for F# projects too; the core needs only a csc); `satellite { }` already serves F#
+    templates.
 
 ### API (agreed examples; the docs to be rewritten from these)
 
@@ -130,21 +189,32 @@ command "satellites" {
 Names (`prefix "Lib"`, `basedir "translations/ja"`): `Strings.resx` -> `Lib.Strings.ja.resources`;
 `Forms/Main.resx` -> `Lib.Forms.Main.ja.resources` (`dynamic true`, the default) or
 `Lib.Main.ja.resources` (`dynamic false`); `Strings.ja.resx` -> `Lib.Strings.ja.resources`;
-`Logo.png` -> `Lib.Logo.png`.
+`Logo.png` and `Logo.ja.png` -> `Lib.Logo.png` (22); `Strings.zh-CN.resx` fails (19).
 
-Open in the implementation: whether `satellite { }` can take the culture and output from the
-rule's target (as `csc { }` takes `out`), and how `targetfwk` finds the three references (the
-toolchain discovery `csc { }` uses).
+Open in the implementation: how `targetfwk` finds the three references (the toolchain discovery
+`csc { }` uses). Output and culture from the target: 23.
 
 ### Tests to keep or adapt
 
-- Byte-identical to `dotnet build` on SDK 10 (own resources; external translation; net472 and
-  net8.0; signed; generated and hand-written attributes); SDK 8: version, culture, token,
-  resources, `ResourceManager`.
+- Byte-identical to `dotnet build` on SDK 10 (own resources; external translation; net472,
+  netstandard2.0 and net8.0; signed; generated and hand-written attributes); SDK 8: byte-identical
+  tried first, else version, culture, token, resources, `ResourceManager` (20).
 - Merge with a recorded culture and a duplicate name; an added file rebuilds; an empty set fails;
-  a token mismatch fails; an explicit attribute replaces the read one.
-- `satellite { }` without a lock: the same satellite as `Locks.satellite` for the same inputs.
-- A lock without culture resources unchanged; `Recorded.Satellites` round trip (cultures only).
+  an explicit attribute replaces the read one.
+- Token (18): an unsigned template with a key file fails; a signed template with a different key
+  fails; delay and public sign pass.
+- The attribute reader's rule table (16): each attribute present, absent, empty; escaping of `"`,
+  a newline, non-ASCII in a value (bytes compared, never the `.resources.cs` text).
+- Neutral names (17): a resource without its neutral one warns by default and fails with `Fail`; a
+  `DependentUpon`-named resx passes when named right.
+- Culture (19): a wrongly cased culture fails; a file of another culture fails.
+- References (20): an empty filtered list fails with the message.
+- A culture non-resx file via the script and via the lock: one name, the duplicate found (22).
+- `satellite { }` without a lock: the same satellite as `Locks.satellite` for the same inputs,
+  net472 and net8.0.
+- A lock without culture resources unchanged; `Recorded.Satellites` round trip (cultures only);
+  `satellitesOf` and `Locks.satellite` on a preview lock (21).
+- Not verifiable here: `ResourceManager` on .NET Framework (noted as not verified).
 
 ## Shape before the redesign (history)
 

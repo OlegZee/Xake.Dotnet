@@ -70,10 +70,8 @@ open Xake.Hermetic.Dotnet
 | `Locks.generate lockOf outOf config descriptionPath` | recipe | the lock of one described project in one configuration, nothing compiled, written only on change; the referenced projects' locks must exist ([Xake-generated locks](#xake-generated-locks)) |
 | `Locks.compile settings lockPath fwk` | recipe | the layout's assembly rule (`.dll`, `.exe`): the lock's entry for `fwk` compiled into the rule's target, which must be the entry's output (`TargetFileName`, else `<Name>.dll`/`.exe`); an `.xml` target fails, that is `Locks.doc`. `settings` (`Locks.Settings`): extra roots, version masks, `Lock.Options` ([Building from Xake-generated locks](#building-from-xake-generated-locks)) |
 | `Locks.doc settings lockPath fwk` | recipe | the layout's `.xml` rule: needs the assembly beside it, whose `compile` rule writes the doc, and fails when the lock asks for no doc; takes `compile`'s parameters, only `Roots` is used |
-| `Locks.satellite settings lockPath fwk` | recipe | the rule of a satellite assembly `<dir>/<culture>/<Name>.resources.dll` (4.3.0): needs the assembly in `<dir>`, composes the compile from `Recorded.Satellites` ([Satellite assemblies](#satellite-assemblies)); built only when a script asks for it |
-| `Locks.satelliteFrom settings lockPath fwk resources` | recipe | `satellite` over resource sets (`resourceset`): the files a set names, read with `getFiles`, named by the set with the target's culture put in ([Satellite assemblies](#satellite-assemblies)) |
-| `Locks.satelliteWith settings lockPath fwk resources` | recipe | `satellite` with (file, manifest name) pairs the script supplies: translations kept outside the project; for an entry without `Recorded.Satellites` the recipe is derived at build time ([Satellite assemblies](#satellite-assemblies)) |
-| `Locks.satellitesOf settings lockPath fwk dir` | recipe | the satellite assemblies the entry has, as targets under `dir` (none without culture resources): what a script `need`s |
+| `Locks.satellite settings lockPath fwk inputs` | recipe | the rule of a satellite assembly `<dir>/<culture>/<Name>.resources.dll` (4.3.0): needs the assembly in `<dir>` (its template), the culture's resources from `Recorded.Satellites` and `inputs.Resources` (`SatelliteInputs`: resource sets, attributes, the neutral-name check); checks culture and token ([Satellite assemblies](#satellite-assemblies)); built only when a script asks for it |
+| `Locks.satellitesOf settings lockPath fwk dir` | recipe | the satellite assemblies the lock records, as targets under `dir` (none without culture resources); cultures from elsewhere are the script's to list |
 | `Locks.compileAs lockPath fwk versions` | recipe | `compile { Settings.Default with Versions = versions }`; `compileAsWith roots` adds `Roots = roots` |
 | `Locks.versionOf settings lockPath fwk` | recipe | the entry's `Version` property as the build stamps it: `$(Version)` resolved by `Versions`/`VersionSuffixes` ([recorded version token](#building-from-xake-generated-locks)), else the recorded literal; what a package takes ([versioning.md](versioning.md#packages)) |
 | `Locks.needAll descriptions cfg lockOf outOf` | recipe | needs the layout `.dll` of every framework of every described project; a project without a lock fails naming `update-locks`; the packages all locks name and the folder lacks are fetched first in one restore |
@@ -505,42 +503,45 @@ copy-to-output items go into a run folder (`Locks.runFolderWith`, [Run folders](
 ### Satellite assemblies
 
 A C# project with culture-specific resources (`Strings.ja.resx`, `Logo.fr.txt`: a culture msbuild's
-`AssignCulture` recognizes) gets `Recorded.Satellites` (4.3.0). msbuild's own satellite compile
-(`CoreGenerateSatelliteAssemblies`) cannot be recorded: it reads its attributes from the built
-assembly and ignores `SkipCompilerExecution`. The import composes it by the recording SDK's
-recipe, read off that SDK's `Microsoft.NET.Sdk.targets`:
+`AssignCulture` recognizes) gets `Recorded.Satellites` (4.3.0): what msbuild knew, the resources
+per culture, nothing of the satellite's compile.
 
 ```json
 "Satellites": {
-  "Options": [ "/noconfig", "/nostdlib+", "/warn:8", "/optimize+", "/deterministic+", "/target:library" ],
-  "References": [ "mscorlib", "netstandard", "System.Runtime" ],
-  "Attributes": [ "System.Reflection.AssemblyVersionAttribute(\"$(Version)\")" ],
   "Cultures": {
     "ja": [ { "File": "$(ProjectRoot)/src/Strings.ja.resx", "Compiled": "...", "Name": "App.Strings.ja.resources" } ]
   }
 }
 ```
 
-- `Options`: `/noconfig`, the main compile's switches the target passes on (the key switches,
-  `/nostdlib`, `/warn`, `/optimize`, `/deterministic`, `/warnaserror` with a list; `/pathmap`
-  and `/features` from SDK 10), `/nowarn` from `DisabledWarnings`, `/target:library`.
-- `References`: the file names of the entry's references the satellites take (SDK 10 filters
-  them; absent: all of them, SDK 8).
-- `Attributes`: what the SDK reads back from the built assembly (Company, Copyright, Description,
-  FileVersion, InformationalVersion, Product, Title, Version; a copyright not stated is `" "`),
-  taken from the generated assembly info, the version and the commit as tokens. Absent for a
-  project that writes its attributes itself (`GenerateAssemblyInfo=false`): the build reads
-  them from the assembly it built, as msbuild does.
-- `Cultures`: per culture, each resource: the file, the `.resources` a `.resx` compiles to (""
-  for a file embedded as is), the manifest name.
+Each resource: the file, the `.resources` a `.resx` (or `.restext`) compiles to ("" for a file
+embedded as is), the manifest name. A lock without culture resources has no key and is unchanged.
+A lock written by a 4.3.0 preview may carry `Options`, `References` and `Attributes` beside
+`Cultures`: they are ignored, the lock builds as it is.
 
 An F# project's culture resources are reported and left out. Under invariant globalization
 (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`) the import fails on a resource whose second extension
 looks like a culture: msbuild cannot tell it is one, and the lock would differ from one recorded
 with cultures.
 
-The build makes satellites only when the script asks for them, by a rule of their own beside
-the assembly's (the assembly's rule builds none):
+msbuild's own satellite compile (`CoreGenerateSatelliteAssemblies`) cannot be recorded: it reads
+its attributes from the built assembly and ignores `SkipCompilerExecution`. The build composes it
+by the recipe of SDK 10's target, on every SDK, the same core as the `satellite { }` task
+([tasks.md](../tasks.md#satellite)):
+
+- **the switches**: `/noconfig`, the main compile's the target passes on (the key switches,
+  `/nostdlib`, `/warn`, `/optimize`, `/deterministic`, `/warnaserror` with a list, `/pathmap`,
+  `/features`), `/target:library`;
+- **the references**: the entry's `mscorlib`, `netstandard` and `System.Runtime`, as SDK 10
+  filters them (none of the three fails the build);
+- **the attributes**: read from the built main assembly's metadata, the same on every OS (Company,
+  Description, FileVersion, Product when stated; Copyright and Title, else `" "`;
+  InformationalVersion, else the assembly version; an attribute stated as `""` left out; the
+  assembly's version), then `AssemblyCulture`;
+- **the resources**: the lock's of the culture and the script's (below).
+
+The build makes satellites only when the script asks for them, by a rule of their own beside the
+assembly's (the assembly's rule builds none):
 
 ```fsharp
 open Xake.Typed
@@ -548,7 +549,7 @@ open Xake.Typed
 type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
 let Satellite = Target<SatelliteG> "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
 
-Satellite.Rule (fun m -> Locks.satellite settings (lockOf m.name m.cfg) m.fwk)
+Satellite.Rule (fun m -> Locks.satellite settings (lockOf m.name m.cfg) m.fwk SatelliteInputs.Default)
 
 // the satellites the lock records, as targets of that rule
 command "satellites" {
@@ -556,68 +557,84 @@ command "satellites" {
     do! need targets }
 ```
 
-`Locks.satellite` needs the assembly, writes the source under `obj/xake/satellites/`, compiles the
-culture's `.resx` files and runs the entry's compiler (the same prerequisites, restore,
-`HERMETIC=on` gate and csc throttle as `compile`). On SDK 8.0.427 and 10.0.403 the result is
-byte-identical to `dotnet build`'s, signed (key file, public, delay) or not.
+`Locks.satellite settings lockPath fwk inputs`:
 
-The import warns about a culture resource no neutral resource of the assembly matches
-(`X.Resource.ja.resources` beside `X.Resources.resources`): `ResourceManager` looks a culture up by
-the neutral name, so nothing would read it.
+- needs the assembly beside the culture folder (its `compile` rule): the template of the
+  satellite's version, attributes, public key and neutral resources;
+- writes the source under `obj/xake/satellites/`, compiles each `.resx` of the culture, embeds any
+  other file as is, and runs the entry's compiler with the entry's references (the same
+  prerequisites, restore, `HERMETIC=on` gate and csc throttle as `compile`);
+- checks the culture: the folder must be a culture's name as .NET spells it (`zh-CN`, not
+  `zh-cn`: the runtime probes that folder, case-sensitively on Linux);
+- checks the public key token: the satellite's must be the assembly's (a satellite with another
+  token is not an error at run time, `ResourceManager` silently falls back to the neutral
+  strings); a signed assembly with no key switch in the entry fails before the compile;
+- checks the neutral names: each `X.<culture>.resources` needs `X.resources` in the assembly,
+  which is what `ResourceManager` looks a culture up by; a miss warns, or fails with
+  `NeutralCheck = NeutralCheck.Fail`.
+
+`SatelliteInputs` (the default: none of them):
+
+| field | meaning |
+|---|---|
+| `Resources: ResourceFileset list` | files besides the lock's, below |
+| `Attributes: (string * string) list` | an attribute replacing (or adding to) the one read from the assembly: `"AssemblyFileVersion", "4.3.0.512"` |
+| `NeutralCheck: NeutralCheck` | `Warn` (the default) or `Fail` on a resource without its neutral one |
+
+`Locks.satellitesOf settings lockPath fwk dir` lists the satellites the lock records, as targets in
+`dir`: `<dir>/<culture>/<assembly>.resources.dll`. Cultures from elsewhere are the script's to list.
 
 #### Translations kept outside the project
 
-Translations msbuild never sees (a folder of `.resx` per culture and assembly in another
-repository) are not in the lock. Two recipes build a satellite from them, beside `satellite`:
+Translations msbuild never sees (a folder of `.resx` per culture in another repository) are not in
+the lock. `Resources` takes them as resource sets (`resourceset`, as `csc`'s `resources`), read
+with `getFiles`: an added, removed or edited translation rebuilds the satellite. A file is named
+as the set names it, the target's culture put in, the file's own culture suffix taken out:
 
-- `Locks.satelliteFrom settings lockPath fwk resources` over resource sets (`resourceset`, as
-  `csc`'s `resources`): the files each set names, read with `getFiles`, so an added, removed or
-  edited translation rebuilds the satellite. A file is named as the set names it (`prefix`, the
-  folders below `basedir`, the file) with the target's culture put in: `Strings.resx` in
-  `translations/ja/` with `prefix "Lib"` is `Lib.Strings.ja.resources`, `Forms/Main.resx` is
-  `Lib.Forms.Main.ja.resources`.
-- `Locks.satelliteWith settings lockPath fwk resources` over (file, manifest name) pairs, the
-  name in full as embedded, for files no mask describes. Each file is an input; the list is not.
+| `prefix "Lib"`, `basedir "translations/ja"` | manifest name |
+|---|---|
+| `Strings.resx` | `Lib.Strings.ja.resources` |
+| `Forms/Main.resx` | `Lib.Forms.Main.ja.resources` (`dynamic true`, the default); `Lib.Main.ja.resources` (`dynamic false`) |
+| `Strings.ja.resx` | `Lib.Strings.ja.resources` |
+| `Logo.png`, `Logo.ja.png` | `Lib.Logo.png` |
+| `Strings.zh-CN.resx` | fails: a file of another culture |
 
-Both compile a `.resx` (relative to the project root, or absolute) under `obj/xake/satellites/`
-and embed any other file as is. No file and no resource the lock records for the culture fails
-the build. The folders may hold the files of one satellite or several sets may be given: the
-recipe takes a list.
-
-- An entry without `Recorded.Satellites` (the usual case): the recipe is derived at build time,
-  and the lock does not change. The main compile's switches the SDK passes on (no
-  `DisabledWarnings`: a lock does not record it), the references, `/pathmap` and `/features` of
-  the SDK that recorded the entry (`Evaluation.Sdk`, read off its targets, so it must be
-  installed), the attributes from the entry's generated `*.AssemblyInfo.cs`, else read from the
-  built assembly. The same satellite `dotnet build` makes when the file is the project's own
-  `Strings.ja.resx`, byte for byte (SDK 8.0.427 and 10.0.403, `net472` and `net8.0`, signed).
-- An entry that records satellites: its recipe. For a culture it records, the lock's resources
-  and the script's go into one satellite; a manifest name in both, or twice in the script's,
-  fails the build.
-
-A rule over a typed target that takes the lock's satellites where there are no translations
-outside the project, and the translation folder of the assembly otherwise:
+The lock's resources of the culture go in too; a manifest name twice fails, and so does a
+satellite with no resource at all. The neutral-name check above is what catches a name that
+does not match the assembly's (a `DependentUpon`-named form, a wrong `prefix`): with the
+translations synchronized by a tool that keeps them matched, `NeutralCheck.Fail` makes a miss an
+error.
 
 ```fsharp
-// `Satellite` as above; the script's table: an assembly's translation folder and root namespace
-let translations = Map [ "Lib", ("translations/Lib", "Lib") ]
+// the script's table: an assembly's root namespace
+let rootNamespaces = Map [ "Lib", "Lib" ]
 
 Satellite.Rule (fun m ->
-    let lock = lockOf m.name m.cfg
-    match translations |> Map.tryFind m.name with
-    | None -> Locks.satellite settings lock m.fwk
-    | Some (folder, rootNamespace) ->
-        Locks.satelliteFrom settings lock m.fwk
-            [ resourceset { prefix rootNamespace; basedir $"{folder}/{m.culture}"; includes "**/*.resx" } ])
-```
+    let translations =
+        match rootNamespaces.TryFind m.name with
+        | Some ns -> [ resourceset { prefix ns; basedir $"translations/{m.name}/{m.culture}"; includes "**/*.resx" } ]
+        | None -> []
+    Locks.satellite settings (lockOf m.name m.cfg) m.fwk
+        { SatelliteInputs.Default with Resources = translations; Attributes = [ "AssemblyFileVersion", "4.3.0.512" ] })
 
-and the satellites a script asks for:
-
-```fsharp
+// which satellites: the lock's and the translations' cultures, the script's decision
 command "satellites" {
-    do! need [ for culture in [ "ja"; "zh-CN" ] ->
-                 Satellite.Format { cfg = "Release"; fwk = "net8.0"; name = "Lib"; culture = culture; asm = "Lib" } ] }
+    let! own = Locks.satellitesOf settings (lockOf "Lib" "Release") "net8.0" (outOf "Release" "net8.0" "Lib")
+    let external = [ for c in [ "ja"; "zh-CN" ] -> Satellite.Format { cfg = "Release"; fwk = "net8.0"; name = "Lib"; culture = c; asm = "Lib" } ]
+    do! need (own @ external |> List.distinct) }
 ```
+
+#### How close to `dotnet build`
+
+- On Linux and macOS, byte-identical to `dotnet build`'s satellite with SDK 10's recipe (SDK 9 has
+  the same); SDK 8 hands the satellite every reference, which does not change what csc writes for
+  a resources-only assembly (version, culture, token and resources are the same either way).
+- On Windows the same, but one case: a project that writes its attributes itself without
+  `AssemblyFileVersion` gets no FileVersion here, where `dotnet build` on Windows takes the
+  assembly version (msbuild reads the Win32 version resource there). `attribute` gives it.
+- msbuild of .NET Framework (Visual Studio) links satellites with `al.exe`: never byte-identical,
+  the same version, culture, token and resources.
+- The satellites load on .NET Framework 4.8 and .NET (`ResourceManager` finds the strings).
 
 Not recorded: a referenced project's satellite assemblies in a run folder and their entries in
 `deps.json` (a project's own are, [Satellite assemblies](#satellite-assemblies)), the binding redirects RAR finds only through a referenced project's

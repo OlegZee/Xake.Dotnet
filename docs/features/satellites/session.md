@@ -28,6 +28,11 @@ items: `tracker.md`.
   attributes from the main assembly's metadata, the lock keeping cultures only, a token check.
   Not implemented. The session that agreed it grew too large; continue in a fresh one.
 
+- A critic (fresh eyes) reviewed the redesign; the owner accepted all of it: brief, decisions
+  16-24 (per-OS parity, the neutral-name check with a warn/fail setting, the token compared on
+  the output, the culture checked, no reference fallback, culture suffix stripped for every
+  extension, `satellite { }` from its target and template, F# later) and the extended test list.
+
 ## Next step
 
 1. Rewrite `docs/hermetic/lock.md` "Satellite assemblies" (and `docs/tasks.md` for `satellite { }`,

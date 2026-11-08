@@ -99,3 +99,43 @@ version info `GetAssemblyAttributes` reads (`Import.satelliteAttributesOf` follo
 
 Not probed: Windows (`FileVersionInfo`, key containers), `net472` (the `al`-free route of
 `dotnet msbuild` assumed), F#.
+
+## G. Windows and .NET Framework (2026-11-08)
+
+Windows 11 (ARM64), SDK 8.0.301 and 9.0.304 (9.0.304's satellite target already filters the
+references to `mscorlib`, `netstandard`, `System.Runtime`, as SDK 10's does), against macOS SDK
+8.0.427 and 10.0.403. Three signed libraries (`net8.0;net472`, `Strings.resx` with `ja` and
+`zh-CN`) and a `net472` console application referencing them:
+
+- **generated** assembly info: Version `1.2.3-beta.1`, FileVersion, Company, Product with `ü` and
+  `"`, Copyright, Description;
+- **hand-written**: `AssemblyVersion("2.0.0.0")`, Company, Description, no FileVersion;
+- **empty**: `AssemblyVersion("3.0.0.0")`, `AssemblyFileVersion("3.1.0.0")`, and Company,
+  Product, Copyright, Title, InformationalVersion all `""`.
+
+**Attributes** (`obj/.../<culture>/<asm>.resources.cs`, compared as attribute lines): the same on
+both SDKs of an OS, and the same between macOS and Windows except one line: for **hand-written
+attributes without `AssemblyFileVersion`**, Windows adds `AssemblyFileVersion("2.0.0.0")` (the
+assembly version, from csc's Win32 version resource), macOS leaves it out. Generated assembly info
+and the empty case are identical. Further rules seen on both OS:
+
+| attribute in the main assembly | satellite |
+|---|---|
+| Copyright / Title absent | `" "` |
+| InformationalVersion absent | the assembly version |
+| FileVersion absent | left out (macOS); the assembly version (Windows) |
+| Description absent | left out |
+| any of Company, Product, Copyright, Title, InformationalVersion given as `""` | left out (not `" "`, not the version) |
+| Title not set in a generated-info project | the assembly name (the SDK generates it) |
+
+**Loading on .NET Framework 4.8** (`App472.exe` built on macOS with SDK 10, i.e. the filtered
+references and the metadata-read attributes, copied to Windows): `ResourceManager` finds `ja`
+and `zh-CN` for all three libraries; the loaded satellites are `<asm>.resources, Version=<the
+main assembly's>, Culture=<c>, PublicKeyToken=<the main's>`. The same app built on Windows
+(SDK 9) behaves the same. **A satellite with another token** (built unsigned, put in place of the
+signed `ja` one): no error, `ResourceManager` silently falls back to the neutral string; only
+that satellite is not loaded.
+
+Consequences: decision 16 holds as stated (verified, not inferred); the reader's rule table
+(decision 11) gains the empty-string row; decision 18's check is what prevents a silent fallback.
+Not probed: key containers, Visual Studio's msbuild (`al.exe`).
