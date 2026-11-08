@@ -198,8 +198,13 @@ module Satellite =
               |> Array.map (fun c -> c.Name) |> Array.filter ((<>) "")
               |> fun names -> Collections.Generic.HashSet<string> (names, StringComparer.OrdinalIgnoreCase))
 
-    /// Whether `name` is a culture's name .NET knows, in any case (`ja`, `zh-cn`). Pure.
-    let isCulture (name: string) : bool = name <> "" && cultures.Value.Contains name
+    /// Whether `name` is a culture's name .NET knows, in any case (`ja`, `zh-cn`): one it lists,
+    /// or one it makes with a known LCID (ICU lists `zh-Hans-CN`, not its alias `zh-CN`; an
+    /// unknown name gets the custom LCID 0x1000). Pure.
+    let isCulture (name: string) : bool =
+        name <> ""
+        && (cultures.Value.Contains name
+            || (try (Globalization.CultureInfo.GetCultureInfo name).LCID <> 0x1000 with _ -> false))
 
     /// <summary>
     /// Fails unless `culture` is a culture's name as .NET spells it (`zh-CN`, not `zh-cn`): the

@@ -67,6 +67,8 @@
     <!-- A satellite assembly's compile from the main assembly (its metadata) and resource sets:
          the core of satellite {} and of the hermetic Locks.satellite. -->
     <Compile Include="Satellite.fs" />
+    <!-- satellite {}: the core above over a template and resource sets, no lock -->
+    <Compile Include="Dotnet.satellite.fs" />
     <Compile Include="Dotnet.csc.fs" />
     <Compile Include="Dotnet.fsc.fs" />
     <Compile Include="Dotnet.resgen.fs" />
