@@ -6,11 +6,11 @@ One line per item. Status as of 2026-11-07: started.
 
 - [ ] PR #15 `feature/satellites` -> `dev` (release 4.3.0): CI green (4/4); merge
 
-- [ ] Push the redesign (local commits) to PR #15 when the owner says so
 - [ ] Consumer check of `4.3.0-sat.3` (the redesigned API: `Locks.satellite` with `SatelliteInputs`, `satellite { }`)
 
 ## Later
 
+- [ ] F#: an F# entry's satellites from its lock (the SDK's target uses `Csc` for F# too; decision 24)
 - [ ] Run folders: a referenced lock's satellites by name; `deps.json` `"resources"` lines (stand-ins in the app pass)
 
 ## Done

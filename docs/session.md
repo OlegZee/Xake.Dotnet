@@ -21,11 +21,14 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Release state
 
+- `Xake.Dotnet` 4.3.0 (satellite assemblies, `docs/features/satellites/`): PR #15 squash-merged
+  into `dev`, tag `v4.3.0` on that merge (2026-11-08); `publish.yml` pushes the package;
+  `master` follows by `--ff-only`. New package dependency `System.Reflection.Metadata` 8.0.0.
+  `feature/import-file-casing` (#12) is not in it; if it lands, it is 4.4.0.
 - `Xake.Dotnet` 4.2.0 (the version as a token in a recorded lock,
   `docs/features/lock-version-params/`): PR #13 squash-merged into `dev`, tag `v4.2.0` on that
   merge (`22d61e0`, 2026-11-07); `publish.yml` pushed the package, on nuget.org the same day.
-  `master` follows by `--ff-only`. `feature/import-file-casing` (#12) is not in it; if it lands, it
-  is 4.3.0 (its release notes still say 4.2.0).
+  `master` follows by `--ff-only`.
 - `Xake.Dotnet` 4.1.0 (WPF projects recorded, `docs/features/wpf-record/`): PR #9 merged into
   `dev`, tag `v4.1.0` on that merge (2026-11-06); `publish.yml` pushes the package.
 - Xake 4.0.0 is on nuget.org (2026-11-03). `release/4.0.0` moves the floor to `[4.0.0, 5.0)`,
@@ -60,8 +63,8 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Feature folders
 
-- `docs/features/satellites/`: satellite assemblies in locks (reopens S71); started 2026-11-07,
-  start with its `session.md`, "Next step".
+- `docs/features/satellites/`: released in 4.3.0; open only its `tracker.md` "Later" items (run
+  folders with a referenced lock's satellites, F# satellites from a lock).
 - `docs/features/lock-version-params/`: released in 4.2.0; open only the "Later" items of its
   `tracker.md` (`FileVersion` as a token, a `Pack` helper for dependency versions).
 - `docs/features/hermetic-windows/`: the remaining work of the hermetic-on-Windows findings (moved from
