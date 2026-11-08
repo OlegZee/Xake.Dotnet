@@ -3,6 +3,7 @@ namespace Xake.Hermetic.Dotnet
 open System
 open System.IO
 
+open Xake
 open Xake.Dotnet
 
 /// <summary>
@@ -160,6 +161,38 @@ module Satellite =
                     if r.Name.EndsWith (suffix, StringComparison.OrdinalIgnoreCase) then r.Name.Substring (0, r.Name.Length - suffix.Length) + ".resources"
                     else r.Name
                 if not (neutral.Contains expected) then yield culture, r.Name ]
+
+    /// <summary>
+    /// The name a `resourceset` gives `file` (absolute), as `csc`'s `resources` does: the folders
+    /// between the set's base folder (`baseDir`, relative to `root`) and the file joined by `.` when
+    /// the set is `dynamic` (the default), the file name, the set's `prefix` first. Pure.
+    /// </summary>
+    let resourceSetName (root: string) (options: ResourceSetOptions) (baseDir: string option) (file: string) : string =
+        let name = Path.GetFileName file
+        let name =
+            match options.DynamicPrefix, baseDir with
+            | true, Some dir ->
+                let slash (p: string) = p.Replace('\\', '/').TrimEnd '/'
+                let folder = slash (Path.GetFullPath (Path.Combine (root, dir)))
+                let fileDir = slash (Path.GetDirectoryName file)
+                if fileDir.StartsWith (folder + "/", StringComparison.OrdinalIgnoreCase) then
+                    fileDir.Substring(folder.Length + 1).Replace ('/', '.') + "." + name
+                else name
+            | _ -> name
+        match options.Prefix with
+        | Some prefix -> prefix + "." + name
+        | None -> name
+
+    /// <summary>
+    /// The manifest name of a satellite's resource from the name of its file (`resourceSetName`):
+    /// a `.resx` as the `.resources` of `culture` (`Lib.Strings.resx` -> `Lib.Strings.ja.resources`,
+    /// `Lib.Strings.ja.resx` -> `Lib.Strings.ja.resources`), any other file by its name. Pure.
+    /// </summary>
+    let manifestName (culture: string) (name: string) : string =
+        if not (name.EndsWith (".resx", StringComparison.OrdinalIgnoreCase)) then name else
+        let stem = name.Substring (0, name.Length - 5)
+        if stem.EndsWith ("." + culture, StringComparison.OrdinalIgnoreCase) then stem + ".resources"
+        else sprintf "%s.%s.resources" stem culture
 
     /// The `SdkRecipe` of the SDK `version` under the .NET root `dotnetRoot`, read off its
     /// `Microsoft.NET.Sdk.targets`; `None` when that SDK is not installed there.

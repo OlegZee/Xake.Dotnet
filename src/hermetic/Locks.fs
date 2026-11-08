@@ -938,7 +938,7 @@ module Locks =
                 failwithf "'%s': the satellite '%s' would embed %s twice (the lock's culture resources and the script's, or the script's own)"
                     entry.Name target (twice |> List.map fst |> String.concat ", ")
             if List.isEmpty resources then
-                failwithf "'%s': no resources for the satellite '%s'" entry.Name target
+                failwithf "'%s': no resources for the satellite '%s': the lock records none for '%s' and the script names no file" entry.Name target culture
 
             // the assembly first: the satellite takes its version (and its attributes when the
             // project writes them itself)
@@ -1036,6 +1036,36 @@ module Locks =
     /// </summary>
     let satelliteWith (settings: Settings) (lockPath: string) (fwk: string) (resources: (string * string) list) : Recipe<ExecContext, unit> =
         satelliteOf settings lockPath fwk (Some resources)
+
+    /// <summary>
+    /// `satelliteWith` over resource sets (`resourceset`, as `csc`'s `resources`): the files each
+    /// set names, read with `getFiles` (a dependency of the rule: an added, removed or edited
+    /// translation rebuilds the satellite), named as the set names them
+    /// (`Satellite.resourceSetName`: `prefix`, the folders below `basedir`, the file) with the
+    /// culture of the target put in (`Satellite.manifestName`: `Strings.resx` in `ja/` ->
+    /// `&lt;prefix&gt;.Strings.ja.resources`). No file at all, and no resource the lock records for
+    /// that culture, fails the build.
+    /// <code>
+    /// Satellite.Rule (fun m ->
+    ///     Locks.satelliteFrom settings (lockOf m.name m.cfg) m.fwk
+    ///         [ resourceset { prefix "Lib"; basedir $"translations/{m.culture}"; includes "*.resx" } ])
+    /// </code>
+    /// </summary>
+    let satelliteFrom (settings: Settings) (lockPath: string) (fwk: string) (resources: ResourceFileset list) : Recipe<ExecContext, unit> =
+        recipe {
+            let! options = getCtxOptions ()
+            let root = Path.GetFullPath options.ProjectRoot
+            let! target = getTargetFile ()
+            let culture = Path.GetFileName (Path.GetDirectoryName target.FullName)
+            let! named =
+                resources
+                |> List.map (fun (ResourceFileset (setOptions, (Fileset (fileOptions, _) as files))) ->
+                    recipe {
+                        let! (Filelist found) = getFiles files
+                        return [ for f in found -> f.FullName, Satellite.manifestName culture (Satellite.resourceSetName root setOptions fileOptions.BaseDir f.FullName) ] })
+                |> sequence
+            do! satelliteOf settings lockPath fwk (Some (List.concat named))
+        }
 
     /// `compile` with the extra roots `extraRoots`, the version masks `versions` and the
     /// default options.
