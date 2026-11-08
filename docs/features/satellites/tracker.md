@@ -8,7 +8,7 @@ One line per item. Status as of 2026-11-07: started.
 - [ ] PR #15 `feature/satellites` -> `dev` (release 4.3.0): CI green (4/4); merge
 - [ ] Windows: hand-written attributes (`FileVersionInfo`) not checked
 
-- [ ] Consumer check of `4.3.0-sat.3` (translations outside the project)
+- [ ] Consumer check of `4.3.0-sat.3` (`satelliteFrom`; `satelliteWith` checked on sat.2)
 
 ## Later
 
@@ -16,6 +16,7 @@ One line per item. Status as of 2026-11-07: started.
 
 ## Done
 
+- [x] Consumer check of `4.3.0-sat.2` (macOS, SDK 8.0.427, two brands): locks unchanged against sat.1; the orphan warning fires on exactly the one known project; `satelliteWith` over the whole translation table (19 folders, files via `getFiles` in the rule): 86 satellites per brand, version, culture and public key token of the main assembly, every resource named `*.<culture>.resources`, as many resources as translation files; the `.resources` streams byte-identical to the consumer's own per-culture project (whose net8 satellite even lacks `AssemblyCulture`); `ResourceManager` finds the strings (net8.0, netstandard2.0); full build, check, pack green (2026-11-08)
 - [x] `Locks.satelliteFrom` over resource sets (`resourceset`, `getFiles`: an added translation rebuilds); the example rule on a typed target (2026-11-08)
 - [x] `Locks.satelliteWith` (translations outside the project; decision 8): recipe derived at build time, merge with a recorded culture; the import warns about a culture resource without a neutral one; the pure part moved to `Satellite.fs`; tests on SDK 8 and 10 (byte-identical, net472 and net8.0, signed, version with a suffix; `ResourceManager`; merge and duplicate) (2026-11-08)
 - [x] Consumer check on `4.3.0-sat.1` (macOS, SDK 8.0.427, two brands, ~90 projects each): re-import changed only the locks of the localized projects (`Satellites` added), the rest byte-identical; full build, check, pack with obfuscation green; satellites `cmp`-identical to `dotnet build` (net472, netstandard2.0; ja, zh-CN), the main assembly's version and public key token, `ResourceManager` finds the strings (2026-11-08)
