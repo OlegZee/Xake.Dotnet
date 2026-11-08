@@ -215,8 +215,90 @@ module ResxFormat =
     let needsExtensions (resources: byte[]) : bool =
         (readerTypeOf resources).StartsWith ("System.Resources.Extensions.", StringComparison.Ordinal)
 
-    /// The `.resources` bytes of a `.resx` (`read`, then `generate`).
-    let compileBytes (resxFile: string) : byte[] = generate (read resxFile)
+    /// <summary>
+    /// The entries of a `.restext` (text resources, a resx for msbuild), as msbuild's
+    /// `GenerateResource` reads them (`ReadTextResources`): UTF-8 unless a byte order mark says
+    /// otherwise; one `name=value` per line (a name at the end of the file without `=`: an empty value), a single space before and after `=` dropped; a line
+    /// starting with `#`, `;`, a space or a tab skipped, and so is an empty one; a `[strings]`
+    /// line skipped (any other `[` line fails); in a value the escapes `\\`, `\n`, `\r`, `\t`,
+    /// `\"` and `\uXXXX` (any other fails); a line without `=` or without a name fails; a
+    /// repeated name keeps the first. Strings only.
+    /// </summary>
+    let readText (path: string) : Entry list =
+        use sr = new StreamReader (path, UTF8Encoding (true), true)
+        let entries = ResizeArray<Entry> ()
+        let seen = Collections.Generic.HashSet<string> ()
+        let line = ref 1
+        let read () =
+            let c = sr.Read ()
+            if c = int '\n' then line.Value <- line.Value + 1
+            c
+        let name = StringBuilder ()
+        let value = StringBuilder ()
+        let mutable ch = read ()
+        while ch <> -1 do
+            if ch = int '\n' || ch = int '\r' then ch <- read ()
+            elif ch = int '#' || ch = int '\t' || ch = int ' ' || ch = int ';' then
+                sr.ReadLine () |> ignore
+                line.Value <- line.Value + 1
+                ch <- read ()
+            elif ch = int '[' then
+                let rest = sr.ReadLine ()
+                line.Value <- line.Value + 1
+                if rest <> "strings]" then failwithf "%s(%d): unexpected '[%s' (only a [strings] line may start with '[')" path (line.Value - 1) rest
+                ch <- read ()
+            else
+                name.Length <- 0
+                while ch <> int '=' && ch <> -1 do
+                    if ch = int '\r' || ch = int '\n' then failwithf "%s(%d): no '=' in the line '%s'" path line.Value (name.ToString ())
+                    name.Append (char ch) |> ignore
+                    ch <- read ()
+                if name.Length = 0 then failwithf "%s(%d): a line without a name" path line.Value
+                if name.[name.Length - 1] = ' ' then name.Length <- name.Length - 1
+                ch <- read () // past '='
+                if ch = int ' ' then ch <- read ()
+                value.Length <- 0
+                let mutable stop = false
+                while ch <> -1 && not stop do
+                    let mutable quotedNewLine = false
+                    if ch = int '\\' then
+                        ch <- read ()
+                        match ch with
+                        | c when c = int '\\' -> ()
+                        | c when c = int 'n' -> ch <- int '\n'; quotedNewLine <- true
+                        | c when c = int 'r' -> ch <- int '\r'; quotedNewLine <- true
+                        | c when c = int 't' -> ch <- int '\t'
+                        | c when c = int '"' -> ch <- int '"'
+                        | c when c = int 'u' ->
+                            let hex = Array.zeroCreate<char> 4
+                            let mutable index = 0
+                            while index < 4 do
+                                let n = sr.Read (hex, index, 4 - index)
+                                if n = 0 then failwithf "%s(%d): '%s': an invalid escape '\\u%s'" path line.Value (name.ToString ()) (String (hex, 0, index))
+                                index <- index + n
+                            ch <- int (Convert.ToUInt16 (String hex, 16))
+                            quotedNewLine <- ch = int '\n' || ch = int '\r'
+                        | c -> failwithf "%s(%d): '%s': an invalid escape '\\%s'" path line.Value (name.ToString ()) (if c = -1 then "" else string (char c))
+                    // a line ends at \r\n or \n; a lone \r is dropped (msbuild's reader does the same)
+                    if not quotedNewLine && ch = int '\r' then
+                        ch <- read ()
+                        if ch = -1 then stop <- true
+                        elif ch = int '\n' then ch <- read (); stop <- true
+                    elif not quotedNewLine && ch = int '\n' then
+                        ch <- read ()
+                        stop <- true
+                    if not stop then
+                        value.Append (char ch) |> ignore
+                        ch <- read ()
+                let n = name.ToString ()
+                if seen.Add n then entries.Add (Text (n, value.ToString ()))
+        List.ofSeq entries
+
+    let private isText (file: string) = file.EndsWith (".restext", StringComparison.OrdinalIgnoreCase)
+
+    /// The `.resources` bytes of a `.resx` (`read`, then `generate`), or of a `.restext`
+    /// (`readText`, then `generate`), by the extension.
+    let compileBytes (resxFile: string) : byte[] = generate (if isText resxFile then readText resxFile else read resxFile)
 
     /// Writes the `.resources` of `resxFile` to `resourcesFile` when it is missing or its bytes
     /// differ, so an unchanged one keeps its timestamp; creates the folder. Whether it wrote.
@@ -231,6 +313,7 @@ module ResxFormat =
 
     /// The files a `.resx` reads besides itself: its `ResXFileRef` targets (absolute), in order.
     let fileRefs (resxFile: string) : string list =
+        if isText resxFile then [] else
         try
             let doc = XDocument.Load resxFile
             let baseDir = Path.GetDirectoryName (Path.GetFullPath resxFile)

@@ -570,8 +570,8 @@ module Csc =
     ///
     /// With no `Out`, the output is the target of the rule this runs in (`getTargetFile`), so
     /// outside a file rule the settings need an explicit `out`. Hashes stay empty (`rehash`
-    /// is the record-time step). A `.resx` resource is recorded as a permanent `(resx,
-    /// .resources)` pair under `obj/xake/<name>/`, compiled by `run`.
+    /// is the record-time step). A `.resx` (or `.restext`) resource is recorded as a
+    /// permanent `(resx, .resources)` pair under `obj/xake/<name>/`, compiled by `run`.
     ///
     /// Under `HERMETIC=on` it ends with `HermeticMode.enforce` over `hermeticInputs` (and
     /// `cscpath`): every violation of the mode fails the resolve, all of them in one message.
@@ -603,7 +603,8 @@ module Csc =
             // changes) and `needFiles` the resx itself, so the engine (not this recipe) decides
             // when a resx edit reruns the compile.
             let resNames = settings.Resources |> List.collect (Impl.collectResInfo options.ProjectRoot)
-            let isResx (_, file: File) = file |> File.getFileName |> Impl.endsWith ".resx"
+            // a `.restext` (text resources) is a resx for msbuild too (`ResxFormat.readText`)
+            let isResx (_, file: File) = let name = File.getFileName file in Impl.endsWith ".resx" name || Impl.endsWith ".restext" name
             let resxEntries, plainEntries = resNames |> List.partition isResx
 
             let assemblyName = Path.GetFileNameWithoutExtension outFile.Name
