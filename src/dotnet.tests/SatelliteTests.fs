@@ -15,7 +15,7 @@ open Xake.Dotnet
 type ``Satellite core``() =
 
     let template (attributes: (string * string) list) : Satellite.Template =
-        { Path = "/x/Lib.dll"; Name = "Lib"; Version = Version (1, 2, 3, 0); PublicKey = [||]; Framework = Some "net8.0"
+        { Path = "/x/Lib.dll"; Name = "Lib"; Version = Version (1, 2, 3, 0); PublicKey = [||]; Framework = Some "net8.0"; Optimized = true
           Attributes = attributes |> List.map (fun (n, v) -> "System.Reflection." + n + "Attribute", v)
           Resources = [ "Lib.Strings.resources" ] }
 
@@ -192,7 +192,7 @@ type ``satellite task``() =
         installed.Split '\n' |> Array.exists (fun l -> l.StartsWith "10.")
 
     /// The fixture, built once: `proj/lib` (signed with `key.snk`; `Strings.resx`, `Text.restext`
-    /// and their `ja` ones) built by `dotnet build -c Release`, the translations in
+    /// and their `ja` ones) built by `dotnet build -c Release` and `-c Debug`, the translations in
     /// `translations/ja/`, another key in `other.snk`, an unsigned template `plain/lib.dll`.
     let fixture =
         lazy (
@@ -218,6 +218,7 @@ type ``satellite task``() =
             File.WriteAllText ("translations/ja/Strings.resx", resx [ "Hello", "Konnichiwa" ])
             File.WriteAllText ("translations/ja/Text.restext", jaText)
             runDotnet "proj/lib" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
+            runDotnet "proj/lib" [ "build"; "-c"; "Debug"; "-nologo"; "-v:q" ]
             // an unsigned template, compiled by hand: its framework from the attribute
             File.WriteAllText ("plain/A.cs", "[assembly: System.Runtime.Versioning.TargetFramework(\".NETCoreApp,Version=v8.0\")]\nnamespace Lib { public class C { } }\n")
             File.WriteAllText ("plain/Strings.resx", resx [ "Hello", "Hello" ])
@@ -276,6 +277,22 @@ type ``satellite task``() =
             Assert.That(Resources.ResourceManager("lib.Text", asm).GetString ("Uni", ja), Is.EqualTo "日本")
             Assert.That(Resources.ResourceManager("lib.Text", asm).GetString ("Newline", ja), Is.EqualTo "line1\nline2")
         finally context.Unload ()
+
+    [<Test; Category("Integration")>]
+    member x.``a Debug template gives dotnet build's Debug satellite: /optimize as the template was compiled``() =
+        x.Fixture ()
+        Assert.That((Satellite.readTemplate (x.Template "net8.0")).Optimized, Is.True)
+        Assert.That((Satellite.readTemplate "proj/lib/bin/Debug/net8.0/lib.dll").Optimized, Is.False)
+        x.Build "debug" [ "debug/net8.0/ja/lib.resources.dll"; "debug/net472/ja/lib.resources.dll" ] (fun _ fwk culture ->
+            satellite {
+                template (sprintf "proj/lib/bin/Debug/%s/lib.dll" fwk)
+                keyfile "key.snk"
+                resources (resourceset { prefix "lib"; basedir $"translations/{culture}"; includes "**/*.resx" })
+                resources (resourceset { prefix "lib"; basedir $"translations/{culture}"; includes "**/*.restext" })
+            })
+        for fwk in [ "net8.0"; "net472" ] do
+            Assert.That(File.ReadAllBytes (sprintf "debug/%s/ja/lib.resources.dll" fwk),
+                        Is.EqualTo (File.ReadAllBytes (sprintf "proj/lib/bin/Debug/%s/ja/lib.resources.dll" fwk)), fwk)
 
     [<Test; Category("Integration")>]
     member x.``a .restext compiles to dotnet build's .resources, in csc {} too``() =

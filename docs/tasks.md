@@ -367,7 +367,8 @@ hermetic `Locks.satellite` ([hermetic/lock.md](hermetic/lock.md#satellite-assemb
   built here). From its metadata, the same on every OS: the version, the attributes (Company,
   Description, FileVersion, Product when stated; Copyright and Title, else `" "`;
   InformationalVersion, else the version; one stated as `""` left out), the public key, the target
-  framework and the neutral resources' names;
+  framework and the neutral resources' names; and whether it was optimized, so a Debug assembly gets a Debug
+  satellite (`/optimize-`);
 - **the references**: `mscorlib`, `netstandard` and `System.Runtime` of the template's framework,
   found as `csc { }` finds a framework (`targetfwk` given and different from the template's fails);
 - **the resources**: resource sets (`resourceset`), read with `getFiles`, so an added translation
@@ -389,7 +390,7 @@ hermetic `Locks.satellite` ([hermetic/lock.md](hermetic/lock.md#satellite-assemb
 | `attribute name value` | an assembly attribute replacing (or adding to) the read one: `"AssemblyFileVersion"`, `"AssemblyCopyright"`, ... |
 | `neutralcheck NeutralCheck.Fail` | a resource without its neutral one fails (default `Warn`) |
 | `targetfwk fwk` | checked against the template's |
-| `args [...]` | more switches (`/pathmap:...`) |
+| `args [...]` | more switches of those the SDK passes on from the main compile (`/pathmap:...`, `/features:...`); any other is left out with a warning |
 | `failonerror false` | as `csc`'s |
 
 Which satellites to build -- the cultures, the folders -- is the script's: it `need`s the targets.

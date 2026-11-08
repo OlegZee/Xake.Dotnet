@@ -34,8 +34,9 @@ module Satellite =
     /// What a satellite takes from the main assembly, read from its metadata
     /// (`System.Reflection.Metadata`, the same on every OS): the name, the version, the public key
     /// (empty when unsigned), the target framework (`net8.0`, `net472`, `netstandard2.0`; `None`
-    /// without a `TargetFrameworkAttribute`), the string assembly attributes by full type name, and
-    /// the names of the embedded resources.
+    /// without a `TargetFrameworkAttribute`), whether it was compiled optimized (its
+    /// `DebuggableAttribute`: the satellite's compile takes the main compile's `/optimize`), the
+    /// string assembly attributes by full type name, and the names of the embedded resources.
     /// </summary>
     type Template = {
         Path: string
@@ -43,6 +44,7 @@ module Satellite =
         Version: Version
         PublicKey: byte[]
         Framework: string option
+        Optimized: bool
         Attributes: (string * string) list
         Resources: string list
     }
@@ -97,6 +99,18 @@ module Satellite =
                     if blob.Length >= 3 && blob.ReadUInt16 () = 1us then
                         let value = try blob.ReadSerializedString () with _ -> null
                         if not (isNull value) then yield name, value ]
+        // `DebuggableAttribute(DebuggingModes)` (csc's) or `(bool tracking, bool optimizerDisabled)`:
+        // `/optimize-` sets `DisableOptimizations` (0x100); csc writes none only when optimizing
+        let optimized =
+            def.GetCustomAttributes ()
+            |> Seq.map md.GetCustomAttribute
+            |> Seq.tryFind (fun a -> typeName a.Constructor = "System.Diagnostics.DebuggableAttribute")
+            |> Option.map (fun a ->
+                let mutable blob = md.GetBlobReader a.Value
+                if blob.Length < 4 || blob.ReadUInt16 () <> 1us then true
+                elif blob.Length = 8 then (blob.ReadInt32 () &&& 0x100) = 0
+                else (blob.ReadBoolean () |> ignore; not (blob.ReadBoolean ())))
+            |> Option.defaultValue true
         let resources = [ for h in md.ManifestResources -> md.GetString (md.GetManifestResource h).Name ]
         { Path = path
           Name = md.GetString def.Name
@@ -106,6 +120,7 @@ module Satellite =
             attributes
             |> List.tryFind (fst >> (=) "System.Runtime.Versioning.TargetFrameworkAttribute")
             |> Option.bind (snd >> frameworkOf)
+          Optimized = optimized
           Attributes = attributes
           Resources = resources }
 

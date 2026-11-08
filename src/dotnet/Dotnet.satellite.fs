@@ -57,19 +57,19 @@ module SatelliteTask =
 
     /// <summary>
     /// The switches a satellite compile takes besides `Satellite.options`'s own: those of SDK
-    /// 10's `CoreGenerateSatelliteAssemblies` for a Release main compile (`/nostdlib+`,
-    /// `/optimize+`, `/deterministic+`; `/warn` is left out, it does not change the bytes), then
-    /// the key switches as csc's main compile has them (`/keyfile:&lt;abs&gt;`, `/publicsign+`;
-    /// `/delaysign+` first), then `args`. A later switch of the same name wins with csc, so
-    /// `args [ "/optimize-" ]` gives a Debug satellite.
+    /// 10's `CoreGenerateSatelliteAssemblies` (`/nostdlib+`, `/deterministic+`; `/warn` is left
+    /// out, it does not change the bytes), `/optimize` as the template was compiled
+    /// (`Satellite.Template.Optimized`: a Debug main assembly, a Debug satellite), the key
+    /// switches as csc's main compile has them (`/keyfile:&lt;abs&gt;`, `/publicsign+`;
+    /// `/delaysign+` first), then `args` (a later switch of the same name wins with csc).
     /// </summary>
-    let internal mainOptions (root: string) (settings: SatelliteSettingsType) : string list =
+    let internal mainOptions (root: string) (template: Satellite.Template) (settings: SatelliteSettingsType) : string list =
         let keyfile = settings.KeyFile |> Option.map (fun k -> "/keyfile:" + Path.GetFullPath(Path.Combine (root, k)).Replace ('\\', '/')) |> Option.toList
         [ yield "/nostdlib+"
           if settings.DelaySign then yield "/delaysign+"
           yield! keyfile
           if settings.PublicSign then yield "/publicsign+"
-          yield "/optimize+"
+          yield (if template.Optimized then "/optimize+" else "/optimize-")
           yield "/deterministic+"
           yield! settings.CommandArgs ]
 
@@ -131,7 +131,7 @@ module SatelliteTask =
                 | refs -> refs
             let references = Satellite.references what [ for path in all -> { Path = path; Sha256 = ""; Alias = "" } ]
 
-            let main = mainOptions root settings
+            let main = mainOptions root template settings
             let switches = Satellite.options main
             for arg in settings.CommandArgs do
                 if not (List.contains arg switches) then
