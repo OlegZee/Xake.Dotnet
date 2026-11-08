@@ -10,12 +10,11 @@ One line per item. Status as of 2026-11-07: started.
 
 ## Later
 
-- [ ] Import warning: a culture resource with no neutral one of the same manifest name (a consumer's satellite named `X.Resource.ja.resources` while the code reads `X.Resources`; msbuild builds the same)
-- [ ] Satellites from translations kept outside the project (a folder of resx per culture, a satellite project per assembly and culture): most of a consumer's satellites; needs its own brief
 - [ ] Run folders: a referenced lock's satellites by name; `deps.json` `"resources"` lines (stand-ins in the app pass)
 
 ## Done
 
+- [x] `Locks.satelliteWith` (translations outside the project; decision 8): recipe derived at build time, merge with a recorded culture; the import warns about a culture resource without a neutral one; the pure part moved to `Satellite.fs`; tests on SDK 8 and 10 (byte-identical, net472 and net8.0, signed, version with a suffix; `ResourceManager`; merge and duplicate) (2026-11-08)
 - [x] Consumer check on `4.3.0-sat.1` (macOS, SDK 8.0.427, two brands, ~90 projects each): re-import changed only the locks of the localized projects (`Satellites` added), the rest byte-identical; full build, check, pack with obfuscation green; satellites `cmp`-identical to `dotnet build` (net472, netstandard2.0; ja, zh-CN), the main assembly's version and public key token, `ResourceManager` finds the strings (2026-11-08)
 - [x] `Pack.fromNuspec` (a wildcard per culture folder) and the SBOM take the satellites (test); `build.fsc.fsx build check` green (2026-11-08)
 - [x] Build: `Locks.satellite` (on request) and `Locks.satellitesOf`; the SDK's recipe read at import (`Satellites.References`, `/pathmap`, `/features`); byte-identical to `dotnet build` with generated and hand-written attributes; docs (lock.md, pack.md, README, release notes) (2026-11-08)

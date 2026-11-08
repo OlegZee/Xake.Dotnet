@@ -1454,96 +1454,6 @@ module Import =
     /// </list>
     /// Pure but for reading the generated files and hashing.
     /// </summary>
-    /// The attributes `GetAssemblyAttributes` hands a satellite assembly, in its order: what the
-    /// SDK reads back from the built assembly's file version info (`docs/features/satellites/probe.md`).
-    /// A copyright or a title the assembly does not state reads as " ".
-    let private satelliteAttributes =
-        [ "System.Reflection.AssemblyCompanyAttribute", None
-          "System.Reflection.AssemblyCopyrightAttribute", Some " "
-          "System.Reflection.AssemblyDescriptionAttribute", None
-          "System.Reflection.AssemblyFileVersionAttribute", None
-          "System.Reflection.AssemblyInformationalVersionAttribute", None
-          "System.Reflection.AssemblyProductAttribute", None
-          "System.Reflection.AssemblyTitleAttribute", Some " "
-          "System.Reflection.AssemblyVersionAttribute", None ]
-
-    /// <summary>
-    /// A satellite assembly's attribute lines (`Lock.Satellites.Attributes`) from the text of the
-    /// assembly info msbuild generated for the main assembly (`[assembly: X("v")]` lines, as
-    /// `WriteCodeFragment` writes them): those of `satelliteAttributes`, in its order, the main
-    /// assembly's `AssemblyConfiguration`, `NeutralResourcesLanguage`, `InternalsVisibleTo`, ...
-    /// left out, as the SDK's target does. Pure.
-    /// </summary>
-    let internal satelliteAttributesOf (assemblyInfo: string) : string list =
-        let stated =
-            [ for line in assemblyInfo.Split '\n' do
-                let line = line.Trim ()
-                if line.StartsWith "[assembly: " && line.EndsWith ")]" then
-                    let body = line.Substring (11, line.Length - 12)
-                    match body.IndexOf '(' with
-                    | -1 -> ()
-                    | i -> yield body.Substring (0, i), body ]
-            |> Map.ofList
-        [ for name, blank in satelliteAttributes do
-            match Map.tryFind name stated, blank with
-            | Some body, _ when not (body.EndsWith "(\"\")") -> yield body
-            | _, Some value -> yield sprintf "%s(\"%s\")" name value
-            | _ -> () ]
-
-    /// What the recording SDK's `CoreGenerateSatelliteAssemblies` hands csc besides the fixed
-    /// switches, as it differs between SDKs: the references it filters `ReferencePath` to (by
-    /// file name; `None`: all of them, SDK 8), whether it passes `PathMap` and `Features` (SDK 10).
-    type internal SatelliteRecipe = { References: string list option; PathMap: bool; Features: bool }
-
-    /// The recipe of SDK 8 (`SatelliteRecipe`): every reference, no path map, no features.
-    let internal sdk8SatelliteRecipe = { References = None; PathMap = false; Features = false }
-
-    /// <summary>
-    /// The `SatelliteRecipe` of the SDK whose `Microsoft.NET.Sdk.targets` is `targets`: read off
-    /// its `CoreGenerateSatelliteAssemblies` target (the `_SatelliteAssemblyReferences` filter,
-    /// the `Csc` task's `PathMap` and `Features`); SDK 8's when the target is not found. Pure.
-    /// </summary>
-    let internal satelliteRecipeOf (targets: string) : SatelliteRecipe =
-        match targets.IndexOf "<Target Name=\"CoreGenerateSatelliteAssemblies\"" with
-        | -1 -> sdk8SatelliteRecipe
-        | start ->
-            let block =
-                match targets.IndexOf ("</Target>", start) with
-                | -1 -> targets.Substring start
-                | stop -> targets.Substring (start, stop - start)
-            let filter = Text.RegularExpressions.Regex "<_SatelliteAssemblyReferences Include=\"@\\(ReferencePath\\)\" Condition=\"([^\"]*)\""
-            let references =
-                match filter.Match block with
-                | m when m.Success && block.Contains "References=\"@(_SatelliteAssemblyReferences)\"" ->
-                    Text.RegularExpressions.Regex.Matches (m.Groups.[1].Value, "'%\\(Filename\\)' == '([^']+)'")
-                    |> Seq.cast<Text.RegularExpressions.Match> |> Seq.map (fun n -> n.Groups.[1].Value) |> List.ofSeq |> Some
-                | _ -> None
-            { References = references
-              PathMap = block.Contains "PathMap=\"$(PathMap)\""
-              Features = block.Contains "Features=\"$(Features)\"" }
-
-    /// <summary>
-    /// The switches of a satellite assembly's compile (`Lock.Satellites.Options`) by the recipe of
-    /// the SDK's `CoreGenerateSatelliteAssemblies`: `/noconfig`, the main compile's switches the
-    /// target passes on (the key, `/nostdlib`, `/warn`, `/optimize`, `/deterministic`,
-    /// `/warnaserror` with a list; `/pathmap`, `/features` when the SDK's recipe passes them),
-    /// `/nowarn` from `DisabledWarnings` (not the main compile's `NoWarn`), `/target:library`. Pure.
-    /// </summary>
-    let internal satelliteOptions (recipe: SatelliteRecipe) (mainOptions: string list) (disabledWarnings: string) : string list =
-        let passed =
-            set [ yield! [ "nostdlib"; "warn"; "keyfile"; "keycontainer"; "publicsign"; "delaysign"; "optimize"; "deterministic" ]
-                  if recipe.PathMap then yield "pathmap"
-                  if recipe.Features then yield "features" ]
-        [ yield "/noconfig"
-          for o in mainOptions do
-              match CscArgs.parse o with
-              | CscArgs.Switch (name, value) ->
-                  let bare = name.TrimEnd ('+', '-')
-                  if passed.Contains bare || (bare = "warnaserror" && value <> "") then yield o
-              | CscArgs.Source _ -> ()
-          if disabledWarnings <> "" then yield "/nowarn:" + disabledWarnings
-          yield "/target:library" ]
-
     /// <summary>
     /// The resources of a project whose culture msbuild cannot tell under invariant
     /// globalization (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`): a second extension shaped like a
@@ -1716,20 +1626,30 @@ module Import =
                     | "false", _ | _, "" -> None
                     | _, info ->
                         let info = moved (absoluteIn ctx.ProjectDir info)
-                        generated |> List.tryFind (fst >> (=) info) |> Option.map (snd >> satelliteAttributesOf)
+                        generated |> List.tryFind (fst >> (=) info) |> Option.map (snd >> Satellite.attributesOf)
                 // the recipe of the SDK that recorded the project, read off its own target
                 let recipe =
-                    let targets = Path.Combine (p "NetCoreRoot", "sdk", p "NETCoreSdkVersion", "Sdks", "Microsoft.NET.Sdk", "targets", "Microsoft.NET.Sdk.targets")
-                    if p "NetCoreRoot" <> "" && File.Exists targets then satelliteRecipeOf (File.ReadAllText targets)
-                    else
-                        warnings.Add (sprintf "'%s' (%s|%s): the SDK's targets are not found (%s): the satellites take SDK 8's recipe" ctx.Description.Name cfg framework targets)
-                        sdk8SatelliteRecipe
-                Some { Options = satelliteOptions recipe c.Options (p "DisabledWarnings")
+                    match Satellite.recipeOfSdk (p "NetCoreRoot") (p "NETCoreSdkVersion") with
+                    | Some r -> r
+                    | None ->
+                        warnings.Add (sprintf "'%s' (%s|%s): the targets of the SDK %s are not found under '%s': the satellites take SDK 8's recipe" ctx.Description.Name cfg framework (p "NETCoreSdkVersion") (p "NetCoreRoot"))
+                        Satellite.sdk8Recipe
+                // a culture resource nothing reads: its neutral one has another name
+                let mainNames =
+                    [ for o in c.Options do
+                        match CscArgs.parse o with
+                        | CscArgs.Switch (n, value) when CscArgs.canonical n = "resource" ->
+                            let parts = CscArgs.splitList value
+                            yield (if parts.Length > 1 && parts.[1] <> "" then parts.[1] else Path.GetFileName parts.[0])
+                        | _ -> () ]
+                let cultures = cultured |> List.map fst |> List.distinct |> List.map (fun culture -> culture, [ for cu, r in cultured do if cu = culture then yield r ])
+                for culture, name in Satellite.orphans mainNames cultures do
+                    warnings.Add (sprintf "'%s' (%s|%s): the %s resource %s has no neutral resource of that name in the assembly: ResourceManager never reads it"
+                                      ctx.Description.Name cfg framework culture name)
+                Some { Options = Satellite.options recipe c.Options (p "DisabledWarnings")
                        References = recipe.References
                        Attributes = attributes
-                       Cultures =
-                         cultured |> List.map fst |> List.distinct
-                         |> List.map (fun culture -> culture, [ for cu, r in cultured do if cu = culture then yield r ]) }
+                       Cultures = cultures }
 
         // the hashes: a project's output and the SDK's own files carry none
         let isProjectOutput (path: string) = projects |> List.exists (fun (o, _) -> o.Path = path)

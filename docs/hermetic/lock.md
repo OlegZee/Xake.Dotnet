@@ -71,6 +71,7 @@ open Xake.Hermetic.Dotnet
 | `Locks.compile settings lockPath fwk` | recipe | the layout's assembly rule (`.dll`, `.exe`): the lock's entry for `fwk` compiled into the rule's target, which must be the entry's output (`TargetFileName`, else `<Name>.dll`/`.exe`); an `.xml` target fails, that is `Locks.doc`. `settings` (`Locks.Settings`): extra roots, version masks, `Lock.Options` ([Building from Xake-generated locks](#building-from-xake-generated-locks)) |
 | `Locks.doc settings lockPath fwk` | recipe | the layout's `.xml` rule: needs the assembly beside it, whose `compile` rule writes the doc, and fails when the lock asks for no doc; takes `compile`'s parameters, only `Roots` is used |
 | `Locks.satellite settings lockPath fwk` | recipe | the rule of a satellite assembly `<dir>/<culture>/<Name>.resources.dll` (4.3.0): needs the assembly in `<dir>`, composes the compile from `Recorded.Satellites` ([Satellite assemblies](#satellite-assemblies)); built only when a script asks for it |
+| `Locks.satelliteWith settings lockPath fwk resources` | recipe | `satellite` with (file, manifest name) pairs the script supplies: translations kept outside the project; for an entry without `Recorded.Satellites` the recipe is derived at build time ([Satellite assemblies](#satellite-assemblies)) |
 | `Locks.satellitesOf settings lockPath fwk dir` | recipe | the satellite assemblies the entry has, as targets under `dir` (none without culture resources): what a script `need`s |
 | `Locks.compileAs lockPath fwk versions` | recipe | `compile { Settings.Default with Versions = versions }`; `compileAsWith roots` adds `Roots = roots` |
 | `Locks.versionOf settings lockPath fwk` | recipe | the entry's `Version` property as the build stamps it: `$(Version)` resolved by `Versions`/`VersionSuffixes` ([recorded version token](#building-from-xake-generated-locks)), else the recorded literal; what a package takes ([versioning.md](versioning.md#packages)) |
@@ -552,9 +553,53 @@ command "satellites" {
 ```
 
 `Locks.satellite` needs the assembly, writes the source under `obj/xake/satellites/`, compiles the
-culture's `.resx` files and runs the entry's compiler (the same prerequisites, restore and
-`HERMETIC=on` gate as `compile`). On SDK 8.0.427 and 10.0.403 the result is byte-identical to
-`dotnet build`'s, signed (key file, public, delay) or not.
+culture's `.resx` files and runs the entry's compiler (the same prerequisites, restore,
+`HERMETIC=on` gate and csc throttle as `compile`). On SDK 8.0.427 and 10.0.403 the result is
+byte-identical to `dotnet build`'s, signed (key file, public, delay) or not.
+
+The import warns about a culture resource no neutral resource of the assembly matches
+(`X.Resource.ja.resources` beside `X.Resources.resources`): `ResourceManager` looks a culture up by
+the neutral name, so nothing would read it.
+
+#### Translations kept outside the project
+
+Translations msbuild never sees (a folder of `.resx` per culture and assembly in another
+repository) are not in the lock. `Locks.satelliteWith settings lockPath fwk resources` builds the
+satellite from (file, manifest name) pairs the script supplies, the name in full as embedded
+(`<RootNamespace>.Strings.ja.resources`); a `.resx` (relative to the project root, or absolute) is
+compiled under `obj/xake/satellites/`, any other file embedded as is.
+
+- An entry without `Recorded.Satellites` (the usual case): the recipe is derived at build time,
+  and the lock does not change. The main compile's switches the SDK passes on (no
+  `DisabledWarnings`: a lock does not record it), the references, `/pathmap` and `/features` of
+  the SDK that recorded the entry (`Evaluation.Sdk`, read off its targets, so it must be
+  installed), the attributes from the entry's generated `*.AssemblyInfo.cs`, else read from the
+  built assembly. The same satellite `dotnet build` makes when the file is the project's own
+  `Strings.ja.resx`, byte for byte (SDK 8.0.427 and 10.0.403, `net472` and `net8.0`, signed).
+- An entry that records satellites: its recipe. For a culture it records, the lock's resources
+  and the script's go into one satellite; a manifest name in both, or twice in the script's,
+  fails the build.
+- Each file is an input: an edited one rebuilds the satellite. The list itself is not: a script
+  that takes the files from a folder with `getFiles` inside the rule makes an added one rebuild
+  too (the fileset is a dependency of the rule).
+
+A rule that takes both sources:
+
+```fsharp
+"out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
+    let! cfg = getRuleMatch "cfg"
+    let! fwk = getRuleMatch "fwk"
+    let! name = getRuleMatch "name"
+    let! culture = getRuleMatch "culture"
+    // the script's table: the translation folder and root namespace of an assembly
+    match translationsOf name with
+    | None -> do! Locks.satellite settings (lockOf name cfg) fwk
+    | Some (folder, rootNamespace) ->
+        let! files = getFiles (fileset { basedir (folder + "/" + culture); includes "*.resx" })
+        let resources =
+            [ for f in files.Files -> f.FullName, sprintf "%s.%s.%s.resources" rootNamespace (Path.GetFileNameWithoutExtension f.Name) culture ]
+        do! Locks.satelliteWith settings (lockOf name cfg) fwk resources }
+```
 
 Not recorded: a referenced project's satellite assemblies in a run folder and their entries in
 `deps.json` (a project's own are, [Satellite assemblies](#satellite-assemblies)), the binding redirects RAR finds only through a referenced project's

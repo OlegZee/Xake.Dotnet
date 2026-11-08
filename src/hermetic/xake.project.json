@@ -14,6 +14,7 @@
     "Git.fs",
     "Baml.fs",
     "Lock.fs",
+    "Satellite.fs",
     "Described.fs",
     "Apps.fs",
     "RunFolder.fs",

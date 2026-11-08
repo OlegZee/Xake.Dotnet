@@ -23,6 +23,12 @@ import: the lock records its satellite assemblies, and a script builds them on r
 - **Build**: `Locks.satellite settings lockPath fwk`, the rule of
   `<dir>/<culture>/<Name>.resources.dll`, and `Locks.satellitesOf` to list them; the assembly's
   rule builds none. Byte-identical to `dotnet build`'s on SDK 8 and 10, signed or not.
+- **Translations outside the project**: `Locks.satelliteWith settings lockPath fwk resources`
+  builds a satellite from (file, manifest name) pairs the script supplies, for an entry that
+  records no satellites (the recipe derived at build time from the entry and the SDK that
+  recorded it; the lock does not change) or together with a culture it records (a name in both
+  fails). Byte-identical to `dotnet build` with the file in the project.
+- The import warns about a culture resource without a neutral resource of that name.
 - Not yet: a referenced project's satellites in a run folder and their `deps.json` lines.
 
 ## 4.2.0 (2026-11-07)

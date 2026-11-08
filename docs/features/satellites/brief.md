@@ -41,7 +41,12 @@ answers in `docs/features/hermetic-windows/interview.md`, round 4.
    requests explicitly**; building the main assembly does not build them. The import records
    their inputs always (a lock without culture resources is unchanged). A referenced project's
    satellites in a run folder and the `deps.json` `"resources"` lines: **not now**.
-7. Release: 4.3.0. `feature/import-file-casing` (#12) is not touched by this feature (owner,
+7. Release: 4.3.0.
+8. **Translations kept outside the project** (owner, 2026-11-08; the consumer's brief): in 4.3.0
+   too. `Locks.satelliteWith settings lockPath fwk resources` with (file, manifest name) pairs.
+   The recipe of an entry without `Recorded.Satellites` is **derived at build time** (the lock
+   does not change; recording it for every C# entry would change every lock). A culture the lock
+   records **merges** with the script's resources; a duplicate manifest name fails. `feature/import-file-casing` (#12) is not touched by this feature (owner,
    2026-11-07).
 
 ## Shape (option A of the analysis, adjusted by decision 4)
