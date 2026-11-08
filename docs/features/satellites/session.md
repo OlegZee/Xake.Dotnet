@@ -46,5 +46,9 @@ items: `tracker.md`.
 
 - Pack and SBOM tested; `build.fsc.fsx build check` green (SDK 10.0.403).
 
-1. CI of the PR to `dev`; the consumer check on the preview package `4.3.0-sat.1` (handed to the
-   consumer's session); then merge, `dev` -> `master`, tag `v4.3.0`.
+- Consumer check passed (tracker, Done). Seen there: `/warn` is in the satellite's switches
+  only when the main compile has it (a netstandard2.0 entry has none): the recipe, and the
+  satellite was still identical to msbuild's.
+
+1. Merge PR #15 (CI green), `dev` -> `master`, tag `v4.3.0`.
+2. Windows (hand-written attributes) remains unchecked; the "Later" items are follow-ups.

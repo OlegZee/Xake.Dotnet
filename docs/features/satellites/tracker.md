@@ -5,16 +5,18 @@ One line per item. Status as of 2026-11-07: started.
 ## Open
 
 - [ ] Probe: Windows `FileVersionInfo` of hand-written attributes
-- [ ] PR `feature/satellites` -> `dev` (release 4.3.0), CI green
-- [ ] Consumer check on a preview package (`4.3.0-sat.1`): a localized project re-imported, satellites built, translations found
+- [ ] PR #15 `feature/satellites` -> `dev` (release 4.3.0): CI green (4/4); merge
 - [ ] Windows: hand-written attributes (`FileVersionInfo`) not checked
 
 ## Later
 
+- [ ] Import warning: a culture resource with no neutral one of the same manifest name (a consumer's satellite named `X.Resource.ja.resources` while the code reads `X.Resources`; msbuild builds the same)
+- [ ] Satellites from translations kept outside the project (a folder of resx per culture, a satellite project per assembly and culture): most of a consumer's satellites; needs its own brief
 - [ ] Run folders: a referenced lock's satellites by name; `deps.json` `"resources"` lines (stand-ins in the app pass)
 
 ## Done
 
+- [x] Consumer check on `4.3.0-sat.1` (macOS, SDK 8.0.427, two brands, ~90 projects each): re-import changed only the locks of the localized projects (`Satellites` added), the rest byte-identical; full build, check, pack with obfuscation green; satellites `cmp`-identical to `dotnet build` (net472, netstandard2.0; ja, zh-CN), the main assembly's version and public key token, `ResourceManager` finds the strings (2026-11-08)
 - [x] `Pack.fromNuspec` (a wildcard per culture folder) and the SBOM take the satellites (test); `build.fsc.fsx build check` green (2026-11-08)
 - [x] Build: `Locks.satellite` (on request) and `Locks.satellitesOf`; the SDK's recipe read at import (`Satellites.References`, `/pathmap`, `/features`); byte-identical to `dotnet build` with generated and hand-written attributes; docs (lock.md, pack.md, README, release notes) (2026-11-08)
 - [x] Import: `Recorded.Satellites` from the culture resources, the main compile's switches and its generated assembly info; F# reported and left out; invariant globalization fails; fixture test against `dotnet build` (2026-11-07)
