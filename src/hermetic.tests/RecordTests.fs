@@ -1959,6 +1959,16 @@ type ``Import record satellites``() =
         Assert.That(File.GetLastWriteTimeUtc "out/Release/net8.0/lib/ja/lib.resources.dll", Is.EqualTo before)
 
 
+/// A load context that reads an assembly and its satellites (`<dir>/<culture>/<name>.dll`) from
+/// their bytes: nothing is cached by path, so two tests that build the same paths see their own.
+type BytesContext (dir: string) =
+    inherit Runtime.Loader.AssemblyLoadContext (true)
+    member this.LoadMain (path: string) = this.LoadFromStream (new MemoryStream (File.ReadAllBytes path))
+    override this.Load (name: Reflection.AssemblyName) =
+        let satellite = Path.Combine (dir, (if isNull name.CultureName then "" else name.CultureName), name.Name + ".dll")
+        if not (String.IsNullOrEmpty name.CultureName) && File.Exists satellite then this.LoadFromStream (new MemoryStream (File.ReadAllBytes satellite))
+        else null
+
 /// The groups of a satellite target (`Locks.satelliteFrom`'s typed rule in the tests).
 type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
 
@@ -2036,10 +2046,11 @@ type ``Satellites from external translations``() =
             let sat = Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath ours)
             Assert.That((sat.Version, sat.CultureName, sat.GetPublicKeyToken ()), Is.EqualTo ((main.Version, "ja", main.GetPublicKeyToken ())), fwk)
             Assert.That(main.GetPublicKeyToken (), Is.Not.Empty)
-        // the translation as ResourceManager finds it, beside the assembly in its own load context
-        let context = Runtime.Loader.AssemblyLoadContext ("satellites-" + sdk, true)
+        // the translation as ResourceManager finds it, beside the assembly in a load context of its
+        // own that reads the files' bytes (another test case builds the same paths)
+        let context = BytesContext (Path.GetFullPath "out/Release/net8.0/lib")
         try
-            let asm = context.LoadFromAssemblyPath (Path.GetFullPath "out/Release/net8.0/lib/lib.dll")
+            let asm = context.LoadMain "out/Release/net8.0/lib/lib.dll"
             let manager = Resources.ResourceManager ("lib.Strings", asm)
             Assert.That(manager.GetString ("Hello", Globalization.CultureInfo "ja"), Is.EqualTo "Konnichiwa")
         finally context.Unload ()
