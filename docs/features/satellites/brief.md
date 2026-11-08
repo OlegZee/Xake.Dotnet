@@ -49,7 +49,105 @@ answers in `docs/features/hermetic-windows/interview.md`, round 4.
    records **merges** with the script's resources; a duplicate manifest name fails. `feature/import-file-casing` (#12) is not touched by this feature (owner,
    2026-11-07).
 
-## Shape (option A of the analysis, adjusted by decision 4)
+## Redesign (owner, 2026-11-08) -- supersedes the shape below and decisions 4 (attributes) and 8 (API)
+
+Breaking changes are fine: nothing of this is released. Principle (also for later work): a recipe
+is a pure function with one task over Xake's primitives (`resourceset`, filesets); layout
+conventions and discovery (which cultures, which folders) are the script's, shown in the docs.
+
+9. **Two layers.**
+   - **Xake.Dotnet (`src/dotnet`)**: a `satellite { }` task beside `csc { }`, no lock. The pure
+     core lives here too (`Satellite` module, moved from `src/hermetic/Satellite.fs`): compiler +
+     references + switches + attributes + culture + resources -> a `Csc` compilation.
+   - **Hermetic**: `Locks.satellite settings lockPath fwk (inputs: SatelliteInputs)` over the same
+     core; the compiler, the references, the key and other switches, the restore, the
+     prerequisites and the `HERMETIC=on` gate come from the lock entry.
+   - `Locks.satelliteWith` and `Locks.satelliteFrom` are removed.
+10. **One recipe for every SDK: SDK 10's.** References `mscorlib`, `netstandard`,
+    `System.Runtime` (filtered from the entry's or the toolchain's), `/pathmap` and `/features`
+    passed on. No SDK targets are read, at import or at build time; no installed SDK is needed for
+    a satellite. Consequence: on SDK 8 a satellite is not byte-identical to `dotnet build`'s (SDK 8
+    hands it every reference); version, culture, token and resources are the same. To be put to the
+    critic when the finished solution is reviewed.
+11. **Attributes are read from the built main assembly's metadata** (`System.Reflection.Metadata`,
+    the same code on every OS), never from Win32 resources and not from the lock's generated
+    assembly info. The rules of the .NET (Linux/macOS) reader `GetAssemblyAttributes` uses, as
+    probed: Company, Description, FileVersion, Product from their attribute when present;
+    Copyright and Title from theirs, else `" "`; InformationalVersion from its attribute, else the
+    assembly version; Version = the assembly version. Linux containers are the main scenario. Any
+    attribute can be given explicitly and then replaces (or adds to) the read one. (csc writes the
+    satellite's own Win32 version resource from its attributes on every OS: Explorer shows it.)
+12. **The lock records only what msbuild knew**: `Recorded.Satellites` = the resources per culture
+    (`Cultures`). `Options`, `References`, `Attributes` go; the switches come from the main compile
+    at build time (`DisabledWarnings` is lost: rare, no effect on the bytes). The import stops
+    reading SDK targets. Locks of localized projects change once more (re-import).
+13. **Load guarantee**: the satellite's public key token must equal the template's (the main
+    assembly's); a mismatch fails the build. The token comes from the key switches, not from the
+    template, so without a lock the key is given explicitly.
+14. **`resources`** are `ResourceFileset list` (`resourceset { prefix; basedir; includes; dynamic }`),
+    read with `getFiles` (an added translation rebuilds); a file is named as `resourceset` names it,
+    the target's culture put in. The lock's resources of the culture always go in too; a manifest
+    name twice fails. No file and no recorded resource fails.
+15. **`Locks.satellitesOf settings lockPath fwk dir`** only reads the lock: the cultures it
+    records. The script lists external cultures itself.
+
+### API (agreed examples; the docs to be rewritten from these)
+
+```fsharp
+open Xake.Typed
+type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
+let Satellite = Target<SatelliteG> "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
+
+// 1. no lock
+Satellite.Rule (fun m ->
+    satellite {
+        template $"out/{m.cfg}/{m.fwk}/{m.name}/{m.name}.dll"   // version and attributes
+        targetfwk m.fwk                                         // references as csc {} finds them
+        keyfile "key.snk"                                       // or publicsign / delaysign
+        resources (resourceset { prefix "Lib"; basedir $"translations/{m.culture}"; includes "**/*.resx" })
+        attribute "AssemblyCopyright" "(c) 2026 Example"        // optional: replaces the read one
+    })
+
+// 2. a lock, the project's own culture resources
+Satellite.Rule (fun m -> Locks.satellite settings (lockOf m.name m.cfg) m.fwk SatelliteInputs.Default)
+
+// 3. a lock plus translations kept outside the project, an attribute given
+Satellite.Rule (fun m ->
+    let translations =
+        match rootNamespaces.TryFind m.name with
+        | Some ns -> [ resourceset { prefix ns; basedir $"translations/{m.name}/{m.culture}"; includes "**/*.resx" } ]
+        | None -> []
+    Locks.satellite settings (lockOf m.name m.cfg) m.fwk
+        { SatelliteInputs.Default with Resources = translations; Attributes = [ "AssemblyFileVersion", "4.3.0.512" ] })
+
+// 4. which satellites: the script's decision
+command "satellites" {
+    let! own = Locks.satellitesOf settings (lockOf "Lib" "Release") "net8.0" (outOf "Release" "net8.0" "Lib")
+    let external = [ for c in [ "ja"; "zh-CN" ] -> Satellite.Format { cfg = "Release"; fwk = "net8.0"; name = "Lib"; culture = c; asm = "Lib" } ]
+    do! need (own @ external |> List.distinct) }
+```
+
+Names (`prefix "Lib"`, `basedir "translations/ja"`): `Strings.resx` -> `Lib.Strings.ja.resources`;
+`Forms/Main.resx` -> `Lib.Forms.Main.ja.resources` (`dynamic true`, the default) or
+`Lib.Main.ja.resources` (`dynamic false`); `Strings.ja.resx` -> `Lib.Strings.ja.resources`;
+`Logo.png` -> `Lib.Logo.png`.
+
+Open in the implementation: whether `satellite { }` can take the culture and output from the
+rule's target (as `csc { }` takes `out`), and how `targetfwk` finds the three references (the
+toolchain discovery `csc { }` uses).
+
+### Tests to keep or adapt
+
+- Byte-identical to `dotnet build` on SDK 10 (own resources; external translation; net472 and
+  net8.0; signed; generated and hand-written attributes); SDK 8: version, culture, token,
+  resources, `ResourceManager`.
+- Merge with a recorded culture and a duplicate name; an added file rebuilds; an empty set fails;
+  a token mismatch fails; an explicit attribute replaces the read one.
+- `satellite { }` without a lock: the same satellite as `Locks.satellite` for the same inputs.
+- A lock without culture resources unchanged; `Recorded.Satellites` round trip (cultures only).
+
+## Shape before the redesign (history)
+
 
 - Per culture in the entry: the culture resx -> `.resources` pairs (compiled by the existing
   `Resx`) with their manifest names, and the settings the target reads (`Optimize`,
