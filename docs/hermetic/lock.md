@@ -32,7 +32,7 @@ open Xake.Hermetic.Dotnet
 | `Lock.Compilation = Csc of Csc \| Fsc of Fsc` | type | what the compiler is handed, C# or F#; `[<RequireQualifiedAccess>]`, so `Lock.Compilation.Csc c`. Members `Name`, `Framework`, `Directory`, `Options`, `Defines`, `Sources`, `Generated`, `Resources`, `Dependencies`, `Args`, `Output` |
 | `Lock.Entry = { Compilation; Evaluation; Packages; Prerequisites; Recorded }` | type | one project's compilation, where the answer came from, the restore graph, what the environment must provide ([Prerequisites](#prerequisites)), and `Recorded` (`Some` for an entry recorded from msbuild by `Import.record`, `None` for a composed one). Members `Name`, `Framework`, `Dependencies`, `Args`, `Output` (the compilation's), and `Csc` / `Fsc`, which return that case and fail for the other |
 | `Lock.Recorded = { Projects; Masks; Placed; App; Markup; Satellites }`, `Lock.ProjectOutput = { Name; Configuration; Framework; Path }` | type | the marker of a recorded entry: the referenced projects' outputs (`project:<name>`), the description's source masks, for a WPF project the referenced assemblies its BAML names (`Markup`), and the satellite assemblies (`Satellites`) ([Recorded locks](#recorded-locks-importrecord)) |
-| `Lock.Satellites = { Options; References; Attributes; Cultures }`, `Lock.SatelliteResource = { File; Compiled; Name }` | type | the satellite assemblies of a recorded entry: the switches of their compile, the entry's references they take (`None`: all), the assembly attributes (`None`: read from the built assembly), the resources per culture |
+| `Lock.Satellites = { Cultures }`, `Lock.SatelliteResource = { File; Compiled; Name }` | type | the satellite assemblies of a recorded entry: the resources per culture (the compile is composed at build time, [Satellite assemblies](#satellite-assemblies)) |
 | `Lock.Identity.ofPath ctx path` / `toPath ctx id` | pure (`toPath` reads one directory) | the portable name of a file of a recorded entry (`pkg:`, `pack:`, `sdk:`, `project:`, or the tokenized path) and back |
 | `Lock.FormatVersion` | literal | `2`: the version `format` writes as `"Format"` |
 | `Import.record RecordOptions projects` | recipe | descriptions and recorded locks from msbuild's design-time builds ([Recorded locks](#recorded-locks-importrecord)) |
@@ -626,9 +626,10 @@ command "satellites" {
 
 #### How close to `dotnet build`
 
-- On Linux and macOS, byte-identical to `dotnet build`'s satellite with SDK 10's recipe (SDK 9 has
-  the same); SDK 8 hands the satellite every reference, which does not change what csc writes for
-  a resources-only assembly (version, culture, token and resources are the same either way).
+- On Linux and macOS, byte-identical to `dotnet build`'s satellite on SDK 10 and on SDK 8 (which
+  hands the satellite every reference: csc writes no reference a resources-only assembly does not
+  use), for `net472`, `netstandard2.0` and `net8.0`, signed or not. `satellite { }` over the same
+  assembly and files gives the same bytes.
 - On Windows the same, but one case: a project that writes its attributes itself without
   `AssemblyFileVersion` gets no FileVersion here, where `dotnet build` on Windows takes the
   assembly version (msbuild reads the Win32 version resource there). `attribute` gives it.

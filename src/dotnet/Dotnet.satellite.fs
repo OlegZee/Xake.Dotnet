@@ -125,9 +125,15 @@ module SatelliteTask =
             | Some warning -> do! trace Warning "%s" warning
             | None -> ()
             let! targetFwkInfo = DotNetFwk.resolveFramework (Some framework)
+            // .NET: the targeting pack; netstandard and .NET Framework: those of the three the
+            // framework has (netstandard2.0 needs `netstandard.dll`, its `mscorlib` is a facade)
             let all =
                 match DotNetFwk.frameworkReferences targetFwkInfo with
-                | [] -> [ DotNetFwk.locateAssembly targetFwkInfo "mscorlib.dll" ]
+                | [] ->
+                    let lookup = DotNetFwk.locateAssembly targetFwkInfo
+                    [ for name in Satellite.keptReferences do
+                        let path = lookup (name + ".dll")
+                        if File.Exists path then yield path ]
                 | refs -> refs
             let references = Satellite.references what [ for path in all -> { Path = path; Sha256 = ""; Alias = "" } ]
 

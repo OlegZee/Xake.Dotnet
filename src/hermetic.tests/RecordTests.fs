@@ -1965,7 +1965,7 @@ type ``Satellites from external translations``() =
     /// The library without culture resources, its translation outside it, and a copy with the
     /// translation as its own `Strings.ja.resx` (what `dotnet build` is compared with).
     let fixture (sdk: string) =
-        RecordKit.write [ "lib"; "copy"; "other"; "plain"; "translations"; "out"; "locks"; "obj" ]
+        RecordKit.write [ "lib"; "copy"; "other"; "plain"; "translations"; "out"; "task"; "locks"; "obj" ]
             [ "global.json", sprintf "{ \"sdk\": { \"version\": \"%s.100\", \"rollForward\": \"latestFeature\" } }\n" sdk
               "lib/lib.csproj", csproj signed ""
               "lib/C.cs", "namespace Lib { public class C { } }\n"
@@ -2038,6 +2038,20 @@ type ``Satellites from external translations``() =
             let sat = Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath ours)
             Assert.That((sat.Version, sat.CultureName, sat.GetPublicKeyToken ()), Is.EqualTo ((main.Version, "ja", main.GetPublicKeyToken ())), fwk)
             Assert.That(main.GetPublicKeyToken (), Is.Not.Empty)
+        // `satellite { }` (no lock) over the same assembly and translations: the same satellite
+        RecordKit.run x.TestOptions "task-ext"
+            [ command "build" { do! need [ for f in frameworks -> sprintf "task/%s/ja/lib.resources.dll" f ] }
+              "task/(fwk:*)/(culture:*)/lib.resources.dll" ..> recipe {
+                let! fwk = getRuleMatch "fwk"
+                let! culture = getRuleMatch "culture"
+                do! satellite {
+                        template (sprintf "out/Release/%s/lib/lib.dll" fwk)
+                        keyfile "key.snk"
+                        resources (resourceset { prefix "lib"; basedir $"translations/{culture}"; includes "**/*" }) } } ]
+            [ "build" ]
+        for fwk in frameworks do
+            Assert.That(File.ReadAllBytes (sprintf "task/%s/ja/lib.resources.dll" fwk),
+                        Is.EqualTo (File.ReadAllBytes (sprintf "out/Release/%s/lib/ja/lib.resources.dll" fwk)), sprintf "satellite { }, SDK %s, %s" sdk fwk)
         // the translation as ResourceManager finds it, beside the assembly in a load context of its
         // own that reads the files' bytes (another test case builds the same paths)
         for fwk in [ "netstandard2.0"; "net8.0" ] do

@@ -27,8 +27,9 @@ or without one. [hermetic/lock.md](hermetic/lock.md#satellite-assemblies), [task
   (`resourceset`, read with `getFiles`), attributes, and whether a resource without its neutral
   one warns or fails.
 - One recipe for every SDK, SDK 10's: no SDK targets read, no installed SDK needed. Byte-identical
-  to `dotnet build` on Linux and macOS; on Windows too, but the FileVersion of hand-written
-  attributes without one. The satellites load on .NET Framework 4.8 and .NET.
+  to `dotnet build` (SDK 8 and 10) on Linux and macOS; on Windows too, but the FileVersion of
+  hand-written attributes without one. The satellites load on .NET Framework 4.8 and .NET.
+- `.restext` resources are compiled (by `csc { }` too), as msbuild's `GenerateResource` does.
 - Checks: the culture's spelling, the public key token against the main assembly's, the neutral
   resource names.
 - Not yet: a referenced project's satellites in a run folder and their `deps.json` lines; an F#
