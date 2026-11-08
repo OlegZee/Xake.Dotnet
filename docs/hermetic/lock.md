@@ -543,14 +543,17 @@ The build makes satellites only when the script asks for them, by a rule of thei
 the assembly's (the assembly's rule builds none):
 
 ```fsharp
+open Xake.Typed
+
+type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
+let Satellite = Target<SatelliteG> "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
+
+Satellite.Rule (fun m -> Locks.satellite settings (lockOf m.name m.cfg) m.fwk)
+
+// the satellites the lock records, as targets of that rule
 command "satellites" {
-    let! targets = Locks.satellitesOf settings (lockOf "lib" "Release") "net8.0" (outOf "Release" "net8.0" "lib")
+    let! targets = Locks.satellitesOf settings (lockOf "Lib" "Release") "net8.0" (outOf "Release" "net8.0" "Lib")
     do! need targets }
-"out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
-    let! cfg = getRuleMatch "cfg"
-    let! fwk = getRuleMatch "fwk"
-    let! name = getRuleMatch "name"
-    do! Locks.satellite settings (lockOf name cfg) fwk }
 ```
 
 `Locks.satellite` needs the assembly, writes the source under `obj/xake/satellites/`, compiles the
@@ -596,12 +599,7 @@ A rule over a typed target that takes the lock's satellites where there are no t
 outside the project, and the translation folder of the assembly otherwise:
 
 ```fsharp
-open Xake.Typed
-
-type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
-let Satellite = Target<SatelliteG> "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
-
-// the script's table: an assembly's translation folder and root namespace
+// `Satellite` as above; the script's table: an assembly's translation folder and root namespace
 let translations = Map [ "Lib", ("translations/Lib", "Lib") ]
 
 Satellite.Rule (fun m ->
