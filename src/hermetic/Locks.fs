@@ -867,24 +867,6 @@ module Locks =
         }
 
     /// <summary>
-    /// `Satellite.checkCulture`, also for a culture ICU knows only by an alias (`zh-CN`, `zh-TW`:
-    /// not among `CultureInfo.GetCultures`, where the core looks): on .NET 5 and later the
-    /// predefined cultures are asked as msbuild's `AssignCulture` asks them
-    /// (`CultureInfo.GetCultureInfo (name, predefinedOnly = true)`, by reflection: this assembly
-    /// targets `netstandard2.0`), the core's check otherwise.
-    /// </summary>
-    let private checkCulture (what: string) (culture: string) : unit =
-        let predefined =
-            match typeof<System.Globalization.CultureInfo>.GetMethod ("GetCultureInfo", [| typeof<string>; typeof<bool> |]) with
-            | null -> None
-            | m -> try Some (m.Invoke (null, [| box culture; box true |]) :?> System.Globalization.CultureInfo).Name with _ -> None
-        match predefined with
-        | Some name when name = culture -> ()
-        | Some name when name <> "" ->
-            failwithf "'%s': the culture folder '%s' is spelled '%s' by .NET: the runtime looks the satellite up there (case-sensitively on Linux)" what culture name
-        | _ -> Satellite.checkCulture what culture
-
-    /// <summary>
     /// The satellite assemblies the entry of `lockPath` for `fwk` has
     /// (`Lock.Recorded.Satellites`: the cultures it records), as the targets `satellite` builds
     /// beside its output in `dir`: `&lt;dir&gt;/&lt;culture&gt;/&lt;assembly&gt;.resources.dll`;
@@ -906,7 +888,7 @@ module Locks =
                 return
                     [ for culture, _ in s.Cultures do
                         let target = normal (Path.Combine (dir, culture, entry.Name + ".resources.dll"))
-                        checkCulture target culture
+                        Satellite.checkCulture target culture
                         yield target ]
         }
 
@@ -957,7 +939,7 @@ module Locks =
             let dir = normal (Path.GetDirectoryName cultureDir)
             if not (same fileName (entry.Name + ".resources.dll")) then
                 failwithf "'%s': the target '%s' is not a satellite of the lock '%s' (%s/%s.resources.dll)" entry.Name target lockPath culture entry.Name
-            checkCulture target culture
+            Satellite.checkCulture target culture
             let main =
                 match entry.Compilation with
                 | Lock.Compilation.Csc main -> main

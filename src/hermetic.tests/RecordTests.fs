@@ -2025,6 +2025,8 @@ type ``Satellites from external translations``() =
         RecordKit.import x.TestOptions "import-ext" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
         // a lock without culture resources: no satellites
         Assert.That(File.ReadAllText (RecordKit.lockOf "lib" "Release"), Does.Not.Contain "\"Satellites\"")
+        // recorded, and so compiled, by the SDK of the case
+        Assert.That(File.ReadAllText (RecordKit.lockOf "lib" "Release"), Does.Contain (sprintf "\"Sdk\": \"%s." sdk))
         x.Build "build-ext" frameworks None translations
         RecordKit.runDotnet "copy/lib" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
         for fwk in frameworks do
@@ -2111,9 +2113,9 @@ type ``Satellites from external translations``() =
         // a file of another culture
         File.Delete "translations/ja/Strings.ja.resx"
         File.Delete "translations/ja/Logo.ja.png"
-        File.WriteAllText ("translations/ja/Other.fr.resx", RecordKit.resx [ "Hello", "Bonjour" ])
+        File.WriteAllText ("translations/ja/Other.zh-CN.resx", RecordKit.resx [ "Hello", "Nihao" ])
         let e = Assert.Throws<XakeException>(fun () -> x.Build "build-other-culture" [ "net8.0" ] None translations)
-        Assert.That(e.Data0, Does.Contain "is a resource of the culture 'fr', not of the satellite's 'ja'")
+        Assert.That(e.Data0, Does.Contain "is a resource of the culture 'zh-CN', not of the satellite's 'ja'")
 
     [<Test>]
     member x.``a resource without its neutral one warns, or fails; an attribute given replaces the read one``() =
