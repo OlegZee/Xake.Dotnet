@@ -864,9 +864,7 @@ module Import =
           "ProjectDepsFilePath"; "ProjectRuntimeConfigFilePath"; "AutoGenerateBindingRedirects"; "GenerateBindingRedirectsOutputType"
           "_GenerateBindingRedirectsIntermediateAppConfig"; "IsTestProject"; "OutDir"; "UseWPF"
           // the sources of an application's recorded files: its `App.config`, `runtimeconfig.template.json`
-          "AppConfig"; "UserRuntimeConfig"
-          // a satellite assembly's attributes and switches (`satellitesOf`)
-          "GenerateAssemblyInfo"; "GeneratedAssemblyInfoFile"; "DisabledWarnings" ]
+          "AppConfig"; "UserRuntimeConfig" ]
 
     /// <summary>
     /// The targets file `record` hands every project (`CustomAfterMicrosoftCommonTargets`; the
@@ -1436,6 +1434,18 @@ module Import =
         Some app, recorded
 
     /// <summary>
+    /// The resources of a project whose culture msbuild cannot tell under invariant
+    /// globalization (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`): a second extension shaped like a
+    /// culture name (`Strings.ja.resx`, `Logo.zh-CN.png`) that `AssignCulture` did not take. The
+    /// same project would give another lock on a machine with cultures. Pure.
+    /// </summary>
+    let internal cultureSuspects (files: string list) : string list =
+        let shaped = Text.RegularExpressions.Regex "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+        files |> List.filter (fun f ->
+            let ext = Path.GetExtension (Path.GetFileNameWithoutExtension f)
+            ext.Length > 1 && shaped.IsMatch (ext.Substring 1))
+
+    /// <summary>
     /// The lock entry of one design-time build (`d`, of `cfg` and `framework`, whose
     /// intermediate folder was `scratch`): msbuild's compiler command line as recorded, with
     /// <list type="bullet">
@@ -1454,18 +1464,6 @@ module Import =
     /// </list>
     /// Pure but for reading the generated files and hashing.
     /// </summary>
-    /// <summary>
-    /// The resources of a project whose culture msbuild cannot tell under invariant
-    /// globalization (`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`): a second extension shaped like a
-    /// culture name (`Strings.ja.resx`, `Logo.zh-CN.png`) that `AssignCulture` did not take. The
-    /// same project would give another lock on a machine with cultures. Pure.
-    /// </summary>
-    let internal cultureSuspects (files: string list) : string list =
-        let shaped = Text.RegularExpressions.Regex "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
-        files |> List.filter (fun f ->
-            let ext = Path.GetExtension (Path.GetFileNameWithoutExtension f)
-            ext.Length > 1 && shaped.IsMatch (ext.Substring 1))
-
     let internal entryOf (ctx: RecordContext) (cfg: string) (framework: string) (scratch: string) (binaryDir: string) (d: Dump)
                          : Lock.Entry * string list * (string * byte[]) list =
         let warnings = ResizeArray<string> ()
@@ -1590,11 +1588,10 @@ module Import =
                     if named compiled then yield absoluteIn ctx.ProjectDir id, compiled ]
             |> List.distinct
 
-        // the satellite assemblies (`Lock.Satellites`): the SDK's `CoreGenerateSatelliteAssemblies`
-        // reads the built assembly, so it cannot run here; its compile is composed by the target's
-        // recipe from the culture resources (`_SatelliteAssemblyResourceInputs`: a resx's
-        // `.resources`, any other file as is), the main compile's switches and its generated
-        // assembly info (none: the build reads the built assembly, as msbuild does). C# only
+        // the satellite assemblies (`Lock.Satellites`): what msbuild knew of them, the culture
+        // resources (`_SatelliteAssemblyResourceInputs`: a resx's `.resources`, any other file as
+        // is). The SDK's `CoreGenerateSatelliteAssemblies` reads the built assembly, so it cannot
+        // run here; the build composes it (`Locks.satellite`). C# only
         if Globalization.CultureInfo.GetCultures(Globalization.CultureTypes.AllCultures).Length <= 1 then
             let plain = [ for id, m in items d "EmbeddedResource" do if not (isTrue (meta "WithCulture" m)) then yield id ]
             match cultureSuspects plain with
@@ -1621,35 +1618,7 @@ module Import =
                                   ctx.Description.Name cfg framework (cultured |> List.map (fun (_, r) -> Path.GetFileName r.File) |> String.concat ", "))
                 None
             else
-                let attributes =
-                    match p "GenerateAssemblyInfo", p "GeneratedAssemblyInfoFile" with
-                    | "false", _ | _, "" -> None
-                    | _, info ->
-                        let info = moved (absoluteIn ctx.ProjectDir info)
-                        generated |> List.tryFind (fst >> (=) info) |> Option.map (snd >> Satellite.attributesOf)
-                // the recipe of the SDK that recorded the project, read off its own target
-                let recipe =
-                    match Satellite.recipeOfSdk (p "NetCoreRoot") (p "NETCoreSdkVersion") with
-                    | Some r -> r
-                    | None ->
-                        warnings.Add (sprintf "'%s' (%s|%s): the targets of the SDK %s are not found under '%s': the satellites take SDK 8's recipe" ctx.Description.Name cfg framework (p "NETCoreSdkVersion") (p "NetCoreRoot"))
-                        Satellite.sdk8Recipe
-                // a culture resource nothing reads: its neutral one has another name
-                let mainNames =
-                    [ for o in c.Options do
-                        match CscArgs.parse o with
-                        | CscArgs.Switch (n, value) when CscArgs.canonical n = "resource" ->
-                            let parts = CscArgs.splitList value
-                            yield (if parts.Length > 1 && parts.[1] <> "" then parts.[1] else Path.GetFileName parts.[0])
-                        | _ -> () ]
-                let cultures = cultured |> List.map fst |> List.distinct |> List.map (fun culture -> culture, [ for cu, r in cultured do if cu = culture then yield r ])
-                for culture, name in Satellite.orphans mainNames cultures do
-                    warnings.Add (sprintf "'%s' (%s|%s): the %s resource %s has no neutral resource of that name in the assembly: ResourceManager never reads it"
-                                      ctx.Description.Name cfg framework culture name)
-                Some { Options = Satellite.options recipe c.Options (p "DisabledWarnings")
-                       References = recipe.References
-                       Attributes = attributes
-                       Cultures = cultures }
+                Some { Cultures = cultured |> List.map fst |> List.distinct |> List.map (fun culture -> culture, [ for cu, r in cultured do if cu = culture then yield r ]) }
 
         // the hashes: a project's output and the SDK's own files carry none
         let isProjectOutput (path: string) = projects |> List.exists (fun (o, _) -> o.Path = path)

@@ -328,23 +328,12 @@ module Lock =
     /// embedded as is) and the manifest name.
     type SatelliteResource = { File: string; Compiled: string; Name: string }
 
-    /// The satellite assemblies of a recorded entry (`<out>/<culture>/<name>.resources.dll`),
-    /// composed by the recipe of the SDK's `CoreGenerateSatelliteAssemblies`: msbuild's own
-    /// call cannot be recorded (`docs/features/satellites/probe.md`). Built by a rule of their
-    /// own, on request; the compiler and the references are the entry's.
+    /// The satellite assemblies of a recorded entry (`<out>/<culture>/<name>.resources.dll`):
+    /// what msbuild knew of them, the resources per culture. Their compile is composed at build
+    /// time (`Locks.satellite`, by the recipe of SDK 10's `CoreGenerateSatelliteAssemblies`):
+    /// msbuild's own call cannot be recorded (`docs/features/satellites/probe.md`). Built by a
+    /// rule of their own, on request.
     type Satellites = {
-        /// The switches of every satellite's compile but the references, the resources, the
-        /// output and the source (`/noconfig`, the key switches of the entry, `/optimize`, ...)
-        Options: string list
-        /// The file names (no extension) of the entry's references the satellites take, as the
-        /// recording SDK's target filters them (SDK 10: `mscorlib`, `netstandard`,
-        /// `System.Runtime`); `None`: every reference of the entry (SDK 8)
-        References: string list option
-        /// The assembly attributes of the satellite's source but `AssemblyCulture`, one per
-        /// line as `WriteCodeFragment` writes them (`System.Reflection.AssemblyVersionAttribute("1.2.3.0")`);
-        /// `None` when the project writes its attributes itself: the build reads them from the
-        /// built assembly then, as msbuild does
-        Attributes: string list option
         /// Per culture, in msbuild's order, its resources
         Cultures: (string * SatelliteResource list) list
     }
@@ -634,10 +623,7 @@ module Lock =
         { entry with
             Compilation = entry.Compilation |> mapCompilation (Csc.mapText f) (Fsc.mapText f)
             Evaluation = { entry.Evaluation with Properties = entry.Evaluation.Properties |> Map.map (fun _ v -> f v) }
-            Prerequisites = entry.Prerequisites |> List.map (fun p -> { p with Pin = f p.Pin })
-            Recorded =
-                entry.Recorded |> Option.map (fun r ->
-                    { r with Satellites = r.Satellites |> Option.map (fun s -> { s with Attributes = s.Attributes |> Option.map (List.map f) }) }) }
+            Prerequisites = entry.Prerequisites |> List.map (fun p -> { p with Pin = f p.Pin }) }
 
     /// See `Csc.diffList`.
     let diffList (a: string list) (b: string list) : string list = Csc.diffList a b
@@ -1051,7 +1037,6 @@ module Lock =
                   | None -> ()
                   | Some s ->
                       let inner = indent + "  "
-                      let list (lines: string list) = lines |> List.map (sprintf "%s  %s" inner) |> String.concat ",\n"
                       let cultures =
                           s.Cultures
                           |> List.map (fun (culture, resources) ->
@@ -1062,15 +1047,7 @@ module Lock =
                               |> fun body -> sprintf "%s  %s: [\n%s\n%s  ]" inner (escape culture) body inner)
                           |> String.concat ",\n"
                       yield
-                          [ yield sprintf "%s\"Options\": [\n%s\n%s]" inner (list (s.Options |> List.map str)) inner
-                            match s.References with
-                            | Some names -> yield sprintf "%s\"References\": [\n%s\n%s]" inner (list (names |> List.map escape)) inner
-                            | None -> ()
-                            match s.Attributes with
-                            | Some lines -> yield sprintf "%s\"Attributes\": [\n%s\n%s]" inner (list (lines |> List.map (Roots.tokenizeText roots >> escape))) inner
-                            | None -> ()
-                            yield sprintf "%s\"Cultures\": {\n%s\n%s}" inner cultures inner ]
-                          |> String.concat ",\n"
+                          sprintf "%s\"Cultures\": {\n%s\n%s}" inner cultures inner
                           |> fun body -> sprintf "%s\"Satellites\": {\n%s\n%s}" indent body indent ]
           // what msbuild makes of a project with runtime output besides the compile
           match entry.Recorded |> Option.bind (fun r -> r.App) with
@@ -1157,10 +1134,9 @@ module Lock =
                        Satellites =
                          match field "Satellites" r with
                          | Some (JObject _ as s) ->
-                             Some { Options = strings "Options" s
-                                    References = field "References" s |> Option.map (asArray >> List.choose asString)
-                                    Attributes = field "Attributes" s |> Option.map (asArray >> List.choose asString >> List.map expand)
-                                    Cultures =
+                             // `Options`, `References`, `Attributes` of a 4.3.0 preview are
+                             // ignored: the build composes the satellite (`Locks.satellite`)
+                             Some { Cultures =
                                       match field "Cultures" s with
                                       | Some (JObject members) ->
                                           members |> List.map (fun (culture, resources) ->

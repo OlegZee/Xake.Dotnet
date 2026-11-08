@@ -35,7 +35,6 @@
     <Compile Include="Git.fs" />
     <Compile Include="Baml.fs" />
     <Compile Include="Lock.fs" />
-    <Compile Include="Satellite.fs" />
     <Compile Include="Described.fs" />
     <Compile Include="Apps.fs" />
     <Compile Include="RunFolder.fs" />

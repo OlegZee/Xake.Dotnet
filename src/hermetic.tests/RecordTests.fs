@@ -111,37 +111,47 @@ type ``Recorded lock identities``() =
     member x.``an entry's Satellites are written in the Recorded section and read back``() =
         let entry = x.Recorded [ lib.Path ]
         let satellites : Lock.Satellites =
-            { Options = [ "/noconfig"; "/nostdlib+"; "/warn:8"; "/keyfile:/r/proj/src/key.snk"; "/optimize+"; "/target:library"; "/deterministic+" ]
-              References = Some [ "mscorlib"; "netstandard"; "System.Runtime" ]
-              Attributes = Some [ "System.Reflection.AssemblyCompanyAttribute(\"Co\")"; "System.Reflection.AssemblyVersionAttribute(\"$(Version)\")" ]
-              Cultures =
+            { Cultures =
                 [ "ja", [ { File = "/r/proj/src/Strings.ja.resx"; Compiled = "/r/proj/src/obj/App.Strings.ja.resources"; Name = "App.Strings.ja.resources" } ]
                   "zh-CN", [ { File = "/r/proj/src/Strings.zh-CN.resx"; Compiled = "/r/proj/src/obj/App.Strings.zh-CN.resources"; Name = "App.Strings.zh-CN.resources" }
-                             { File = "/r/proj/src/Logo.zh-CN.png"; Compiled = ""; Name = "App.Logo.zh-CN.png" } ] ] }
+                             { File = "/r/proj/src/Logo.zh-CN.png"; Compiled = ""; Name = "App.Logo.png" } ] ] }
         let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some satellites } }
         let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
-        Assert.That(text, Does.Contain "\"/keyfile:$(ProjectRoot)/src/key.snk\"")
-        Assert.That(text, Does.Contain "\"ja\": [\n              { \"File\": \"$(ProjectRoot)/src/Strings.ja.resx\", \"Compiled\": \"$(ProjectRoot)/src/obj/App.Strings.ja.resources\", \"Name\": \"App.Strings.ja.resources\" }\n            ]")
-        Assert.That(text, Does.Contain "\"System.Reflection.AssemblyVersionAttribute(\\\"$(Version)\\\")\"")
+        Assert.That(text, Does.Contain "\"Satellites\": {\n          \"Cultures\": {\n            \"ja\": [\n              { \"File\": \"$(ProjectRoot)/src/Strings.ja.resx\", \"Compiled\": \"$(ProjectRoot)/src/obj/App.Strings.ja.resources\", \"Name\": \"App.Strings.ja.resources\" }\n            ]")
+        // the cultures only: the compile is composed at build time
+        Assert.That(text, Does.Match "\"Satellites\": \\{\\n\\s*\"Cultures\": \\{")
+        Assert.That(text, Does.Not.Contain "\"Attributes\"")
         Assert.That(text, Does.Not.Contain "/r/")
         let back = Lock.parse roots text
         Assert.That(back.Entries.Head.Recorded.Value.Satellites, Is.EqualTo (Some satellites))
         Assert.That(Lock.format roots back, Is.EqualTo text)
-        // attributes read from the built assembly: no `Attributes` key
-        let fromAssembly = { satellites with Attributes = None; References = None }
-        let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some fromAssembly } }
-        let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
-        Assert.That(text, Does.Not.Contain "\"Attributes\"")
-        Assert.That(text, Does.Not.Contain "\"mscorlib\"")
-        Assert.That((Lock.parse roots text).Entries.Head.Recorded.Value.Satellites, Is.EqualTo (Some fromAssembly))
 
     [<Test>]
-    member x.``mapText reaches a satellite's attributes``() =
+    member x.``a 4.3.0 preview's Options, References and Attributes are read past and not written again``() =
         let entry = x.Recorded [ lib.Path ]
-        let satellites : Lock.Satellites = { Options = []; References = None; Attributes = Some [ "A(\"1.2.3-m\")" ]; Cultures = [] }
+        let satellites : Lock.Satellites =
+            { Cultures = [ "ja", [ { File = "/r/proj/src/Strings.ja.resx"; Compiled = "/r/proj/src/obj/App.Strings.ja.resources"; Name = "App.Strings.ja.resources" } ] ] }
+        let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some satellites } }
+        let text = Lock.format roots { Configuration = "Release"; Properties = []; Entries = [ entry ] }
+        // what a preview wrote before `Cultures`
+        let preview =
+            text.Replace (
+                "\"Satellites\": {\n",
+                "\"Satellites\": {\n          \"Options\": [\n            \"/noconfig\",\n            \"/keyfile:$(ProjectRoot)/src/key.snk\",\n            \"/target:library\"\n          ],\n"
+                + "          \"References\": [\n            \"mscorlib\",\n            \"netstandard\"\n          ],\n"
+                + "          \"Attributes\": [\n            \"System.Reflection.AssemblyVersionAttribute(\\\"$(Version)\\\")\"\n          ],\n")
+        Assert.That(preview, Does.Contain "\"Attributes\"")
+        let back = Lock.parse roots preview
+        Assert.That(back.Entries.Head.Recorded.Value.Satellites, Is.EqualTo (Some satellites))
+        Assert.That(Lock.format roots back, Is.EqualTo text)
+
+    [<Test>]
+    member x.``mapText leaves a satellite's resources alone``() =
+        let entry = x.Recorded [ lib.Path ]
+        let satellites : Lock.Satellites = { Cultures = [ "ja", [ { File = "/r/proj/1.2.3-m/S.ja.resx"; Compiled = ""; Name = "1.2.3-m.S.ja.resources" } ] ] }
         let entry = { entry with Recorded = Some { entry.Recorded.Value with Satellites = Some satellites } }
         let mapped = entry |> Lock.mapText (fun t -> t.Replace ("1.2.3-m", "$(Version)"))
-        Assert.That(mapped.Recorded.Value.Satellites.Value.Attributes, Is.EqualTo (Some [ "A(\"$(Version)\")" ]))
+        Assert.That(mapped.Recorded.Value.Satellites, Is.EqualTo (Some satellites))
 
     [<Test>]
     member x.``the BAML's AssemblyInfo records are its assembly names; a byte 0x1C elsewhere is not``() =
@@ -1740,98 +1750,32 @@ type ``Import record version token``() =
         Assert.That(e.Data0, Does.Contain marker)
 
 
-/// The composition of a satellite assembly's compile (`Lock.Satellites`) from what the
-/// design-time build reports: the attributes, the switches, the invariant-globalization check.
-/// Pure: no msbuild.
+
+
+/// The hermetic side of a satellite assembly's compile: the switches `Locks.satellite` takes from
+/// a lock's main compile (`Xake.Dotnet.Satellite.options`), the default inputs, the
+/// invariant-globalization check of the import. Pure: no msbuild.
 [<TestFixture>]
 type ``Satellite composition``() =
 
     [<Test>]
-    member x.``the attributes are the ones the SDK reads back from the assembly, in its order``() =
-        let info =
-            [ "// <auto-generated/>"
-              "[assembly: System.Reflection.AssemblyTrademarkAttribute(\"TM\")]"
-              "[assembly: System.Reflection.AssemblyCompanyAttribute(\"Co\")]"
-              "[assembly: System.Reflection.AssemblyConfigurationAttribute(\"Release\")]"
-              "[assembly: System.Reflection.AssemblyDescriptionAttribute(\"D \\\"q\\\"\")]"
-              "[assembly: System.Reflection.AssemblyFileVersionAttribute(\"1.2.3.0\")]"
-              "[assembly: System.Reflection.AssemblyInformationalVersionAttribute(\"1.2.3-beta.1\")]"
-              "[assembly: System.Reflection.AssemblyProductAttribute(\"P\")]"
-              "[assembly: System.Reflection.AssemblyTitleAttribute(\"T\")]"
-              "[assembly: System.Reflection.AssemblyVersionAttribute(\"1.2.3.0\")]"
-              "[assembly: System.Resources.NeutralResourcesLanguageAttribute(\"en\")]"
-              "[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"Other\")]" ]
-            |> String.concat "\n"
-        // as `dotnet build` wrote `ja/Lib.resources.cs` for the same project (SDK 10.0.403): no
-        // copyright stated reads as " "
-        Assert.That(Satellite.attributesOf info,
-                    Is.EqualTo [ "System.Reflection.AssemblyCompanyAttribute(\"Co\")"
-                                 "System.Reflection.AssemblyCopyrightAttribute(\" \")"
-                                 "System.Reflection.AssemblyDescriptionAttribute(\"D \\\"q\\\"\")"
-                                 "System.Reflection.AssemblyFileVersionAttribute(\"1.2.3.0\")"
-                                 "System.Reflection.AssemblyInformationalVersionAttribute(\"1.2.3-beta.1\")"
-                                 "System.Reflection.AssemblyProductAttribute(\"P\")"
-                                 "System.Reflection.AssemblyTitleAttribute(\"T\")"
-                                 "System.Reflection.AssemblyVersionAttribute(\"1.2.3.0\")" ])
-
-    [<Test>]
-    member x.``the switches are the main compile's the SDK's target passes on``() =
+    member x.``the switches are the main compile's SDK 10's target passes on``() =
         let main =
             [ "/noconfig"; "/unsafe-"; "/checked-"; "/nowarn:1701,1702"; "/fullpaths"; "/nostdlib+"; "/errorreport:prompt"; "/warn:8"
               "/define:TRACE;RELEASE"; "/highentropyva+"; "/keyfile:/r/key.snk"; "/publicsign+"; "/reference:/r/a.dll"; "/debug+"; "/debug:portable"
               "/filealign:512"; "/optimize+"; "/target:library"; "/warnaserror+:NU1605,SYSLIB0011"; "/utf8output"; "/deterministic+"
-              "/langversion:12.0"; "/analyzer:/r/g.dll"; "/r/A.cs" ]
-        Assert.That(Satellite.options Satellite.sdk8Recipe main "",
+              "/langversion:12.0"; "/analyzer:/r/g.dll"; "/pathmap:/r=/_/"; "/features:strict"; "/r/A.cs" ]
+        Assert.That(Satellite.options main,
                     Is.EqualTo [ "/noconfig"; "/nostdlib+"; "/warn:8"; "/keyfile:/r/key.snk"; "/publicsign+"; "/optimize+"
-                                 "/warnaserror+:NU1605,SYSLIB0011"; "/deterministic+"; "/target:library" ])
-        Assert.That(Satellite.options Satellite.sdk8Recipe [ "/delaysign+"; "/warnaserror+" ] "CS1591", Is.EqualTo [ "/noconfig"; "/delaysign+"; "/nowarn:CS1591"; "/target:library" ])
+                                 "/warnaserror+:NU1605,SYSLIB0011"; "/deterministic+"; "/pathmap:/r=/_/"; "/features:strict"; "/target:library" ])
+        // a bare `/warnaserror+` stays out, and nothing makes a `/nowarn`
+        Assert.That(Satellite.options [ "/delaysign+"; "/warnaserror+" ], Is.EqualTo [ "/noconfig"; "/delaysign+"; "/target:library" ])
 
     [<Test>]
-    member x.``the recipe is read off the SDK's own target``() =
-        let sdk10 =
-            "<Target Name=\"CoreGenerateSatelliteAssemblies\">\n<ItemGroup>\n"
-            + "<_SatelliteAssemblyReferences Include=\"@(ReferencePath)\" Condition=\"'%(Filename)' == 'mscorlib' or '%(Filename)' == 'netstandard' or '%(Filename)' == 'System.Runtime' \" />\n"
-            + "</ItemGroup>\n<Csc References=\"@(_SatelliteAssemblyReferences)\" PathMap=\"$(PathMap)\" Features=\"$(Features)\" />\n</Target>"
-        let r = Satellite.recipeOf sdk10
-        Assert.That(r.References, Is.EqualTo (Some [ "mscorlib"; "netstandard"; "System.Runtime" ]))
-        Assert.That((r.PathMap, r.Features), Is.EqualTo ((true, true)))
-        Assert.That(Satellite.recipeOf "<Target Name=\"CoreGenerateSatelliteAssemblies\">\n<Csc References=\"@(ReferencePath)\" />\n</Target>",
-                    Is.EqualTo Satellite.sdk8Recipe)
-        Assert.That(Satellite.options r [ "/pathmap:/r=/_/"; "/features:strict"; "/langversion:12" ] "",
-                    Is.EqualTo [ "/noconfig"; "/pathmap:/r=/_/"; "/features:strict"; "/target:library" ])
-        // the recipes of the SDKs installed here, when they are
-        let root = Roots.dotnetRoot () |> Option.defaultValue ""
-        let targetsOf v = sprintf "%s/sdk/%s/Sdks/Microsoft.NET.Sdk/targets/Microsoft.NET.Sdk.targets" root v
-        if File.Exists (targetsOf "8.0.427") then
-            Assert.That(Satellite.recipeOf (File.ReadAllText (targetsOf "8.0.427")), Is.EqualTo Satellite.sdk8Recipe)
-        if File.Exists (targetsOf "10.0.403") then
-            Assert.That(Satellite.recipeOf (File.ReadAllText (targetsOf "10.0.403")), Is.EqualTo r)
-
-    [<Test>]
-    member x.``the source is the one WriteCodeFragment writes``() =
-        let text = Satellite.source [ "System.Reflection.AssemblyVersionAttribute(\"1.0.0.0\")" ] "ja"
-        Assert.That(text, Does.StartWith "//------------------------------------------------------------------------------\n// <auto-generated>\n")
-        Assert.That(text, Does.EndWith "using System;\nusing System.Reflection;\n\n[assembly: System.Reflection.AssemblyVersionAttribute(\"1.0.0.0\")]\n[assembly: System.Reflection.AssemblyCultureAttribute(\"ja\")]\n\n// Generated by the MSBuild WriteCodeFragment class.\n")
-
-    [<Test>]
-    member x.``a resource set's file is named as csc's resources name it, with the culture``() =
-        let root = Path.GetFullPath "/r"
-        let at (p: string) = Path.GetFullPath (Path.Combine (root, p))
-        let named options file = Satellite.resourceSetName root options (Some "tr/ja") (at file)
-        Assert.That(named { Prefix = Some "Lib"; DynamicPrefix = true } "tr/ja/Strings.resx", Is.EqualTo "Lib.Strings.resx")
-        Assert.That(named { Prefix = Some "Lib"; DynamicPrefix = true } "tr/ja/Forms/Main.resx", Is.EqualTo "Lib.Forms.Main.resx")
-        Assert.That(named { Prefix = Some "Lib"; DynamicPrefix = false } "tr/ja/Forms/Main.resx", Is.EqualTo "Lib.Main.resx")
-        Assert.That(named { Prefix = None; DynamicPrefix = true } "tr/ja/Strings.resx", Is.EqualTo "Strings.resx")
-        Assert.That(Satellite.manifestName "ja" "Lib.Strings.resx", Is.EqualTo "Lib.Strings.ja.resources")
-        Assert.That(Satellite.manifestName "ja" "Lib.Strings.ja.resx", Is.EqualTo "Lib.Strings.ja.resources")
-        Assert.That(Satellite.manifestName "ja" "Lib.Logo.png", Is.EqualTo "Lib.Logo.png")
-
-    [<Test>]
-    member x.``a culture resource without a neutral one of that name is an orphan``() =
-        let r name : Lock.SatelliteResource = { File = ""; Compiled = ""; Name = name }
-        Assert.That(Satellite.orphans [ "X.Strings.resources"; "X.Logo.txt" ]
-                        [ "ja", [ r "X.Strings.ja.resources"; r "X.Resource.ja.resources" ]; "fr", [ r "X.Logo.txt"; r "X.Other.txt" ] ],
-                    Is.EqualTo [ "ja", "X.Resource.ja.resources"; "fr", "X.Other.txt" ])
+    member x.``the default inputs are none, and a missing neutral resource warns``() =
+        Assert.That(SatelliteInputs.Default.Resources, Is.Empty)
+        Assert.That(SatelliteInputs.Default.Attributes, Is.Empty)
+        Assert.That(SatelliteInputs.Default.NeutralCheck, Is.EqualTo NeutralCheck.Warn)
 
     [<Test>]
     member x.``a second extension shaped like a culture is suspect under invariant globalization``() =
@@ -1840,7 +1784,7 @@ type ``Satellite composition``() =
 
 
 /// `Import.record` of a C# library with culture-specific resources: the entry records its
-/// satellite assemblies (`Recorded.Satellites`), composed as the SDK's target would compile them.
+/// cultures (`Recorded.Satellites`), and `Locks.satellite` composes the satellites from them.
 [<TestFixture>]
 type ``Import record satellites``() =
     inherit XakeTestBase("import-record-satellites")
@@ -1864,7 +1808,7 @@ type ``Import record satellites``() =
               "lib/Logo.fr.txt", "logo\n" ]
 
     [<Test>]
-    member x.``the culture resources are recorded as satellites with the attributes msbuild gives them``() =
+    member x.``the culture resources are recorded as the lock's satellites, the cultures only``() =
         fixture ()
         RecordKit.import x.TestOptions "import-sat" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
         let doc = Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "lib" "Release")
@@ -1877,24 +1821,18 @@ type ``Import record satellites``() =
         Assert.That(ja.Head.Compiled, Does.Not.Contain "xake-record")
         let fr = s.Cultures |> List.find (fst >> (=) "fr") |> snd
         Assert.That(fr |> List.map (fun r -> Path.GetFileName r.File, r.Compiled), Is.EqualTo [ "Logo.fr.txt", "" ])
+        // msbuild names a culture's non-resx file without its culture
+        Assert.That(fr.Head.Name, Is.EqualTo "lib.Logo.txt")
         // the main assembly keeps its neutral resource only
         Assert.That(entry.Compilation.Resources |> List.map (fst >> Path.GetFileName), Is.EqualTo [ "Strings.resx" ])
-        Assert.That(s.Options, Does.Contain "/target:library")
-        Assert.That(s.Options |> List.head, Is.EqualTo "/noconfig")
-        Assert.That(fr.Head.Name, Is.EqualTo "lib.Logo.txt")
-        // the attributes are those of msbuild's own satellite source, the commit a token as in
-        // the main assembly's (`Git.tokenize`)
-        RecordKit.runDotnet "lib" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
-        let commit = Text.RegularExpressions.Regex "\\+[0-9a-f]{40}\""
-        let msbuild =
-            File.ReadAllLines "lib/obj/Release/net8.0/ja/lib.resources.cs"
-            |> Array.filter (fun l -> l.StartsWith "[assembly: " && not (l.Contains "AssemblyCultureAttribute"))
-            |> Array.map (fun l -> commit.Replace (l.Substring (11, l.Length - 12), "+$(SourceRevisionId)\"")) |> List.ofArray
-        Assert.That(s.Attributes, Is.EqualTo (Some msbuild))
+        // nothing of the satellite's compile: it is composed at build time
+        let text = File.ReadAllText (RecordKit.lockOf "lib" "Release")
+        Assert.That(text, Does.Match "\"Satellites\": \\{\\n\\s*\"Cultures\": \\{")
+        Assert.That(text, Does.Not.Contain "\"Attributes\"")
 
-    /// Builds the fixture's assemblies and their satellites from the locks (`Locks.compile`,
+    /// Builds `names`' assemblies and their satellites from the locks (`Locks.compile`,
     /// `Locks.satellite`, `Locks.satellitesOf`).
-    member private x.BuildSatellites (label: string) =
+    member private x.BuildSatellites (label: string) (names: string list) =
         let settings = Locks.Settings.Default
         let matches = recipe {
             let! cfg = getRuleMatch "cfg"
@@ -1904,35 +1842,37 @@ type ``Import record satellites``() =
         RecordKit.run x.TestOptions label
             [ command "build" {
                 let! sats =
-                    recipe {
-                        let! a = Locks.satellitesOf settings (RecordKit.lockOf "lib" "Release") "net8.0" (RecordKit.outOf "Release" "net8.0" "lib")
-                        let! b = Locks.satellitesOf settings (RecordKit.lockOf "hand" "Release") "net8.0" (RecordKit.outOf "Release" "net8.0" "hand")
-                        return a @ b }
+                    names
+                    |> List.map (fun n -> Locks.satellitesOf settings (RecordKit.lockOf n "Release") "net8.0" (RecordKit.outOf "Release" "net8.0" n))
+                    |> List.fold (fun acc r ->
+                        recipe {
+                            let! a = acc
+                            let! b = r
+                            return a @ b }) (recipe { return [] })
                 do! need sats }
               "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> recipe {
                 let! cfg, fwk, name = matches
                 do! Locks.compile settings (RecordKit.lockOf name cfg) fwk }
               "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
                 let! cfg, fwk, name = matches
-                do! Locks.satellite settings (RecordKit.lockOf name cfg) fwk } ]
+                do! Locks.satellite settings (RecordKit.lockOf name cfg) fwk SatelliteInputs.Default } ]
             [ "build" ]
 
     [<Test>]
     member x.``a satellite built from the lock is msbuild's, byte for byte``() =
         fixture ()
         RecordKit.import x.TestOptions "import-sat-build" RecordKit.recordDefault [ "lib/lib.csproj"; "hand/hand.csproj" ] |> ignore
-        Assert.That((Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "hand" "Release")).Entries.Head.Recorded.Value.Satellites.Value.Attributes,
-                    Is.EqualTo None)
-        x.BuildSatellites "build-sat"
+        x.BuildSatellites "build-sat" [ "lib"; "hand" ]
         // only on request: the satellites are there, and nothing else asked for them
         let built = [ for c in [ "fr"; "ja"; "zh-CN" ] -> sprintf "out/Release/net8.0/lib/%s/lib.resources.dll" c ] @ [ "out/Release/net8.0/hand/ja/hand.resources.dll" ]
         for f in built do Assert.That(File.Exists f, f)
         RecordKit.runDotnet "lib" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
         RecordKit.runDotnet "hand" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
+        // generated attributes
         for c in [ "fr"; "ja"; "zh-CN" ] do
             Assert.That(File.ReadAllBytes (sprintf "out/Release/net8.0/lib/%s/lib.resources.dll" c),
                         Is.EqualTo (File.ReadAllBytes (sprintf "lib/obj/Release/net8.0/%s/lib.resources.dll" c)), c)
-        // the attributes read from the assembly built from the lock
+        // hand-written attributes, read from the assembly built from the lock
         Assert.That(File.ReadAllBytes "out/Release/net8.0/hand/ja/hand.resources.dll",
                     Is.EqualTo (File.ReadAllBytes "hand/obj/Release/net8.0/ja/hand.resources.dll"))
         let name = Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath "out/Release/net8.0/hand/ja/hand.resources.dll")
@@ -1955,8 +1895,37 @@ type ``Import record satellites``() =
         Assert.That(listed, Is.SupersetOf [ "lib/net8.0/fr/lib.resources.dll"; "lib/net8.0/ja/lib.resources.dll"; "lib/net8.0/zh-CN/lib.resources.dll" ])
         // a second build does nothing
         let before = File.GetLastWriteTimeUtc "out/Release/net8.0/lib/ja/lib.resources.dll"
-        x.BuildSatellites "build-sat-again"
+        x.BuildSatellites "build-sat-again" [ "lib"; "hand" ]
         Assert.That(File.GetLastWriteTimeUtc "out/Release/net8.0/lib/ja/lib.resources.dll", Is.EqualTo before)
+
+    [<Test>]
+    member x.``a 4.3.0 preview's lock builds as it is; a culture folder spelled otherwise fails``() =
+        fixture ()
+        RecordKit.import x.TestOptions "import-sat-preview" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
+        // what a preview wrote beside `Cultures`: ignored (an attribute it names would show)
+        let lockPath = RecordKit.lockOf "lib" "Release"
+        let text = File.ReadAllText lockPath
+        let preview =
+            Text.RegularExpressions.Regex("\"Satellites\": \\{\\n").Replace (text,
+                "\"Satellites\": {\n\"Options\": [ \"/noconfig\", \"/nowarn:CS1591\", \"/target:library\" ],\n\"References\": [ \"mscorlib\", \"netstandard\", \"System.Runtime\" ],\n"
+                + "\"Attributes\": [ \"System.Reflection.AssemblyCompanyAttribute(\\\"Preview\\\")\", \"System.Reflection.AssemblyVersionAttribute(\\\"$(Version)\\\")\" ],\n", 1)
+        Assert.That(preview, Does.Contain "\"Attributes\"")
+        File.WriteAllText (lockPath, preview)
+        x.BuildSatellites "build-sat-preview" [ "lib" ]
+        RecordKit.runDotnet "lib" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
+        for c in [ "fr"; "ja"; "zh-CN" ] do
+            Assert.That(File.ReadAllBytes (sprintf "out/Release/net8.0/lib/%s/lib.resources.dll" c),
+                        Is.EqualTo (File.ReadAllBytes (sprintf "lib/obj/Release/net8.0/%s/lib.resources.dll" c)), c)
+        // the culture as .NET spells it, never another case (the runtime probes `zh-CN/`)
+        let e =
+            Assert.Throws<XakeException>(fun () ->
+                RecordKit.run x.TestOptions "build-sat-case"
+                    [ command "build" { do! need [ "out/Release/net8.0/lib/zh-cn/lib.resources.dll" ] }
+                      "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
+                        let! fwk = getRuleMatch "fwk"
+                        do! Locks.satellite Locks.Settings.Default lockPath fwk SatelliteInputs.Default } ]
+                    [ "build" ])
+        Assert.That(e.Data0, Does.Contain "is spelled 'zh-CN' by .NET")
 
 
 /// A load context that reads an assembly and its satellites (`<dir>/<culture>/<name>.dll`) from
@@ -1969,40 +1938,53 @@ type BytesContext (dir: string) =
         if not (String.IsNullOrEmpty name.CultureName) && File.Exists satellite then this.LoadFromStream (new MemoryStream (File.ReadAllBytes satellite))
         else null
 
-/// The groups of a satellite target (`Locks.satelliteFrom`'s typed rule in the tests).
+/// The groups of a satellite target (the typed rule in the tests).
 type SatelliteG = { cfg: string; fwk: string; name: string; culture: string; asm: string }
 
-/// `Locks.satelliteWith`: a satellite from translations kept outside the project, for an entry
-/// that records none (the recipe derived at build time, the lock unchanged), on SDK 8 and 10.
+/// `Locks.satellite` with `SatelliteInputs`: translations kept outside the project (resource
+/// sets), for an entry that records none or merging with a culture it records, on SDK 8 and 10;
+/// the checks of the neutral names, the key and the token.
 [<TestFixture>]
 type ``Satellites from external translations``() =
     inherit XakeTestBase("satellites-external")
 
-    let csproj (extra: string) =
+    let frameworks = [ "net472"; "netstandard2.0"; "net8.0" ]
+
+    let csproj (signing: string) (extra: string) =
         RecordKit.sdkProject
-            ("<TargetFrameworks>net472;net8.0</TargetFrameworks><Version>1.2.3-beta.1</Version><Company>Co</Company><Deterministic>true</Deterministic>"
-             + "<SignAssembly>true</SignAssembly><AssemblyOriginatorKeyFile>../key.snk</AssemblyOriginatorKeyFile>")
+            ("<TargetFrameworks>net472;netstandard2.0;net8.0</TargetFrameworks><Version>1.2.3-beta.1</Version><Company>Co</Company><Deterministic>true</Deterministic>"
+             + signing)
             extra
+
+    let signed = "<SignAssembly>true</SignAssembly><AssemblyOriginatorKeyFile>../key.snk</AssemblyOriginatorKeyFile>"
+
+    let writeKey (path: string) =
+        use rsa = Security.Cryptography.RSA.Create 1024
+        File.WriteAllBytes (path, StrongName.writeSnk (rsa.ExportParameters true))
 
     /// The library without culture resources, its translation outside it, and a copy with the
     /// translation as its own `Strings.ja.resx` (what `dotnet build` is compared with).
     let fixture (sdk: string) =
-        RecordKit.write [ "lib"; "copy"; "translations"; "out"; "locks"; "obj" ]
+        RecordKit.write [ "lib"; "copy"; "other"; "plain"; "translations"; "out"; "locks"; "obj" ]
             [ "global.json", sprintf "{ \"sdk\": { \"version\": \"%s.100\", \"rollForward\": \"latestFeature\" } }\n" sdk
-              "lib/lib.csproj", csproj ""
+              "lib/lib.csproj", csproj signed ""
               "lib/C.cs", "namespace Lib { public class C { } }\n"
               "lib/Strings.resx", RecordKit.resx [ "Hello", "Hello" ]
               "translations/ja/Strings.resx", RecordKit.resx [ "Hello", "Konnichiwa" ]
-              "copy/lib/lib.csproj", csproj ""
+              "copy/lib/lib.csproj", csproj signed ""
               "copy/lib/C.cs", "namespace Lib { public class C { } }\n"
               "copy/lib/Strings.resx", RecordKit.resx [ "Hello", "Hello" ]
               "copy/lib/Strings.ja.resx", RecordKit.resx [ "Hello", "Konnichiwa" ] ]
-        use rsa = Security.Cryptography.RSA.Create 1024
-        let key = StrongName.writeSnk (rsa.ExportParameters true)
-        File.WriteAllBytes ("key.snk", key)
-        File.WriteAllBytes ("copy/key.snk", key)
+        writeKey "key.snk"
+        File.Copy ("key.snk", "copy/key.snk", true)
 
-    member private x.Build (label: string) (resources: (string * string) list) =
+    /// The translations of `culture` as one resource set.
+    let translations (culture: string) =
+        { SatelliteInputs.Default with Resources = [ resourceset { prefix "lib"; basedir $"translations/{culture}"; includes "**/*" } ] }
+
+    /// The `ja` satellites of `fwks` built by `Locks.satellite` with the inputs `inputs culture`;
+    /// the assembly from the lock, or copied from `placed` (an assembly placed, not built).
+    member private x.Build (label: string) (fwks: string list) (placed: string option) (inputs: string -> SatelliteInputs) =
         let settings = Locks.Settings.Default
         let matches = recipe {
             let! cfg = getRuleMatch "cfg"
@@ -2010,13 +1992,19 @@ type ``Satellites from external translations``() =
             let! name = getRuleMatch "name"
             return cfg, fwk, name }
         RecordKit.run x.TestOptions label
-            [ command "build" { do! need [ for f in [ "net472"; "net8.0" ] -> RecordKit.outOf "Release" f "lib" + "/ja/lib.resources.dll" ] }
+            [ command "build" { do! need [ for f in fwks -> RecordKit.outOf "Release" f "lib" + "/ja/lib.resources.dll" ] }
               "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> recipe {
                 let! cfg, fwk, name = matches
-                do! Locks.compile settings (RecordKit.lockOf name cfg) fwk }
+                match placed with
+                | Some file ->
+                    let! target = getTargetFile ()
+                    Directory.CreateDirectory (Path.GetDirectoryName target.FullName) |> ignore
+                    File.Copy (file, target.FullName, true)
+                | None -> do! Locks.compile settings (RecordKit.lockOf name cfg) fwk }
               "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
                 let! cfg, fwk, name = matches
-                do! Locks.satelliteWith settings (RecordKit.lockOf name cfg) fwk resources } ]
+                let! culture = getRuleMatch "culture"
+                do! Locks.satellite settings (RecordKit.lockOf name cfg) fwk (inputs culture) } ]
             [ "build" ]
 
     [<TestCase("8.0")>]
@@ -2035,33 +2023,36 @@ type ``Satellites from external translations``() =
 
     member private x.CheckExternal (sdk: string) =
         RecordKit.import x.TestOptions "import-ext" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
-        // the lock is the one before 4.3.0: no culture resources, no satellites
+        // a lock without culture resources: no satellites
         Assert.That(File.ReadAllText (RecordKit.lockOf "lib" "Release"), Does.Not.Contain "\"Satellites\"")
-        x.Build "build-ext" [ "translations/ja/Strings.resx", "lib.Strings.ja.resources" ]
+        x.Build "build-ext" frameworks None translations
         RecordKit.runDotnet "copy/lib" [ "build"; "-c"; "Release"; "-nologo"; "-v:q" ]
-        for fwk in [ "net472"; "net8.0" ] do
+        for fwk in frameworks do
             let ours = sprintf "out/Release/%s/lib/ja/lib.resources.dll" fwk
-            Assert.That(File.ReadAllBytes ours, Is.EqualTo (File.ReadAllBytes (sprintf "copy/lib/obj/Release/%s/ja/lib.resources.dll" fwk)), fwk)
+            // SDK 8 hands its satellite every reference, SDK 10's recipe three of them: csc writes
+            // the same image (decision 20)
+            Assert.That(File.ReadAllBytes ours, Is.EqualTo (File.ReadAllBytes (sprintf "copy/lib/obj/Release/%s/ja/lib.resources.dll" fwk)), sprintf "SDK %s, %s" sdk fwk)
             let main = Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath (sprintf "out/Release/%s/lib/lib.dll" fwk))
             let sat = Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath ours)
             Assert.That((sat.Version, sat.CultureName, sat.GetPublicKeyToken ()), Is.EqualTo ((main.Version, "ja", main.GetPublicKeyToken ())), fwk)
             Assert.That(main.GetPublicKeyToken (), Is.Not.Empty)
         // the translation as ResourceManager finds it, beside the assembly in a load context of its
         // own that reads the files' bytes (another test case builds the same paths)
-        let context = BytesContext (Path.GetFullPath "out/Release/net8.0/lib")
-        try
-            let asm = context.LoadMain "out/Release/net8.0/lib/lib.dll"
-            let manager = Resources.ResourceManager ("lib.Strings", asm)
-            Assert.That(manager.GetString ("Hello", Globalization.CultureInfo "ja"), Is.EqualTo "Konnichiwa")
-        finally context.Unload ()
+        for fwk in [ "netstandard2.0"; "net8.0" ] do
+            let context = BytesContext (Path.GetFullPath (sprintf "out/Release/%s/lib" fwk))
+            try
+                let asm = context.LoadMain (sprintf "out/Release/%s/lib/lib.dll" fwk)
+                let manager = Resources.ResourceManager ("lib.Strings", asm)
+                Assert.That(manager.GetString ("Hello", Globalization.CultureInfo "ja"), Is.EqualTo "Konnichiwa", fwk)
+            finally context.Unload ()
         // an edited translation rebuilds the satellite
         let before = File.ReadAllBytes "out/Release/net8.0/lib/ja/lib.resources.dll"
         File.WriteAllText ("translations/ja/Strings.resx", RecordKit.resx [ "Hello", "Konnichiwa!" ])
-        x.Build "build-ext-edited" [ "translations/ja/Strings.resx", "lib.Strings.ja.resources" ]
+        x.Build "build-ext-edited" frameworks None translations
         Assert.That(File.ReadAllBytes "out/Release/net8.0/lib/ja/lib.resources.dll", Is.Not.EqualTo before)
 
     [<Test>]
-    member x.``a resource set names the files of a folder, and an added one rebuilds``() =
+    member x.``a resource set names the files of a folder, and an added one rebuilds; none fails``() =
         fixture "10.0"
         RecordKit.import x.TestOptions "import-set" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
         let satellite = Xake.Typed.Target<SatelliteG> "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/(asm:*).resources.dll"
@@ -2074,8 +2065,9 @@ type ``Satellites from external translations``() =
                     let! name = getRuleMatch "name"
                     do! Locks.compile Locks.Settings.Default (RecordKit.lockOf name cfg) fwk }
                   satellite.Rule (fun m ->
-                    Locks.satelliteFrom Locks.Settings.Default (RecordKit.lockOf m.name m.cfg) m.fwk
-                        [ resourceset { prefix "lib"; basedir $"translations/{m.culture}"; includes "**/*.resx" } ]) ]
+                    Locks.satellite Locks.Settings.Default (RecordKit.lockOf m.name m.cfg) m.fwk
+                        { SatelliteInputs.Default with
+                            Resources = [ resourceset { prefix "lib"; basedir $"translations/{m.culture}"; includes "**/*.resx" } ] }) ]
                 [ "build" ]
         build "build-set"
         let resources () = let _, _, r = RecordKit.metadata "out/Release/net8.0/lib/ja/lib.resources.dll" in r
@@ -2085,23 +2077,91 @@ type ``Satellites from external translations``() =
         File.WriteAllText ("translations/ja/Forms/Main.resx", RecordKit.resx [ "Title", "Shu" ])
         build "build-set-added"
         Assert.That(resources (), Is.EqualTo [ "lib.Forms.Main.ja.resources"; "lib.Strings.ja.resources" ])
-        // an empty folder: nothing to build
+        // an empty folder and no culture in the lock: nothing to build
         Directory.Delete ("translations/ja", true)
         Directory.CreateDirectory "translations/ja" |> ignore
         let e = Assert.Throws<XakeException>(fun () -> build "build-set-empty")
-        Assert.That(e.Data0, Does.Contain "the lock records none for 'ja' and the script names no file")
+        Assert.That(e.Data0, Does.Contain "records none for 'ja' (it records no culture resources) and the script names no file")
 
     [<Test>]
     member x.``the script's resources join a culture the lock records; a name in both fails``() =
         fixture "10.0"
         File.WriteAllText ("lib/Strings.ja.resx", RecordKit.resx [ "Hello", "Konnichiwa" ])
+        File.WriteAllText ("lib/Logo.ja.png", "logo\n")
+        File.WriteAllText ("lib/lib.csproj", csproj signed "<EmbeddedResource Include=\"Logo.ja.png\" />")
+        File.Delete "translations/ja/Strings.resx"
         File.WriteAllText ("translations/ja/Extra.resx", RecordKit.resx [ "More", "Motto" ])
         RecordKit.import x.TestOptions "import-merge" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
-        x.Build "build-merge" [ "translations/ja/Extra.resx", "lib.Extra.ja.resources" ]
+        let ja =
+            (Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "lib" "Release")).Entries.Head.Recorded.Value.Satellites.Value.Cultures
+            |> List.find (fst >> (=) "ja") |> snd
+        Assert.That(ja |> List.map (fun r -> r.Name) |> List.sort, Is.EqualTo [ "lib.Logo.png"; "lib.Strings.ja.resources" ])
+        x.Build "build-merge" [ "net8.0" ] None translations
         let _, _, resources = RecordKit.metadata "out/Release/net8.0/lib/ja/lib.resources.dll"
-        Assert.That(resources, Is.EqualTo [ "lib.Extra.ja.resources"; "lib.Strings.ja.resources" ])
-        // the script's list is not a dependency (a script enumerating translations with getFiles
-        // in its rule makes an added one rebuild): a new list, a new build
-        for fwk in [ "net472"; "net8.0" ] do File.Delete (sprintf "out/Release/%s/lib/ja/lib.resources.dll" fwk)
-        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-twice" [ "translations/ja/Strings.resx", "lib.Strings.ja.resources" ])
-        Assert.That(e.Data0, Does.Contain "lib.Strings.ja.resources twice")
+        Assert.That(resources, Is.EqualTo [ "lib.Extra.ja.resources"; "lib.Logo.png"; "lib.Strings.ja.resources" ])
+        // the same resource from the script: a manifest name twice, found for a resx and for a
+        // culture's non-resx file, named as msbuild names it (`Logo.ja.png` -> `lib.Logo.png`)
+        File.WriteAllText ("translations/ja/Strings.ja.resx", RecordKit.resx [ "Hello", "Konnichiwa" ])
+        File.WriteAllText ("translations/ja/Logo.ja.png", "logo\n")
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-twice" [ "net8.0" ] None translations)
+        Assert.That(e.Data0, Does.Contain "would embed")
+        Assert.That(e.Data0, Does.Contain "lib.Logo.png")
+        Assert.That(e.Data0, Does.Contain "lib.Strings.ja.resources")
+        Assert.That(e.Data0, Does.Contain " twice")
+        // a file of another culture
+        File.Delete "translations/ja/Strings.ja.resx"
+        File.Delete "translations/ja/Logo.ja.png"
+        File.WriteAllText ("translations/ja/Other.fr.resx", RecordKit.resx [ "Hello", "Bonjour" ])
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-other-culture" [ "net8.0" ] None translations)
+        Assert.That(e.Data0, Does.Contain "is a resource of the culture 'fr', not of the satellite's 'ja'")
+
+    [<Test>]
+    member x.``a resource without its neutral one warns, or fails; an attribute given replaces the read one``() =
+        fixture "10.0"
+        File.WriteAllText ("translations/ja/Missing.resx", RecordKit.resx [ "Gone", "Nai" ])
+        RecordKit.import x.TestOptions "import-neutral" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
+        x.Build "build-neutral-warn" [ "net8.0" ] None translations
+        Assert.That(File.ReadAllText "build-neutral-warn.log", Does.Contain "lib.Missing.ja.resources has no neutral resource of that name in 'lib.dll'")
+        let _, _, resources = RecordKit.metadata "out/Release/net8.0/lib/ja/lib.resources.dll"
+        Assert.That(resources, Is.EqualTo [ "lib.Missing.ja.resources"; "lib.Strings.ja.resources" ])
+        File.Delete "out/Release/net8.0/lib/ja/lib.resources.dll"
+        let e =
+            Assert.Throws<XakeException>(fun () ->
+                x.Build "build-neutral-fail" [ "net8.0" ] None (fun c -> { translations c with NeutralCheck = NeutralCheck.Fail }))
+        Assert.That(e.Data0, Does.Contain "lib.Missing.ja.resources has no neutral resource of that name in 'lib.dll'")
+        // an attribute given: replaces the one read from the assembly, or adds to them
+        File.Delete "translations/ja/Missing.resx"
+        let given c = { translations c with Attributes = [ "AssemblyFileVersion", "9.8.7.6"; "AssemblyTrademark", "TM" ] }
+        x.Build "build-attributes" [ "net8.0" ] None given
+        let main = Satellite.readTemplate "out/Release/net8.0/lib/lib.dll"
+        let sat = Satellite.readTemplate "out/Release/net8.0/lib/ja/lib.resources.dll"
+        let attribute (t: Satellite.Template) name = t.Attributes |> List.tryFind (fst >> (=) ("System.Reflection." + name)) |> Option.map snd
+        Assert.That(attribute main "AssemblyFileVersionAttribute", Is.EqualTo (Some "1.2.3.0"))
+        Assert.That(attribute sat "AssemblyFileVersionAttribute", Is.EqualTo (Some "9.8.7.6"))
+        Assert.That(attribute sat "AssemblyTrademarkAttribute", Is.EqualTo (Some "TM"))
+        Assert.That(attribute sat "AssemblyCompanyAttribute", Is.EqualTo (Some "Co"))
+        // a pseudo-attribute: the assembly's culture
+        Assert.That((Reflection.AssemblyName.GetAssemblyName (Path.GetFullPath "out/Release/net8.0/lib/ja/lib.resources.dll")).CultureName, Is.EqualTo "ja")
+        Assert.That(sat.Version, Is.EqualTo main.Version)
+
+    [<Test>]
+    member x.``the key must give the assembly's token: an unsigned assembly and another key fail``() =
+        fixture "10.0"
+        // the same library unsigned, and signed with another key, built by `dotnet build`
+        for dir, signing in [ "plain", ""; "other", signed ] do
+            Directory.CreateDirectory (dir + "/lib") |> ignore
+            File.WriteAllText (dir + "/lib/lib.csproj", csproj signing "")
+            File.WriteAllText (dir + "/lib/C.cs", "namespace Lib { public class C { } }\n")
+            File.WriteAllText (dir + "/lib/Strings.resx", RecordKit.resx [ "Hello", "Hello" ])
+        writeKey "other/key.snk"
+        RecordKit.runDotnet "plain/lib" [ "build"; "-c"; "Release"; "-f"; "net8.0"; "-nologo"; "-v:q" ]
+        RecordKit.runDotnet "other/lib" [ "build"; "-c"; "Release"; "-f"; "net8.0"; "-nologo"; "-v:q" ]
+        RecordKit.import x.TestOptions "import-key" RecordKit.recordDefault [ "lib/lib.csproj" ] |> ignore
+        // the lock's key switch, an unsigned assembly placed: fails before the compile
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-key-plain" [ "net8.0" ] (Some "plain/lib/bin/Release/net8.0/lib.dll") translations)
+        Assert.That(e.Data0, Does.Contain "'lib.dll' is not signed, so its satellite must not be")
+        Assert.That(File.Exists "out/Release/net8.0/lib/ja/lib.resources.dll", Is.False)
+        // an assembly signed with another key placed: the satellite's token is compared after the compile
+        let e = Assert.Throws<XakeException>(fun () -> x.Build "build-key-other" [ "net8.0" ] (Some "other/lib/bin/Release/net8.0/lib.dll") translations)
+        Assert.That(e.Data0, Does.Contain "the satellite's public key token is")
+        Assert.That(e.Data0, Does.Contain "it would never be loaded")
