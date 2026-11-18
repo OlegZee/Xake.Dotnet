@@ -56,6 +56,24 @@ type ``Line-end neutral hashes``() =
         Assert.That(FileHash.normalizeLineEnds [||], Is.Empty)
 
     [<Test>]
+    member _.``an input is hashed by its kind: binary by its bytes, text with CRLF read as LF``() =
+        let text = write "menu.src" (crlf props)
+        Assert.That(FileHash.isBinary text, Is.False)
+        Assert.That(FileHash.inputSha256 text, Is.EqualTo (FileHash.textSha256 text))
+        let bom = write "bom.h" ("\uFEFF#define ID 1\r\n")
+        Assert.That(FileHash.inputSha256 bom, Is.EqualTo (FileHash.textSha256 bom))
+        let empty = write "empty.txt" ""
+        Assert.That(FileHash.isBinary empty, Is.False)
+        // a CRLF pair inside an image is its content: a NUL makes the file binary
+        let image = Path.Combine (dir, "icon.png")
+        File.WriteAllBytes (image, [| 0x89uy; 0x50uy; 0x0Duy; 0x0Auy; 0uy; 1uy |])
+        Assert.That(FileHash.isBinary image, Is.True)
+        Assert.That(FileHash.inputSha256 image, Is.EqualTo (FileHash.sha256 image))
+        Assert.That(FileHash.inputSha256 image, Is.Not.EqualTo (FileHash.textSha256 image))
+        Assert.That(FileHash.textMatches image (FileHash.inputSha256 image), Is.True)
+        Assert.That(FileHash.inputSha256 (Path.Combine (dir, "missing.png")), Is.EqualTo "")
+
+    [<Test>]
     member _.``the raw and the text hash of one path, in one process, are each its own``() =
         let path = write "Directory.Build.props" (crlf props)
         Assert.That(FileHash.sha256 path, Is.EqualTo (Hash.sha256 path))

@@ -2,7 +2,7 @@
 
 Record the inputs of prebuilt binary files a lock keeps (`<lock>.files/<tfm>/`), so editing one
 makes the lock stale. Owner's variant (2026-11-19): all declared inputs in one common list.
-Status: design, waiting for the owner's approval.
+Status: approved by the owner (2026-11-19), all three decisions as proposed; implementing.
 
 ## The problem
 
@@ -114,8 +114,8 @@ file declares `XakeImportInput` for both sources under `'$(XakeImport)' == 'true
 Code ~45 lines, tests ~110, docs ~90. No lock format change, no package change (so no
 `update-locks` expected; the fsc self-build `check` is run anyway).
 
-## Decisions for the owner
+## Decisions (approved by the owner, 2026-11-19)
 
 1. The property name `XakeImport` (value `true`) and the item name `XakeImportInput`.
-2. A declared file that is missing fails the import (proposed) vs. is skipped.
-3. Hash the whole `Imports` list by kind, WPF images included (proposed), vs. declared inputs only.
+2. A declared file that is missing fails the import.
+3. The whole `Imports` list is hashed by kind, WPF images included.

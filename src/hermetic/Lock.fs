@@ -47,6 +47,20 @@ module FileHash =
     /// (`normalizeLineEnds`), memoised apart from `sha256`; "" for a missing file, as `sha256`.
     let textSha256 (path: string) : string = memoised 1 textHash path
 
+    /// Whether `path` is binary: a NUL byte in its first 8000 bytes (git's test). A PNG or a
+    /// `.res` is; a source, a header, XAML are not (a UTF-16 text file is, and keeps its bytes).
+    let isBinary (path: string) : bool =
+        use stream = File.OpenRead path
+        let buffer = Array.zeroCreate<byte> 8000
+        let read = stream.Read (buffer, 0, buffer.Length)
+        Array.contains 0uy buffer.[.. read - 1]
+
+    /// The hash a lock records for an input of an import (`Evaluation.Imports`): the raw
+    /// `sha256` of a binary file (`isBinary`), else `textSha256`; "" for a missing file.
+    /// `textMatches` accepts either.
+    let inputSha256 (path: string) : string =
+        if File.Exists path && isBinary path then sha256 path else textSha256 path
+
     /// Whether the text file `path` has the hash `sha` a lock records: the line-end neutral one
     /// (`textSha256`) or, for a lock recorded by an older package, the raw one (`sha256`).
     /// "" never matches: it is the lock's "not hashed", which the caller handles.
@@ -597,7 +611,7 @@ module Lock =
     let rehash (entry: Entry) : Entry =
         { entry with
             Compilation = entry.Compilation |> mapCompilation Csc.rehash Fsc.rehash
-            Evaluation = { entry.Evaluation with Imports = entry.Evaluation.Imports |> List.map (fun h -> { h with Sha256 = FileHash.textSha256 h.Path }) } }
+            Evaluation = { entry.Evaluation with Imports = entry.Evaluation.Imports |> List.map (fun h -> { h with Sha256 = FileHash.inputSha256 h.Path }) } }
         |> withoutSdkCompilerHash
         |> fun e ->
             match e.Recorded, Roots.dotnetRoot () with

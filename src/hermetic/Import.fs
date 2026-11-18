@@ -852,7 +852,10 @@ module Import =
           // `<assembly>.g.resources`, inputs of the import like the project file (`entryOf`)
           "Page", []
           "ApplicationDefinition", []
-          "Resource", [] ]
+          "Resource", []
+          // the files a project declares as inputs of what msbuild generated (`XakeImportInput`):
+          // inputs of the import like the project file (`entryOf`)
+          "XakeImportInput", [] ]
     let internal designTimeProperties =
         [ "AssemblyName"; "MSBuildProjectFullPath"; "MSBuildProjectDirectory"; "MSBuildProjectName"; "TargetFramework"
           "TargetFrameworkIdentifier"; "TargetFrameworkMoniker"; "DefineConstants"; "LangVersion"; "Version"; "OutputType"
@@ -1700,6 +1703,16 @@ module Import =
                 for id, _ in items d kind do
                     let f = absoluteIn ctx.ProjectDir id
                     if File.Exists f && not (f.StartsWith (scratch, comparison)) then yield f ]
+        // the files the project declares as inputs of what msbuild generated (`XakeImportInput`),
+        // but a package's or the SDK's (pinned by version) and a generated one: a missing one fails
+        let declaredInputs =
+            let sdk = match p "NetCoreRoot" with "" -> "" | r -> (slash r).TrimEnd '/' + "/"
+            [ for id, _ in items d "XakeImportInput" do
+                let f = slash (absoluteIn ctx.ProjectDir id)
+                if not (inPackage f || (sdk <> "" && f.StartsWith (sdk, comparison)) || inScratch f) then
+                    if not (File.Exists f) then
+                        failwithf "'%s' (%s|%s): the declared input (XakeImportInput) '%s' does not exist" ctx.Description.Name cfg framework f
+                    yield f ]
         // the referenced projects' assemblies its BAML names, with the version the markup
         // compiler loaded: the build checks them against the outputs it references
         let markup =
@@ -1715,8 +1728,8 @@ module Import =
               Evaluation =
                 { Project = slash ctx.ProjectFile
                   ProjectRefs = projects |> List.map (fun (o, _) -> o.Name)
-                  // text: hashed with CRLF read as LF, so a lock holds on any checkout (`FileHash`)
-                  Imports = ctx.Inputs @ appSources @ markupSources |> List.distinct |> List.map (fun f -> { Path = f; Sha256 = FileHash.textSha256 f } : Lock.Hashed)
+                  // text hashed with CRLF read as LF, so a lock holds on any checkout; binary by bytes
+                  Imports = ctx.Inputs @ appSources @ markupSources @ declaredInputs |> List.distinct |> List.map (fun f -> { Path = f; Sha256 = FileHash.inputSha256 f } : Lock.Hashed)
                   Sdk = sdk
                   SdkPin = Some ctx.Pin
                   Properties = d.Props |> Map.filter (fun k v -> List.contains k keptProperties && v <> "") }
@@ -1924,6 +1937,8 @@ module Import =
                 let isOwn (names: string list) (k: string) = names |> List.exists (fun n -> k.Equals (n, StringComparison.OrdinalIgnoreCase))
                 let extensions cfg =
                     [ yield "-p:XakeRecordKey=" + key cfg
+                      // what a project's own msbuild files test to know they run in an import
+                      yield "-p:XakeImport=true"
                       yield "-p:CustomAfterDirectoryBuildProps=" + slash propsFile
                       for k, v in globals do
                           if isOwn [ "CustomAfterDirectoryBuildProps" ] k && v <> "" then yield "-p:XakeChainedAfterDirectoryBuildProps=" + v ]

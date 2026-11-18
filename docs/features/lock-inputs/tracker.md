@@ -1,15 +1,11 @@
 # Tracker: lock-inputs
 
-One line per item. Status as of 2026-11-19: design reported, waiting for the owner.
+One line per item. Status as of 2026-11-19: implemented, local commit; fsc self-build check pending (SDK 10.0.403 not installed).
 
 ## Open
 
-- [ ] Owner: approve the design and the three decisions (`brief.md`, "Decisions for the owner")
-- [ ] Docs: `lock.md` "Declared inputs", `workflows.md` how-to, release notes "Unreleased"
-- [ ] `FileHash.inputSha256` (binary by a NUL in the first 8000 bytes), `Lock.rehash` on it
-- [ ] `Import.record`: `XakeImport=true`; `XakeImportInput` dumped; `declaredInputs` into `Evaluation.Imports`
-- [ ] Tests: the menu-compiler fixture (record, stale on a PNG byte, CRLF-only current, package file, missing file, WPF unchanged)
-- [ ] `build test pack` green; fsc self-build `build check` on SDK 10.0.403
+- [ ] fsc self-build `build.fsc.fsx build check -d NUGET_FETCH=on` on SDK 10.0.403 (not installed on this machine: 8.0.427 and 11.0.100 only)
+- [ ] Owner: review; push and PR `feature/lock-inputs` -> `dev` (squash); release number
 
 ## Later
 
@@ -23,5 +19,12 @@ One line per item. Status as of 2026-11-19: design reported, waiting for the own
   them alone.
 
 ## Done
+
+- [x] Owner approved the design and the three decisions as proposed (2026-11-19)
+- [x] Docs: `lock.md` (declared inputs, hashing by kind, `Imports` field), `workflows.md` "Generated resources and their inputs", release notes "Unreleased"
+- [x] `FileHash.isBinary`/`inputSha256`; `Lock.rehash` on it
+- [x] `Import.record`: `XakeImport=true`; `XakeImportInput` dumped; `declaredInputs` into `Evaluation.Imports`, every input hashed by kind
+- [x] Tests: `Import record declared inputs` (record by kind, package and generated files left out, CRLF-only current, image byte stale at build/check/warn, re-import current; missing file fails), `Line-end neutral hashes` (kind)
+- [x] `build test pack`: all green but 7 `hermetic/rest` tests that fail on clean `dev` b4853da on this machine too (SDK 11.0.100 default, no SDK 10.0.x)
 
 - [x] Analysis: the copy of binaries, `markupSources`, no `XakeImport` property today (`XakeRecordKey` only), the check path; design and line budget in `brief.md` (2026-11-19)
