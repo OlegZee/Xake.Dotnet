@@ -4,7 +4,7 @@ One line per item. Status as of 2026-11-19: implemented, local commit; fsc self-
 
 ## Open
 
-- [ ] fsc self-build `build.fsc.fsx build check -d NUGET_FETCH=on` on SDK 10.0.403 (not installed on this machine: 8.0.427 and 11.0.100 only)
+- [ ] fsc self-build on SDK 10.0.403 itself: CI `build-fsc` on the PR (10.0.404 in a throwaway worktree passed, locks unchanged but the SDK lines)
 - [ ] Owner: review; push and PR `feature/lock-inputs` -> `dev` (squash); release number
 
 ## Later

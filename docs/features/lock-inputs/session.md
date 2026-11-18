@@ -17,8 +17,15 @@ this diff to `entryOf`, `designTimeItems` and `record`'s `extensions`.
   satellites); the same tests fail on clean `dev` here: the machine's default SDK is now 11.0.100
   (sourcelink path quoting, `net11.0`) and no SDK 10.0.x is installed. Not this change.
 
+- fsc self-build: SDK 10.0.403 is not installed here (10.0.404 is; the locks name the compiler
+  by exact path). In a throwaway worktree with `global.json` pinned to 10.0.404, `import
+  update-locks` then `build check` passed; the lock diff was only the compiler path/version and
+  the `dotnet-sdk` prerequisite from that pin, no `Imports` hash changed. So the committed locks
+  need no update for this change.
+- Seen on the way (not this feature): `import update-locks` in a folder whose path has `--`
+  rewrote it to `__` and failed ("Could not find a part of the path").
+
 ## Next step
 
-Install SDK 10.0.403 (needs the owner's go-ahead), then
-`dotnet fsi build.fsc.fsx -- -- build check -d NUGET_FETCH=on`; rerun `build test pack` where the
-SDK set matches CI. Then the owner's review, push and PR to `dev`.
+The owner's review; on their word, push `feature/lock-inputs` and open the PR to `dev` (squash),
+where CI's `build-fsc` runs the self-build on SDK 10.0.403.
