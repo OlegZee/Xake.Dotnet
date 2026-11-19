@@ -193,8 +193,13 @@ condition the masks do not know, the two can drift; the import checks them only 
      (`Import.isRecordedText`). A text kind (`.cs`, `.fs`, `.vb`, `.editorconfig`,
      `.globalconfig`, `.json`, `.txt`: assembly info, global usings, the framework attribute, the
      analyzer config) moves to `obj/xake/<key>/<tfm>/<cfg>/` and goes into `Generated` as text:
-     LF line ends, the commit as `$(SourceRevisionId)`, paths under a root tokenized. A source
-     from a package (Test.Sdk's entry point) is recorded the same way.
+     LF line ends, the commit as `$(SourceRevisionId)`, paths under a root tokenized. In an
+     analyzer config (`.editorconfig`, `.globalconfig`) a value that is a path under a root in
+     the Windows spelling (`build_property.ProjectDir = C:\repo\src\App\`, which msbuild
+     writes as it is) is written with `/` first (`Import.analyzerConfigPaths`), so it is
+     tokenized and the lock text is the one recorded on macOS or Linux
+     (`$(ProjectRoot)/src/App/`); nothing else in it changes, a `\\server\share` root keeps its
+     `//`. A source from a package (Test.Sdk's entry point) is recorded the same way.
    - The `.resx` msbuild compiles go into `Resources`; their `/resource:` switches name the
      moved `.resources`, which the build compiles again.
    - Any other generated file (a WinForms `.licenses`, a WPF `g.resources`, a `.res`) is copied
@@ -251,7 +256,8 @@ condition the masks do not know, the two can drift; the import checks them only 
      `project:<name>` with no lock behind it. Two referenced project files with the same name
      fail too;
    - the text, and the text files recorded beside it, must contain no string of this machine
-     (`Import.hostStrings`: the roots, the home and temp folders, a runtime identifier). A
+     (`Import.hostStrings`: the roots, the home and temp folders, a runtime identifier; in the
+     lock's JSON strings too, where a Windows path has every `\` doubled). A
      runtime identifier is allowed where a package names it -- its folder `runtimes/<rid>/` (a
      copy-local asset, a `deps.json` path) or a `deps.json` asset's `"rid"` -- and where the
      project declares it (`RuntimeIdentifier`), but not in a `$(DotnetRoot)` path.

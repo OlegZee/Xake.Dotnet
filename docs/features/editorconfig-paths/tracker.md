@@ -1,16 +1,17 @@
 # Tracker: editorconfig-paths
 
-One line per item. Status as of 2026-11-19: design reported, waiting for the owner.
+One line per item. Status as of 2026-11-19: implemented, local commit, all tests green.
 
 ## Open
 
-- [ ] Owner: approve `design.md` (the brief's even-run unescape replaced: the doubling is JSON's)
-- [ ] Docs: `docs/hermetic/lock.md`, release notes "Unreleased"
-- [ ] `Import.fs`: `analyzerConfigPaths` in `entryOf`; `hostStrings` on JSON-unescaped lines
-- [ ] Tests in `src/hermetic.tests`
-- [ ] `dotnet fsi build.fsx -- -- build test pack`
-- [ ] Owner: review; push and PR `feature/editorconfig-paths` -> `dev` (squash)
+- [ ] Owner: review; push and PR `feature/editorconfig-paths` -> `dev` (squash); release number
+- [ ] Optional: an end-to-end record on the Windows VM (`win11`), if the owner wants one
 
 ## Done
 
 - [x] Brief copied (`$(Root)`); SDK probe on 8.0.427, 11.0.100 (macOS) and 10.0.404 (Windows VM): values verbatim
+- [x] Owner approved `design.md` (2026-11-19): no unescape, the doubling is JSON's
+- [x] Docs: `docs/hermetic/lock.md` (analyzer config values, host strings in JSON), release notes "Unreleased" (Fixes)
+- [x] `Import.fs`: `analyzerConfigPaths` in `entryOf` (`RecordContext.Roots` new); `hostStrings` on JSON-unescaped lines
+- [x] Tests (`RecordTests.fs`, fixture `Recorded lock identities`): drive and UNC roots, untouched values/files, tokenized and expanded form; host strings in JSON
+- [x] `dotnet fsi build.fsx -- -- build test pack`: all green (SDK 11.0.100 default), 93 lines added

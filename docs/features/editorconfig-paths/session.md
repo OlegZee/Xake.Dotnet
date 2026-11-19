@@ -5,12 +5,14 @@ changes; B-5 and B-4 (also `Import.fs`) wait for this one. Do not touch PR #12.
 
 ## Where things stand (2026-11-19)
 
-- Design in `design.md`, reported to the orchestrator; no code yet.
-- Finding: `GenerateMSBuildEditorConfig` writes values verbatim on every SDK probed; the doubled
-  backslashes of the brief are the lock's JSON escaping. The fix is a root-anchored `\` -> `/`
-  of analyzer-config values plus a JSON-aware `hostStrings`, not the brief's even-run unescape.
+- Implemented as `design.md` (approved): `Import.analyzerConfigPaths` writes a Windows-spelled
+  value under a root with `/` in recorded `.editorconfig`/`.globalconfig` texts (then tokenized
+  as usual); `Import.hostStrings` also reads each line with JSON's `\\` undone.
+- `GenerateMSBuildEditorConfig` writes values verbatim (probed on 8.0.427, 11.0.100 macOS,
+  10.0.404 Windows VM); the doubled backslashes of the brief were the lock's JSON escaping.
+- `build test pack` green; local commits only, nothing pushed.
 
 ## Next step
 
-Wait for the owner's approval of `design.md`; then docs, code, tests, `build test pack`, report
-before push.
+Owner review; on their word push `feature/editorconfig-paths` and open the PR to `dev` (squash).
+Then B-5, B-4 on `Import.fs`.

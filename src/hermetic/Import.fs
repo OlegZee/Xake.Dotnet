@@ -1045,6 +1045,8 @@ module Import =
         LockOf: string -> string -> string
         /// the version marker msbuild runs with (`RecordOptions.VersionToken`), turned into `$(Version)`
         VersionMarker: string option
+        /// the roots the lock is written against (`Roots.make`), '/'
+        Roots: (string * string) list
     }
 
     /// The file a design-time build reported, absolute, '/'.
@@ -1137,6 +1139,30 @@ module Import =
         match (Path.GetExtension path).ToLowerInvariant () with
         | ".cs" | ".fs" | ".vb" | ".editorconfig" | ".globalconfig" | ".json" | ".txt" -> true
         | _ -> false
+
+    /// <summary>
+    /// A recorded analyzer config (`.editorconfig`, `.globalconfig`) with each `key = value`
+    /// whose value is a path under one of `roots` (`/`) in the Windows spelling written with `/`:
+    /// msbuild writes a property as it is (`build_property.ProjectDir = C:\repo\src\`), and the
+    /// lock tokenizes a root in its `/` spelling only. Nothing is unescaped or collapsed (a
+    /// `\\server\share` root keeps its `//`); other lines, other values and other files are
+    /// returned unchanged. Pure.
+    /// </summary>
+    let internal analyzerConfigPaths (roots: string list) (path: string) (text: string) =
+        match (Path.GetExtension path).ToLowerInvariant () with
+        | ".editorconfig" | ".globalconfig" when text.Contains "\\" ->
+            let underRoot (value: string) =
+                roots |> List.exists (fun r ->
+                    let r = r.TrimEnd('/').Replace ('/', '\\')
+                    r.Contains "\\" && value.StartsWith (r, comparison) && (value.Length = r.Length || value.[r.Length] = '\\'))
+            text.Split '\n'
+            |> Array.map (fun line ->
+                match line.IndexOf " = " with
+                | -1 -> line
+                | i when underRoot (line.Substring (i + 3)) -> line.Substring (0, i + 3) + slash (line.Substring (i + 3))
+                | _ -> line)
+            |> String.concat "\n"
+        | _ -> text
 
     /// The version of the stand-in assembly (`stubAssembly`): a value no project has, so a
     /// `deps.json` names it only where msbuild read a referenced project's built file.
@@ -1540,7 +1566,8 @@ module Import =
             [ for path in inputs |> List.map slash |> List.distinct do
                 if File.Exists path && isRecordedText path then
                     if inScratch path then
-                        yield moved path, (lf (File.ReadAllText path)).Replace (scratch, generatedDir)
+                        let text = analyzerConfigPaths (scratch :: List.map snd ctx.Roots) path (lf (File.ReadAllText path))
+                        yield moved path, text.Replace (scratch, generatedDir)
                     elif inPackage path && (if isFSharp then FscArgs.sources args else CscArgs.sources args) |> List.exists (fun s -> slash s = path) then
                         yield packaged path, lf (File.ReadAllText path) ]
         let fromPackage = set [ for path in inputs |> List.map slash do if inPackage path then yield path ]
@@ -1833,7 +1860,8 @@ module Import =
     /// runtime identifier (`osx-arm64`) as a path segment or a whole value. A runtime identifier
     /// is not this machine's where a package names it -- its folder `runtimes/&lt;rid&gt;/` (a
     /// copy-local asset, a `deps.json` path) or a `deps.json` asset's `"rid"` -- nor where it
-    /// is one the project declares (`declared`: its `RuntimeIdentifier`).
+    /// is one the project declares (`declared`: its `RuntimeIdentifier`). A line is read as it
+    /// is and with JSON's `\\` undone, so a Windows path in a lock string is found too.
     /// </summary>
     let internal hostStrings (roots: (string * string) list) (declared: string list) (text: string) : string list =
         let home = Environment.GetFolderPath Environment.SpecialFolder.UserProfile
@@ -1851,10 +1879,11 @@ module Import =
         let packageRid = Text.RegularExpressions.Regex ("runtimes/[A-Za-z0-9.\\-]+/|\"rid\": \"[^\"]*\"")
         [ for line in text.Split '\n' do
             let l = slash line
+            let unescaped = slash (line.Replace ("\\\\", "\\"))
             // a package's folder, not the .NET installation's (`$(DotnetRoot)/packs/...`)
             let inPackage = if l.Contains "$(DotnetRoot)" then l else packageRid.Replace (l, "")
             let bare = declared |> List.filter ((<>) "") |> List.fold (fun (t: string) r -> t.Replace (r, "")) inPackage
-            if candidates |> List.exists (fun c -> l.Contains c) || rids |> List.exists (fun r -> bare.Contains ("/" + r + "/") || bare.Contains ("\"" + r + "\"")) then
+            if candidates |> List.exists (fun c -> l.Contains c || unescaped.Contains c) || rids |> List.exists (fun r -> bare.Contains ("/" + r + "/") || bare.Contains ("\"" + r + "\"")) then
                 yield line.Trim () ]
 
     /// <summary>
@@ -2194,6 +2223,7 @@ module Import =
                           LockOf = fun name cfg -> full (options.LockOf name cfg)
                           Imported = projectFiles |> List.map slash
                           VersionMarker = (if options.VersionToken then Some versionMarker else None)
+                          Roots = roots
                           Pin' =
                             match pinFile |> Option.map (Roots.tokenize roots) with
                             | Some t when t.StartsWith "$(" -> t

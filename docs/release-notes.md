@@ -26,6 +26,12 @@ beside the lock and used as it is; editing what it was made from did not make th
 
 ### Fixes
 
+- **Windows paths in a recorded analyzer config**: on Windows the generated `.editorconfig`
+  holds `build_property.ProjectDir = C:\repo\src\App\`; the lock kept it untokenized (it
+  differed from a lock recorded on macOS or Linux and named the importing machine), and the check
+  for strings of this machine missed it in the lock's JSON (`C:\\repo\\...`). Such a value under
+  a root is now written with `/` and tokenized (`$(ProjectRoot)/src/App/`), and the check reads
+  the JSON strings unescaped. Locks recorded on macOS or Linux do not change.
 - **SDK 11 parent, another SDK in the child**: a child `dotnet restore`/`dotnet msbuild`
   (package downloads, the import's restore and msbuild runs, the `msbuild` task on the .NET SDK)
   inherited the `dotnet` CLI's `MSBuildSDKsPath`, `MSBuildExtensionsPath` and `MSBUILD_EXE_PATH`

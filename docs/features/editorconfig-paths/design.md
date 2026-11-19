@@ -1,6 +1,6 @@
 # Design: host paths in recorded analyzer configs (B-1)
 
-Status: proposed 2026-11-19, waiting for the owner.
+Status: approved by the owner 2026-11-19; implemented.
 
 ## Finding: the generator does not escape
 
