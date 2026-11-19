@@ -8,6 +8,17 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
 ## Unreleased
 
+### Source order independent of the importing OS
+
+The same project imported on Windows and on macOS recorded its glob-expanded sources (and the
+values of `/resource:` and `/additionalfile:`) in another order, and Windows recorded many more
+`Recorded.Placed` entries: msbuild sorts a glob's files on the OS's spelling of the path, and `\`
+sorts after the letters where `/` sorts before them. The import now records the `/` order on every
+OS, so the two locks are equal. Locks recorded on macOS or Linux do not change; a Windows-recorded
+lock changes once on its next import. On Windows a build from the lock can differ from that
+machine's `dotnet build` for such a project (the plain SDK build differs per OS there).
+[hermetic/lock.md](hermetic/lock.md).
+
 ### Legacy (non-SDK) projects: an import overlay, and a clear failure without it
 
 A legacy csproj (`ToolsVersion`, `TargetFrameworkVersion`, no `Sdk`) is not supported natively.

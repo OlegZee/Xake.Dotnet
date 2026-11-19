@@ -1556,8 +1556,13 @@ module Import =
     /// </list>
     /// Pure but for reading the generated files and hashing.
     /// </summary>
-    let internal entryOf (ctx: RecordContext) (cfg: string) (framework: string) (scratch: string) (binaryDir: string) (d: Dump)
-                         : Lock.Entry * string list * (string * byte[]) list =
+    let rec internal entryOf (ctx: RecordContext) (cfg: string) (framework: string) (scratch: string) (binaryDir: string) (d: Dump)
+                             : Lock.Entry * string list * (string * byte[]) list =
+        entryOfWith Path.DirectorySeparatorChar ctx cfg framework scratch binaryDir d
+
+    /// `entryOf` where msbuild spells paths with `separator` (its globbing order: `Lock.portableSources`)
+    and internal entryOfWith (separator: char) (ctx: RecordContext) (cfg: string) (framework: string) (scratch: string) (binaryDir: string) (d: Dump)
+                             : Lock.Entry * string list * (string * byte[]) list =
         let warnings = ResizeArray<string> ()
         let p = prop d
         let scratch = (slash scratch).TrimEnd '/' + "/"
@@ -1649,7 +1654,6 @@ module Import =
         // they name exactly the files msbuild compiles (a build then takes an added file too)
         let isGenerated (s: string) = generated |> List.exists (fst >> (=) s)
         let user = c.Sources |> List.filter (isGenerated >> not)
-        let sources = c.Sources
         let masks =
             match ctx.Description.Language with
             | Description.CSharp ->
@@ -1670,6 +1674,20 @@ module Import =
                             (match extra with [] -> "none" | e -> e |> List.map (relativeTo ctx.ProjectDir) |> String.concat ", "))
                     []
             | Description.FSharp -> []
+        // msbuild sorts a glob's files on the OS's spelling (`\` after the letters, `/` before):
+        // C# sources go into the `/` order, the masks' (with masks exactly, else by runs); F#'s
+        // order is the project's own
+        let sources =
+            match ctx.Description.Language, masks with
+            | Description.FSharp, _ -> c.Sources
+            | Description.CSharp, [] -> c.Sources |> Lock.portableItemSwitches separator (fun s -> if isGenerated s then None else Some ("source", s))
+            | Description.CSharp, _ -> Lock.portableSources masks separator isGenerated c.Sources
+        // the same for the values of the item switches (from globs: `EmbeddedResource`, `AdditionalFiles`)
+        let itemSwitch (o: string) =
+            let item (name: string) (value: string) =
+                if List.contains name [ "resource"; "linkresource"; "additionalfile" ] then Some (name, value.Split(',').[0]) else None
+            if isFSharp then match FscArgs.parse o with FscArgs.Switch (_, n, v) -> item (FscArgs.canonical n) v | _ -> None
+            else match CscArgs.parse o with CscArgs.Switch (n, v) -> item (CscArgs.canonical n) v | _ -> None
 
         // the .resx msbuild compiles for the main assembly, as (resx, compiled .resources)
         let resourceSwitches = if isFSharp then FscArgs.switchValues "resource" c.Options else CscArgs.switchValues "resource" c.Options
@@ -1730,14 +1748,14 @@ module Import =
                 Lock.Compilation.Csc
                     { x with
                         Name = assemblyName; Framework = framework; Directory = ctx.ProjectDir
-                        Options = x.Options |> List.filter (isOutput >> not)
+                        Options = x.Options |> List.filter (isOutput >> not) |> Lock.portableItemSwitches separator itemSwitch
                         Sources = sources; Generated = generated; Resources = resources
                         Dependencies = dependencies x.Dependencies }
             | Lock.Compilation.Fsc x ->
                 Lock.Compilation.Fsc
                     { x with
                         Fsc.Name = assemblyName; Fsc.Framework = framework; Fsc.Directory = ctx.ProjectDir
-                        Fsc.Options = x.Options |> List.filter (isOutput >> not)
+                        Fsc.Options = x.Options |> List.filter (isOutput >> not) |> Lock.portableItemSwitches separator itemSwitch
                         Fsc.Sources = sources; Fsc.Generated = generated; Fsc.Resources = resources
                         Fsc.Dependencies = dependencies x.Dependencies }
 

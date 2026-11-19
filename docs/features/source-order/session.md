@@ -4,14 +4,14 @@ Branch `feature/source-order`, cut from `origin/dev` `b82100b` (4.4.0-preview.1 
 
 ## Where things stand (2026-11-19)
 
-- Cause found and design written (`brief.md`); reported to the orchestrator; no code.
-- B-4 (`feature/legacy-recipe`) was not merged into `origin/dev` yet at the time of the report.
+- Implemented as approved (`brief.md`), committed locally, NOT pushed (the owner's go in this session is needed).
+- `build test pack` green; Windows VM acceptance passed (`windows/README.md`); repository locks unchanged.
+- B-4 merged in from `origin/dev` (`2fd8dc5`).
 
 ## Next step
 
-Wait for the owner's approval. Then: merge the latest `origin/dev` (with B-4; if B-4 is still not
-merged, ask the orchestrator), implement `brief.md` "Design" 1-3, the tests, docs, `build test
-pack`, the Windows VM check (probe projects: copy `ord1` style files -- 16 names as in `brief.md`).
+On the owner's go: `git push -u origin feature/source-order`, PR to `dev` (squash), CI. Then the
+consumer re-imports on both OSes with the next preview and compares (also confirms the `Options` cause).
 
 ## Probe recipe
 

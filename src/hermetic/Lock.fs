@@ -389,20 +389,83 @@ module Lock =
     /// <summary>
     /// The order a recorded entry's masks put `files` in, as msbuild's globbing does: for each
     /// include mask in turn, the files it names that no earlier one did, sorted ordinally
-    /// ignoring case; a file no include names last, in the given order. Pure.
+    /// ignoring case on `key` of the path (msbuild sorts the OS's spelling); a file no include
+    /// names last, in the given order. Pure.
     /// </summary>
-    let canonicalSources (masks: string list) (files: string list) : string list =
+    let canonicalSourcesBy (key: string -> string) (masks: string list) (files: string list) : string list =
         let remaining = System.Collections.Generic.HashSet<string> (files)
         [ for m in masks do
             if not (m.StartsWith "!") then
                 let covers = Xake.Path.matches m ""
                 let named =
                     files |> List.filter (fun f -> remaining.Contains f && covers f)
-                    |> List.distinct |> List.sortWith (fun a b -> System.String.Compare (a, b, System.StringComparison.OrdinalIgnoreCase))
+                    |> List.distinct |> List.sortWith (fun a b -> System.String.Compare (key a, key b, System.StringComparison.OrdinalIgnoreCase))
                 for f in named do
                     remaining.Remove f |> ignore
                     yield f
           yield! files |> List.filter remaining.Contains |> List.distinct ]
+
+    /// The masks' order of `files` with `/` as the separator (`canonicalSourcesBy`): the lock's order.
+    let canonicalSources (masks: string list) (files: string list) : string list =
+        canonicalSourcesBy (fun f -> f.Replace ('\\', '/')) masks files
+
+    /// The indices of the longest increasing run of `ranks` (patience sorting). Pure.
+    let private longestRun (ranks: int[]) : Set<int> =
+        let tails = ResizeArray<int> ()          // index into `ranks` of the tail of each length
+        let previous = Array.create ranks.Length -1
+        for i in 0 .. ranks.Length - 1 do
+            let mutable lo, hi = 0, tails.Count
+            while lo < hi do
+                let mid = (lo + hi) / 2
+                if ranks.[tails.[mid]] < ranks.[i] then lo <- mid + 1 else hi <- mid
+            if lo > 0 then previous.[i] <- tails.[lo - 1]
+            if lo = tails.Count then tails.Add i else tails.[lo] <- i
+        let mutable i = if tails.Count = 0 then -1 else tails.[tails.Count - 1]
+        let mutable run = Set.empty
+        while i >= 0 do
+            run <- run.Add i
+            i <- previous.[i]
+        run
+
+    /// <summary>
+    /// msbuild's `sources` of an import where paths are spelt with `separator`, in the lock's
+    /// order, which does not depend on the OS: the longest run of user sources in msbuild's
+    /// native globbing order (`canonicalSourcesBy` on that spelling) keeps its positions in the
+    /// list and is put in the `/` order (`canonicalSources`); generated and other sources keep
+    /// theirs. The identity for `/`. Pure.
+    /// </summary>
+    let portableSources (masks: string list) (separator: char) (isGenerated: string -> bool) (sources: string list) : string list =
+        if separator = '/' || List.distinct sources <> sources then sources else
+        let user = sources |> List.filter (isGenerated >> not)
+        let native = canonicalSourcesBy (fun f -> f.Replace ('/', separator)) masks user |> List.mapi (fun i f -> f, i) |> dict
+        let users = Array.ofList user
+        let kept = longestRun (users |> Array.map (fun f -> native.[f])) |> Set.map (fun i -> users.[i])
+        let ordered = System.Collections.Generic.Queue<string> (canonicalSources masks (user |> List.filter kept.Contains))
+        sources |> List.map (fun f -> if kept.Contains f then ordered.Dequeue () else f)
+
+    /// <summary>
+    /// The compiler options of an import where paths are spelt with `separator`, item switches
+    /// in the lock's order: each run of consecutive values of one item switch (`item` gives the
+    /// switch and the path to sort by, `None` for any other option) that is ascending in
+    /// msbuild's native order (ordinal ignoring case on that spelling) is sorted in the `/`
+    /// order. The other options keep their places; the identity for `/`. Pure.
+    /// </summary>
+    let portableItemSwitches (separator: char) (item: string -> (string * string) option) (options: string list) : string list =
+        if separator = '/' then options else
+        let compare (key: string -> string) (a: string) (b: string) = System.String.Compare (key a, key b, System.StringComparison.OrdinalIgnoreCase)
+        let native (p: string) = p.Replace ('/', separator)
+        let portable (p: string) = p.Replace ('\\', '/')
+        let runs = ResizeArray<string * ResizeArray<string * string>> ()   // (switch, [option, path])
+        for o in options do
+            match item o with
+            | Some (sw, path) when runs.Count > 0 && fst runs.[runs.Count - 1] = sw
+                                   && compare native (snd (Seq.last (snd runs.[runs.Count - 1]))) path <= 0 ->
+                (snd runs.[runs.Count - 1]).Add (o, path)
+            | Some (sw, path) -> runs.Add ((sw, ResizeArray [ o, path ]))
+            | None -> runs.Add (("", ResizeArray [ o, "" ]))
+        [ for sw, run in runs do
+            let run = List.ofSeq run
+            yield! (if sw = "" then run else run |> List.sortWith (fun (_, a) (_, b) -> compare portable a b)) |> List.map fst ]
 
     /// <summary>
     /// The `Placed` of a recorded entry whose `sources` are msbuild's whole list: the longest
@@ -414,24 +477,10 @@ module Lock =
     let placedSources (masks: string list) (isGenerated: string -> bool) (sources: string list) : (string * string) list =
         let user = sources |> List.filter (isGenerated >> not)
         let rank = canonicalSources masks user |> List.mapi (fun i f -> f, i) |> dict
-        // the longest increasing run of ranks (patience sorting), as the set of its files
+        // the longest increasing run of ranks, as the set of its files
         let kept =
-            let ranks = user |> List.map (fun f -> rank.[f]) |> Array.ofList
-            let tails = ResizeArray<int> ()          // index into `ranks` of the tail of each length
-            let previous = Array.create ranks.Length -1
-            for i in 0 .. ranks.Length - 1 do
-                let mutable lo, hi = 0, tails.Count
-                while lo < hi do
-                    let mid = (lo + hi) / 2
-                    if ranks.[tails.[mid]] < ranks.[i] then lo <- mid + 1 else hi <- mid
-                if lo > 0 then previous.[i] <- tails.[lo - 1]
-                if lo = tails.Count then tails.Add i else tails.[lo] <- i
-            let set = System.Collections.Generic.HashSet<string> ()
-            let mutable i = if tails.Count = 0 then -1 else tails.[tails.Count - 1]
-            while i >= 0 do
-                set.Add (List.item i user) |> ignore
-                i <- previous.[i]
-            set
+            let users = Array.ofList user
+            longestRun (users |> Array.map (fun f -> rank.[f])) |> Set.map (fun i -> users.[i])
         sources |> List.mapi (fun i f -> f, (if i = 0 then "" else List.item (i - 1) sources))
         |> List.filter (fun (f, _) -> isGenerated f || not (kept.Contains f))
 

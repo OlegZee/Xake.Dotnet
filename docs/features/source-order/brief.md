@@ -1,6 +1,6 @@
 # Brief: source order independent of the importing OS (release 4.4.0)
 
-Status 2026-11-19: design proposed, waiting for the owner's approval. No code yet.
+Status 2026-11-19: approved and implemented.
 
 ## Finding
 
