@@ -47,8 +47,11 @@ module Import =
         [ "Compile"; "Reference"; "FrameworkReference"; "PackageReference"; "PackageVersion"; "ProjectReference"; "AssemblyAttribute"
           "InternalsVisibleTo"; "EmbeddedResource"; "None"; "Content" ]
     /// What the evaluation reads only to refuse a project the import cannot record yet (WPF:
-    /// `UseWPF` with XAML items), not carried by the description.
-    let private probeProperties = [ "UseWPF" ]
+    /// `UseWPF` with XAML items; a legacy project without the overlay, `legacyGaps`), not
+    /// carried by the description.
+    let private probeProperties =
+        [ "UseWPF"; "UsingMicrosoftNETSdk"; "NETCoreSdkVersion"; "ProjectAssetsCacheFile"; "TargetFrameworkIdentifier"
+          "AutomaticallyUseReferenceAssemblyPackages" ]
     let private probeItems = [ "Page"; "ApplicationDefinition" ]
     /// What a project file may set that the description carries (or that only shapes what it
     /// carries); any other property or item type in a repository file is reported as dropped.
@@ -76,6 +79,20 @@ module Import =
 
     let private prop (d: Dump) name = d.Props |> Map.tryFind name |> Option.defaultValue ""
     let private items (d: Dump) name = d.Items |> Map.tryFind name |> Option.defaultValue []
+
+    /// What a legacy (non-SDK) project's outer evaluation lacks of the import overlay's sections
+    /// (docs/legacy-projects.md): A no `TargetFramework(s)`; B no SDK package resolution
+    /// (`NETCoreSdkVersion`, `ProjectAssetsCacheFile`); D a .NET Framework project the import
+    /// gives the reference assemblies package (`AutomaticallyUseReferenceAssemblyPackages`)
+    /// without a `PackageReference` to it. Empty for an SDK project, or a legacy one with all.
+    let internal legacyGaps (d: Dump) =
+        let p = prop d
+        if p "UsingMicrosoftNETSdk" = "true" then [] else
+        [ if p "TargetFramework" = "" && p "TargetFrameworks" = "" then "A framework"
+          if p "NETCoreSdkVersion" = "" || p "ProjectAssetsCacheFile" = "" then "B package resolution"
+          if p "TargetFrameworkIdentifier" = ".NETFramework" && p "AutomaticallyUseReferenceAssemblyPackages" = "true"
+             && not (items d "PackageReference" |> List.exists (fun (i, _) -> i.Equals ("Microsoft.NETFramework.ReferenceAssemblies", StringComparison.OrdinalIgnoreCase))) then
+              "D reference assemblies" ]
     /// Item metadata by name, case-insensitively as msbuild reads it (`Version`, `version`).
     let private meta (name: string) (m: Map<string, string>) =
         match Map.tryFind name m with
@@ -661,6 +678,11 @@ module Import =
                     return readDump dump, Project.parseImports (File.ReadAllText pp)
                 }
             let! outer, outerImports = one None
+            match legacyGaps outer with
+            | [] -> ()
+            | gaps ->
+                failwithf "'%s': legacy (non-SDK) project; import needs TargetFramework and PackageReference resolution — see docs/legacy-projects.md (missing: %s)"
+                    projectFile (String.concat ", " gaps)
             let declared =
                 match split (prop outer "TargetFrameworks") with
                 | [] -> split (prop outer "TargetFramework")

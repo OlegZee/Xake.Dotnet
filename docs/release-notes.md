@@ -8,6 +8,17 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
 ## Unreleased
 
+### Legacy (non-SDK) projects: an import overlay, and a clear failure without it
+
+A legacy csproj (`ToolsVersion`, `TargetFrameworkVersion`, no `Sdk`) is not supported natively.
+[legacy-projects.md](legacy-projects.md) gives an import overlay (a targets file passed as
+`CustomAfterMicrosoftCommonTargets`) that makes one importable on .NET's MSBuild: its framework,
+`PackageReference` resolution, XAML `Page` items and .NET Framework reference assemblies, on every
+OS. Without it the import now fails that project with `legacy (non-SDK) project; import needs
+TargetFramework and PackageReference resolution — see docs/legacy-projects.md (missing: ...)`
+instead of `msbuild reports no TargetFramework(s)` or a later msbuild error. SDK projects are not
+affected.
+
 ### .NET Framework reference assemblies from the package on every OS
 
 The import of a `net4*` project on Windows with a targeting pack installed recorded nothing (the

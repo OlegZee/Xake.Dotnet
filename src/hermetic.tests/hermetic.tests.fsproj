@@ -35,6 +35,7 @@
     <Compile Include="LineEndTests.fs" />
     <Compile Include="RecordTests.fs" />
     <Compile Include="NetFxReferenceTests.fs" />
+    <Compile Include="LegacyProjectTests.fs" />
     <Compile Include="ImportDiagnosticsTests.fs" />
     <Compile Include="SdkFreeImportTests.fs" />
     <Compile Include="AppTests.fs" />
