@@ -142,7 +142,8 @@ type ``Composed compilation from a description``() =
             want ["out/netstandard2.0/Lib.dll"; "out/net8.0/Lib.dll"]
             rules [
                 "out/(fwk:*)/Lib.dll" ..> recipe {
-                    let! fwk = getRuleMatch "fwk"
+                    let! m = matched
+                    let fwk = m["fwk"]
                     do! csc { targetfwk fwk; project "lib/xake.project.json" }
                 }
             ]

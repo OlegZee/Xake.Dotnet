@@ -406,7 +406,8 @@ module Described =
     let flowingPackages (descriptionOf: string -> string) (d: Description.Project) (framework: string)
             : Recipe<ExecContext, Description.Package list> =
         let declared = restoreInput d framework
-        let rec walk (seen: string list) (queue: (string * string * string) list) (acc: Description.Package list) =
+        let rec walk (seen: string list) (queue: (string * string * string) list) (acc: Description.Package list)
+                : Recipe<ExecContext, Description.Package list> =
             recipe {
                 match queue with
                 | [] -> return acc
@@ -473,14 +474,16 @@ module Described =
     /// </summary>
     let restoreAll (descriptionOf: string -> string) (descriptions: string list) (frameworks: string list) : Recipe<ExecContext, unit> =
         recipe {
-            let rec gather (paths: string list) (acc: (string * Description.Package list) list) =
+            let rec gather (paths: string list) (acc: (string * Description.Package list) list)
+                    : Recipe<ExecContext, (string * Description.Package list) list> =
                 recipe {
                     match paths with
                     | [] -> return acc
                     | path :: rest ->
                         let! d = Description.load path
                         let fwks = if List.isEmpty frameworks then d.Frameworks else d.Frameworks |> List.filter (fun f -> frameworks |> List.exists (same f))
-                        let rec each (fs: string list) (acc: (string * Description.Package list) list) =
+                        let rec each (fs: string list) (acc: (string * Description.Package list) list)
+                                : Recipe<ExecContext, (string * Description.Package list) list> =
                             recipe {
                                 match fs with
                                 | [] -> return acc
@@ -581,7 +584,7 @@ module Described =
             | Some fs ->
                 let! (Filelist found) = getFiles fs
                 return
-                    found |> List.map (File.getFullName >> normal) |> List.distinct
+                    found |> List.map (fun f -> f.Name) |> List.distinct
                     |> List.sortWith (fun a b -> System.String.CompareOrdinal (a, b))
         }
 
@@ -616,7 +619,7 @@ module Described =
         normal (Path.GetFullPath (if Path.IsPathRooted path then path else Path.Combine (root, path)))
 
     /// The description's plan for one framework, from the settings `project` follows.
-    let internal plan (language: Description.Language) (path: string) (spec: Spec) (targetFramework: string) (out: File) (refs: Fileset) =
+    let internal plan (language: Description.Language) (path: string) (spec: Spec) (targetFramework: string) (out: File option) (refs: Fileset) =
         recipe {
             let! options = getCtxOptions ()
             let root = options.ProjectRoot
@@ -655,7 +658,7 @@ module Described =
             // a projectRef is passed as a reference by the script (its output path is the script's layout)
             let (Filelist given) = toFileList root refs
             for name in d.ProjectRefs do
-                if not (given |> List.exists (fun f -> same (Path.GetFileNameWithoutExtension f.FullName) name)) then
+                if not (given |> List.exists (fun f -> same (Path.GetFileNameWithoutExtension (File.getSysFileName f)) name)) then
                     do! trace Warning "'%s': projectRef '%s' is not among the references; pass its output with `ref`" d.Name name
 
             // the shared frameworks (`frameworkReferences`) from the SDK's targeting packs, as the
@@ -667,18 +670,20 @@ module Described =
                 shared.AddRange dlls
 
             let! out =
-                if out <> File.undefined then recipe { return out } else
-                recipe {
-                    let! ctx = getCtx ()
-                    let files =
-                        ctx.Targets |> List.choose (function FileTarget f -> Some f | _ -> None)
-                        |> List.filter (fun f -> not (f.Name.EndsWith ".runtimeconfig.json"))
-                    match files with
-                    | f :: _ -> return f
-                    | [] ->
-                        let! f = getTargetFile ()
-                        return f
-                }
+                match out with
+                | Some out -> recipe { return out }
+                | None ->
+                    recipe {
+                        let! ctx = getCtx ()
+                        let files =
+                            ctx.Targets |> List.choose (function FileTarget f -> Some f | _ -> None)
+                            |> List.filter (fun f -> not (f.Name.EndsWith ".runtimeconfig.json"))
+                        match files with
+                        | f :: _ -> return f
+                        | [] ->
+                            let! f = getTargetFile ()
+                            return f
+                    }
 
             let configDefines, configArgs, tailcalls =
                 match spec.Config with
@@ -764,7 +769,7 @@ module Described =
                   Sources =
                     d.Sources |> List.map (fun s -> if s.StartsWith "!" then "!" + inProject (s.Substring 1) else inProject s)
                   Out = out
-                  Doc = if o.Doc then Some (normal (Path.ChangeExtension (out.FullName, ".xml"))) else None
+                  Doc = if o.Doc then Some (normal (Path.ChangeExtension (File.getSysFileName out, ".xml"))) else None
                   Target = (match d.Kind with Description.Library -> TargetType.Library | Description.Exe -> TargetType.Exe)
                   Tailcalls = tailcalls
                   Attributes = attributes
@@ -792,13 +797,13 @@ module Described =
                 { settings with
                     Project = None
                     TargetFramework = p.Framework
-                    Out = p.Out
+                    Out = Some p.Out
                     Target = p.Target
                     Src = settings.Src + filesOf p.Sources
                     Ref = settings.Ref + filesOf p.PackageRefs
                     RefGlobal = settings.RefGlobal @ p.GlobalRefs
                     Define = settings.Define @ p.Defines |> List.distinct
-                    Doc = (match p.Doc with Some doc -> File.make doc | None -> settings.Doc)
+                    Doc = (match p.Doc with Some doc -> Some (File.make doc) | None -> settings.Doc)
                     Tailcalls = settings.Tailcalls && p.Tailcalls
                     CommandArgs = settings.CommandArgs @ p.Args }
             let! f = Fsc.ofSettings s
@@ -824,7 +829,7 @@ module Described =
                 { settings with
                     Project = None
                     TargetFramework = p.Framework
-                    Out = p.Out
+                    Out = Some p.Out
                     Target = p.Target
                     Src = settings.Src + filesOf files
                     Ref = settings.Ref + filesOf p.PackageRefs

@@ -20,7 +20,7 @@ type ``Csc compiler server``() =
     let settings (server: CompilerServer) (src: string) (out: string) = {
         CscSettingsType.Default with
             Src = !!src
-            Out = File.make out
+            Out = Some (File.make out)
             Target = Library
             TargetFramework = "net-4.6.2"
             RefGlobal = ["System.dll"; "System.Core.dll"]

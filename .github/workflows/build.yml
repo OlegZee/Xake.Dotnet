@@ -59,9 +59,9 @@ jobs:
         path: build.log
         retention-days: 5
 
-  # The newest published Xake 4.x, previews included, instead of the floor of the range in
+  # The newest published Xake 5.x, previews included, instead of the floor of the range in
   # src/dotnet/Xake.Dotnet.fsproj: an engine release that breaks Xake.Dotnet shows here before
-  # anyone bumps the floor. `4.*` once 4.0.0 is out.
+  # anyone bumps the floor.
   xake-latest:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -71,8 +71,8 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: '10.0.x'
-    - name: Build & test on the newest Xake 4.x
-      run: dotnet fsi build.fsx -- -- build test -d "XAKE_VERSION=4.*-*"
+    - name: Build & test on the newest Xake 5.x
+      run: dotnet fsi build.fsx -- -- build test -d "XAKE_VERSION=5.*-*"
     - name: Upload build log
       uses: actions/upload-artifact@v7
       if: always()

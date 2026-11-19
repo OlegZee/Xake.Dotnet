@@ -53,7 +53,8 @@ type ``Compiler jobs``() =
             rules [
                 "main" => recipe { do! need [ for i in 1..count -> sprintf "%s%d.dll" label i ] }
                 sprintf "%s(n:*).dll" label ..> recipe {
-                    let! n = getRuleMatch "n"
+                    let! m = matched
+                    let n = m["n"]
                     match throttled with
                     | Some (resource, units) ->
                         do! csc { targetfwk "netstandard2.0"; src (!! (sprintf "%s%s.cs" label n)); cscpath fake; throttle (resource, units) }
@@ -120,7 +121,8 @@ type ``Compiler jobs``() =
                 rules [
                     "main" => recipe { do! need [ for i in 1..3 -> sprintf "fj%d.dll" i ] }
                     "fj(n:*).dll" ..> recipe {
-                        let! n = getRuleMatch "n"
+                        let! m = matched
+                        let n = m["n"]
                         let! f = fsc {
                             targetfwk "netstandard2.0"
                             src (!! (sprintf "fj%s.fs" n))
@@ -175,7 +177,8 @@ type ``Compiler jobs``() =
             rules [
                 "main" => recipe { do! need [ for i in 1..3 -> sprintf "ft%d.dll" i ] }
                 "ft(n:*).dll" ..> recipe {
-                    let! n = getRuleMatch "n"
+                    let! m = matched
+                    let n = m["n"]
                     let! f = fsc {
                         targetfwk "netstandard2.0"
                         src (!! (sprintf "ft%s.fs" n))

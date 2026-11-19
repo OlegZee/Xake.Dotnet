@@ -78,7 +78,8 @@ units)` in `csc { }` / `fsc { }`, or `Throttle = Some (resource, units)` in `Run
 ```fsharp
 let heavy = Resource.newResource "heavy" 4
 "(n:*).dll" ..> recipe {
-    let! n = getRuleMatch "n"
+    let! m = matched
+    let n = m["n"]
     do! csc { src !!(n + ".cs"); throttle (heavy, 1) }
 }
 ```

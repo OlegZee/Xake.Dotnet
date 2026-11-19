@@ -50,13 +50,15 @@ msbuild properties. Xake records none of them (no pack emulation: a repository's
 
 ```fsharp
 "out/pkg/(name:*).(ver:*).nupkg" ..> recipe {
-    let! name = getRuleMatch "name"
-    let! version = getRuleMatch "ver"
+    let! m = matched
+    let name = m["name"]
+    let version = m["ver"]
     let! d = Description.load (descriptionOf name)
     let fwks = [ for f in d.Frameworks -> f, outOf "Release" f name ]
     do! need [ for f, dir in fwks -> $"{dir}/{name}.dll" ]
     let tokens = Pack.tokensOf d version |> Map.add "brandSuffix" ".Acme"
-    let! target = getTargetFullName ()
+    let! targetFile = getTargetFile ()
+    let target = File.getSysFileName targetFile
     Pack.fromNuspec target $"{dirOf name}/{name}.nuspec" tokens (Pack.libOf name fwks) Pack.Options.Default
 }
 ```

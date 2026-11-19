@@ -39,7 +39,7 @@ type ``Dotnet tasks tests``() =
                     do! Csc.compile {
                     CscSettingsType.Default with
                         Src = !!"hello.cs"
-                        Out = File.make "hello.exe"
+                        Out = Some (File.make "hello.exe")
                         TargetFramework = "net-4.6.2"
                         RefGlobal = ["System.dll"]
                     }
@@ -52,7 +52,8 @@ type ``Dotnet tasks tests``() =
     		                System.Console.WriteLine("Hello world!");
     	                }
                     }"""
-                    let! src = getTargetFullName()
+                    let! srcFile = getTargetFile()
+                    let src = File.getSysFileName srcFile
                     do! trace Error "Done building 'hello.cs' rule in %A" src
                     needExecuteCount.Value <- needExecuteCount.Value + 1
                 }
@@ -107,7 +108,7 @@ type ``Dotnet tasks tests``() =
                         do! Csc.compile {
                         CscSettingsType.Default with
                             Src = !!"helloresx.cs"
-                            Out = File.make "helloresx.exe"
+                            Out = Some (File.make "helloresx.exe")
                             TargetFramework = "net-4.6.2"
                             RefGlobal = ["System.dll"]
                             Resources = [
@@ -167,7 +168,7 @@ type ``Dotnet tasks tests``() =
         let libSettings =
             { CscSettingsType.Default with
                 Src = !!"hashlib.cs"
-                Out = File.make "hashlib.dll"
+                Out = Some (File.make "hashlib.dll")
                 TargetFramework = "net-4.6.2"
                 RefGlobal = ["System.dll"]
                 CommandArgs = ["/deterministic"] }
@@ -175,7 +176,7 @@ type ``Dotnet tasks tests``() =
             { CscSettingsType.Default with
                 Src = !!"hashapp.cs"
                 Ref = !!"hashlib.dll"
-                Out = File.make "hashapp.exe"
+                Out = Some (File.make "hashapp.exe")
                 TargetFramework = "net-4.6.2"
                 RefGlobal = ["System.dll"] }
 
@@ -239,7 +240,7 @@ type ``Dotnet tasks tests``() =
         let settings =
             { CscSettingsType.Default with
                 Src = !!"missingref.cs"
-                Out = File.make "missingref.dll"
+                Out = Some (File.make "missingref.dll")
                 TargetFramework = "net-4.6.2" }
 
         let build () =
@@ -277,7 +278,7 @@ type ``Dotnet tasks tests``() =
                     do! Fsc.compile {
                     FscSettingsType.Default with
                         Src = !!"hi.fs"
-                        Out = File.make "hi.dll"
+                        Out = Some (File.make "hi.dll")
                         Ref = Fileset.Empty ++ fsharpCore
                         TargetFramework = "netstandard2.0"
                     }
@@ -353,7 +354,7 @@ let greet name = sprintf "Hello, %s" name
                 "managedcsc" => recipe {
                     let! c = Csc.ofSettings { CscSettingsType.Default with
                                                 Src = !!"managedcsc.cs"
-                                                Out = File.make "managedcsc.dll"
+                                                Out = Some (File.make "managedcsc.dll")
                                                 TargetFramework = "netstandard2.0" }
                     resolved.Value <- c.Dependencies.Compiler.Path
                 }
@@ -387,7 +388,7 @@ let greet name = sprintf "Hello, %s" name
                 "refpack" => recipe {
                     let! c = Csc.ofSettings { CscSettingsType.Default with
                                                 Src = !!"refpack.cs"
-                                                Out = File.make "refpack.dll"
+                                                Out = Some (File.make "refpack.dll")
                                                 TargetFramework = "netstandard2.0" }
                     resolved.Value <- Some c
                 }
@@ -415,7 +416,7 @@ let greet name = sprintf "Hello, %s" name
                         "refpackbad" => recipe {
                             let! _ = Csc.ofSettings { CscSettingsType.Default with
                                                         Src = !!"refpackbad.cs"
-                                                        Out = File.make "refpackbad.dll"
+                                                        Out = Some (File.make "refpackbad.dll")
                                                         TargetFramework = "netstandard2.0" }
                             ()
                         }
@@ -581,9 +582,9 @@ let greet name = sprintf "Hello, %s" name
             want (["nofwk"])
             rules [
                 "nofwk" => recipe {
-                    let! c = Csc.ofSettings { CscSettingsType.Default with Src = !!"a.cs"; Out = File.make "nofwk/nofwk.dll" }
+                    let! c = Csc.ofSettings { CscSettingsType.Default with Src = !!"a.cs"; Out = Some (File.make "nofwk/nofwk.dll") }
                     resolved.Value <- Some c
-                    do! Csc.compile { CscSettingsType.Default with Src = !!"a.cs"; Out = File.make "nofwk/nofwk.dll" }
+                    do! Csc.compile { CscSettingsType.Default with Src = !!"a.cs"; Out = Some (File.make "nofwk/nofwk.dll") }
                 }
             ]
         }

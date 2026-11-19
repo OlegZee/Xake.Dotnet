@@ -71,7 +71,7 @@ module ResgenImpl =
                 do! needFiles (Filelist files)
 
                 for file in files do
-                    let rcfile = file |> File.getFullName |> generate fsOptions.BaseDir resOptions
+                    let rcfile = file |> File.getSysFileName |> generate fsOptions.BaseDir resOptions
                     do! trace Info "[resgen] generated '%s'" rcfile
         }
 

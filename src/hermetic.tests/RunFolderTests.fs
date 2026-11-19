@@ -253,23 +253,26 @@ type ``Run folders``() =
               "desk/P.cs", "class P { static void Main() { System.Console.WriteLine(Lib.C.S()); } }\n" ]
 
     let compile = recipe {
-        let! cfg = getRuleMatch "cfg"
-        let! fwk = getRuleMatch "fwk"
-        let! asm = getRuleMatch "asm"
+        let! m = matched
+        let cfg = m["cfg"]
+        let fwk = m["fwk"]
+        let asm = m["asm"]
         do! Locks.compileAs (lockOf projectOfAsm.[asm] cfg) fwk [] }
     let doc = recipe {
-        let! cfg = getRuleMatch "cfg"
-        let! fwk = getRuleMatch "fwk"
-        let! asm = getRuleMatch "asm"
+        let! m = matched
+        let cfg = m["cfg"]
+        let fwk = m["fwk"]
+        let asm = m["asm"]
         do! Locks.doc Locks.Settings.Default (lockOf projectOfAsm.[asm] cfg) fwk }
 
     /// A run of the fixture's script: the compile rules over the flat output, the run folders by
     /// links (`run/`) and by copies (`runc/`).
     let script (options: ExecOptions) (label: string) (targets: string list) =
         let runFolder (mode: RunFolder.Mode) = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.runFolderWith [] mode lockOf outOf cfg fwk name }
         RecordKit.run options label
             [ command "build" { do! Locks.needAll (!! "*/xake.project.json") "Release" lockOf outOf }

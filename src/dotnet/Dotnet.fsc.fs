@@ -21,7 +21,7 @@ module FscBuilder =
         /// <summary>Specifies the .NET framework to compile against</summary>
         [<CustomOperation("targetfwk")>] member __.TargetFwk(s:FscSettingsType, value) = {s with TargetFramework = value}
         /// <summary>Specifies the output file name</summary>
-        [<CustomOperation("out")>]       member __.OutFile(s:FscSettingsType, value) =   {s with Out = value}
+        [<CustomOperation("out")>]       member __.OutFile(s:FscSettingsType, value) =   {s with Out = Some value}
         /// <summary>Sets the source fileset</summary>
         [<CustomOperation("src")>]       member __.SrcFiles(s:FscSettingsType, value) =  {s with Src = value}
 
@@ -42,7 +42,7 @@ module FscBuilder =
         /// <summary>Defines conditional compilation symbols</summary>
         [<CustomOperation("define")>]    member __.Define(s:FscSettingsType, value) =    {s with Define = value}
         /// <summary>Writes the xml documentation file</summary>
-        [<CustomOperation("doc")>]       member __.Doc(s:FscSettingsType, value) =       {s with Doc = value}
+        [<CustomOperation("doc")>]       member __.Doc(s:FscSettingsType, value) =       {s with Doc = Some value}
         /// <summary>Uses a specific F# compiler version</summary>
         [<CustomOperation("fscver")>]    member __.FscVer(s:FscSettingsType, value) =    {s with FscVersion = Some value}
         /// <summary>Does not reference the default CLI assemblies</summary>

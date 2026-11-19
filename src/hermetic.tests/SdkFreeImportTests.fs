@@ -64,9 +64,10 @@ type ``Import record on package compiler and analyzers``() =
     member private x.BuildAgainst (label: string) (name: string) (dotnetRoot: string) =
         let extra = [ "$(DotnetRoot)", dotnetRoot ]
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compileAsWith extra (RecordKit.lockOf name cfg) fwk [] }
         RecordKit.run x.TestOptions label
             [ command "build" { do! Locks.needAllWith extra (!! (name + "/xake.project.json")) "Release" RecordKit.lockOf RecordKit.outOf }

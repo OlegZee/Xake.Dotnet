@@ -582,14 +582,16 @@ type ``Import record``() =
 
     member private x.Build (label: string) =
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compileAs (lockOf name cfg) fwk [] }
         let doc = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.doc Locks.Settings.Default (lockOf name cfg) fwk }
         x.Run label
             [ command "build" { do! Locks.needAll (!! "*/xake.project.json") "Release" lockOf outOf }
@@ -639,9 +641,10 @@ type ``Import record``() =
 
         // the application's output is `app.exe` (msbuild's `TargetFileName`): asked as `app.dll` is not it
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compileAs (lockOf name cfg) fwk [] }
         let asDll = Assert.Throws<XakeException>(fun () ->
             x.Run "build-asdll" [ "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile ] [ "out/Release/net472/app/app.dll" ])
@@ -761,14 +764,16 @@ module internal RecordKit =
     /// The fixture's outputs of configuration `cfg`, built from the locks with `settings`.
     let buildWith (options: ExecOptions) (label: string) (cfg: string) (settings: Locks.Settings) =
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compile settings (lockOf name cfg) fwk }
         let doc = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.doc settings (lockOf name cfg) fwk }
         run options label
             [ command "build" { do! Locks.needAll (!! "*/xake.project.json") cfg lockOf outOf }
@@ -786,23 +791,26 @@ module internal RecordKit =
     /// outputs (the compile rules of `build`).
     let deploy (options: ExecOptions) (label: string) (cfg: string) (mode: RunFolder.Mode) =
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compileAs (lockOf name cfg) fwk [] }
         let doc = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.doc Locks.Settings.Default (lockOf name cfg) fwk }
         run options label
             [ command "deploy" {
                 let! folders = Locks.runFoldersWith [] (!! "*/xake.project.json") cfg lockOf Locks.runOf
                 do! need folders }
               "run/(cfg:*)/(fwk:*)/(name:*)/.xake-run.txt" ..> recipe {
-                let! cfg = getRuleMatch "cfg"
-                let! fwk = getRuleMatch "fwk"
-                let! name = getRuleMatch "name"
+                let! m = matched
+                let cfg = m["cfg"]
+                let fwk = m["fwk"]
+                let name = m["name"]
                 do! Locks.runFolderWith [] mode lockOf outOf cfg fwk name }
               "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile
               "out/(cfg:*)/(fwk:*)/(name:*)/*.exe" ..> compile
@@ -1416,7 +1424,7 @@ type ``Record entry``() =
         Assert.That(masks |> List.map (Roots.tokenizeMask roots >> Roots.expandMask roots), Is.EqualTo masks)
         // the masks expand (`Described.expand`'s fileset) to the sources msbuild compiles
         let (Filelist files) = (Described.filesetOf masks).Value |> Fileset.toFileList (here ())
-        Assert.That(files |> List.map (fun f -> f.FullName.Replace ('\\', '/')) |> List.sort,
+        Assert.That(files |> List.map (fun f -> f.Name) |> List.sort,
                     Is.EqualTo [ here () + "/" + proj + "/A.cs"; here () + "/" + proj + "/Sub/B.cs" ])
 
     /// The same project with msbuild's items in Windows' order (`\\` spelling) and in macOS's
@@ -1844,9 +1852,10 @@ type ``Import record version token``() =
     member private x.Build (label: string) (vars: (string * string) list) (settings: Locks.Settings) =
         let versions = ResizeArray<string * string> ()
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compile settings (RecordKit.lockOf name cfg) fwk }
         let args = vars |> List.collect (fun (name, value) -> [ "-d"; name + "=" + value ])
         xakeArgs args { x.TestOptions with FileLog = label + ".log"; ThrowOnError = true; ScriptVars = [ "CI", "off"; "CSC_SERVER", "off" ]; FileLogLevel = Loud } {
@@ -2106,16 +2115,17 @@ type ``Import record satellites``() =
     member private x.BuildSatellites (label: string) (names: string list) =
         let settings = Locks.Settings.Default
         let matches = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             return cfg, fwk, name }
         RecordKit.run x.TestOptions label
             [ command "build" {
                 let! sats =
                     names
                     |> List.map (fun n -> Locks.satellitesOf settings (RecordKit.lockOf n "Release") "net8.0" (RecordKit.outOf "Release" "net8.0" n))
-                    |> List.fold (fun acc r ->
+                    |> List.fold (fun (acc: Recipe<ExecContext, string list>) r ->
                         recipe {
                             let! a = acc
                             let! b = r
@@ -2193,7 +2203,8 @@ type ``Import record satellites``() =
                 RecordKit.run x.TestOptions "build-sat-case"
                     [ command "build" { do! need [ "out/Release/net8.0/lib/zh-cn/lib.resources.dll" ] }
                       "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
-                        let! fwk = getRuleMatch "fwk"
+                        let! m = matched
+                        let fwk = m["fwk"]
                         do! Locks.satellite Locks.Settings.Default lockPath fwk SatelliteInputs.Default } ]
                     [ "build" ])
         Assert.That(e.Data0, Does.Contain "is spelled 'zh-CN' by .NET")
@@ -2258,9 +2269,10 @@ type ``Satellites from external translations``() =
     member private x.Build (label: string) (fwks: string list) (placed: string option) (inputs: string -> SatelliteInputs) =
         let settings = Locks.Settings.Default
         let matches = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             return cfg, fwk, name }
         RecordKit.run x.TestOptions label
             [ command "build" { do! need [ for f in fwks -> RecordKit.outOf "Release" f "lib" + "/ja/lib.resources.dll" ] }
@@ -2269,12 +2281,13 @@ type ``Satellites from external translations``() =
                 match placed with
                 | Some file ->
                     let! target = getTargetFile ()
-                    Directory.CreateDirectory (Path.GetDirectoryName target.FullName) |> ignore
-                    File.Copy (file, target.FullName, true)
+                    Directory.CreateDirectory (Path.GetDirectoryName (File.getSysFileName target)) |> ignore
+                    File.Copy (file, File.getSysFileName target, true)
                 | None -> do! Locks.compile settings (RecordKit.lockOf name cfg) fwk }
               "out/(cfg:*)/(fwk:*)/(name:*)/(culture:*)/*.resources.dll" ..> recipe {
                 let! cfg, fwk, name = matches
-                let! culture = getRuleMatch "culture"
+                let! m = matched
+                let culture = m["culture"]
                 do! Locks.satellite settings (RecordKit.lockOf name cfg) fwk (inputs culture) } ]
             [ "build" ]
 
@@ -2313,8 +2326,9 @@ type ``Satellites from external translations``() =
         RecordKit.run x.TestOptions "task-ext"
             [ command "build" { do! need [ for f in frameworks -> sprintf "task/%s/ja/lib.resources.dll" f ] }
               "task/(fwk:*)/(culture:*)/lib.resources.dll" ..> recipe {
-                let! fwk = getRuleMatch "fwk"
-                let! culture = getRuleMatch "culture"
+                let! m = matched
+                let fwk = m["fwk"]
+                let culture = m["culture"]
                 do! satellite {
                         template (sprintf "out/Release/%s/lib/lib.dll" fwk)
                         keyfile "key.snk"
@@ -2347,9 +2361,10 @@ type ``Satellites from external translations``() =
             RecordKit.run x.TestOptions label
                 [ command "build" { do! need [ satellite.Format { cfg = "Release"; fwk = "net8.0"; name = "lib"; culture = "ja"; asm = "lib" } ] }
                   "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> recipe {
-                    let! cfg = getRuleMatch "cfg"
-                    let! fwk = getRuleMatch "fwk"
-                    let! name = getRuleMatch "name"
+                    let! m = matched
+                    let cfg = m["cfg"]
+                    let fwk = m["fwk"]
+                    let name = m["name"]
                     do! Locks.compile Locks.Settings.Default (RecordKit.lockOf name cfg) fwk }
                   satellite.Rule (fun m ->
                     Locks.satellite Locks.Settings.Default (RecordKit.lockOf m.name m.cfg) m.fwk

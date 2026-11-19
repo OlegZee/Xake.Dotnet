@@ -121,7 +121,7 @@ type ``Sign delegated``() =
     member _.``sign {} gives the local rule, or the delegated one when store and budget are set`` () =
         let local = sign { target "signed/*.dll"; signer Sign.fakeSigner }
         match local with
-        | FileRule (mask, _) -> Assert.That (mask, Is.EqualTo "signed/*.dll")
+        | FileRule ([mask], _, _) -> Assert.That (mask, Is.EqualTo "signed/*.dll")
         | other -> Assert.Fail (sprintf "expected a FileRule, got %A" other)
         let remote =
             sign {
@@ -131,7 +131,7 @@ type ``Sign delegated``() =
                 budget (Resource.newResource "sign" 1)
             }
         match remote with
-        | DelegatedRule (FileRule (mask, _), _) -> Assert.That (mask, Is.EqualTo "signed/*.dll")
+        | DelegatedRule (FileRule ([mask], _, _), _) -> Assert.That (mask, Is.EqualTo "signed/*.dll")
         | other -> Assert.Fail (sprintf "expected a delegated FileRule, got %A" other)
         Assert.Throws<exn> (fun () -> sign { target "signed/*.dll" } |> ignore) |> ignore
         Assert.Throws<exn> (fun () -> sign { target "signed/*.dll"; signer Sign.fakeSigner; store (Sign.directoryStore storeDir) } |> ignore) |> ignore

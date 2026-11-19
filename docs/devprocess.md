@@ -41,12 +41,12 @@ The test projects reference `src/dotnet` (and `src/hermetic`); the engine reache
 ## Versions
 
 - **One package, one version line**: tag `vX.Y.Z` = package `Xake.Dotnet` X.Y.Z, both
-  assemblies. The major follows the `Xake` major it targets (4.x on `Xake [4, 5)`); minors and
+  assemblies. The major follows the `Xake` major it targets (5.x on `Xake [5, 6)`); minors and
   patches are this repository's own.
 - **The hermetic part is marked "API may change"**: an incompatible change in it is a minor
   version with a release-notes line, until that mark is removed.
 - **The `Xake` range** is the `XakeVersion` property of `src/dotnet/Xake.Dotnet.fsproj`
-  (`[<floor>, 5.0)`). The floor is the version this repository builds against; it moves only
+  (`[<floor>, 6.0)`). The floor is the version this repository builds against; it moves only
   when the code needs a newer engine:
 
   ```bash
@@ -83,7 +83,7 @@ git tag vX.Y.Z && git push origin master --tags
 ```
 
 Checklist: `build test pack` and `build.fsc.fsx build check` green; the nuspec has `FSharp.Core`
-8.0.100 and `Xake [<floor>, 5.0)`; release notes have the entry; `samples/fullframework.fsx`
+8.0.100 and `Xake [<floor>, 6.0)`; release notes have the entry; `samples/fullframework.fsx`
 runs after `build`.
 
 ### Bootstrapping note

@@ -279,7 +279,7 @@ module Import =
             else
                 let elements = masks |> List.map (xakeMask >> Path.parse >> Includes)
                 let (Filelist files) = Fileset ({ Xake.Fileset.DefaultOptions with BaseDir = Some projectDir }, elements) |> Fileset.toFileList projectDir
-                files |> List.map (fun f -> slash f.FullName) |> Set.ofList
+                files |> List.map (fun f -> f.Name) |> Set.ofList
         let defaults =
             if isTrue (prop d "EnableDefaultItems") && isTrue (prop d "EnableDefaultCompileItems") then
                 // relative to the project folder: an absolute exclude inside it made relative, one
@@ -345,7 +345,7 @@ module Import =
         let elements =
             masks |> List.map (fun m -> if m.StartsWith "!" then Excludes (Path.parse (m.Substring 1)) else Includes (Path.parse m))
         let (Filelist files) = Fileset ({ Xake.Fileset.DefaultOptions with BaseDir = Some dir }, elements) |> Fileset.toFileList dir
-        files |> List.map (fun f -> slash f.FullName)
+        files |> List.map (fun f -> f.Name)
 
     /// The description of one project from its evaluations: `outer` (no `TargetFramework`) and
     /// one per framework, in `frameworks` order. Pure but for `expandMasks` reading the folder.

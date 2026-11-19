@@ -68,7 +68,7 @@ module CscTypes =
         /// Specifies the format of the output file.
         Target: TargetType
         /// Specifies the output file name (default: base name of file with main class or first file).
-        Out: File
+        Out: File option
         /// Source files.
         Src: Fileset
         /// References metadata from the specified assembly files.
@@ -114,7 +114,7 @@ module CscTypes =
     } with static member Default = {
             Platform = AnyCpu
             Target = Auto    // try to resolve the type from name etc
-            Out = File.undefined
+            Out = None
             Src = Fileset.Empty
             Ref = Fileset.Empty
             RefGlobal = []
@@ -586,12 +586,12 @@ module Csc =
             let! ctx = getCtx()
             let targetFiles = Impl.fileTargets ctx.Targets
             let! outFile =
-                if settings.Out = File.undefined then
+                match settings.Out with
+                | Some out -> recipe.Return out
+                | None ->
                     match targetFiles |> List.filter (Impl.isRuntimeConfig >> not) with
                     | file :: _ -> recipe.Return file
                     | [] -> getTargetFile()
-                else
-                    settings.Out |> recipe.Return
 
             // a `.resx` resource is not compiled here: unlike an ordinary embedded-resource
             // file (already the file the compiler reads), a resx needs turning into a
@@ -614,10 +614,10 @@ module Csc =
                     let manifestName = Path.ChangeExtension(resname, ".resources")
                     let resourcesPath =
                         (options.ProjectRoot </> "obj" </> "xake" </> assemblyName </> manifestName).Replace('\\', '/')
-                    manifestName, file.FullName, resourcesPath)
+                    manifestName, File.getSysFileName file, resourcesPath)
 
             let resArgs =
-                (plainEntries |> List.map (fun (name, file: File) -> name, file.FullName))
+                (plainEntries |> List.map (fun (name, file: File) -> name, File.getSysFileName file))
                 @ (resxResources |> List.map (fun (manifestName, _, resourcesPath) -> manifestName, resourcesPath))
             let resources = resxResources |> List.map (fun (_, resx, resourcesPath) -> resx, resourcesPath)
 
@@ -670,15 +670,14 @@ module Csc =
                     if nostdlib then
                         yield "/nostdlib+"
 
-                    if outFile <> File.undefined then
-                        yield sprintf "/out:%s" (File.getFullName outFile)
+                    yield sprintf "/out:%s" (File.getSysFileName outFile)
 
                     if not (List.isEmpty settings.Define) then
                         yield "/define:" + (settings.Define |> String.concat ";")
 
-                    yield! src |> List.map (fun f -> f.FullName)
+                    yield! src |> List.map File.getSysFileName
 
-                    yield! refs |> List.map ((fun f -> f.FullName) >> (+) "/reference:")
+                    yield! refs |> List.map (File.getSysFileName >> (+) "/reference:")
                     yield! globalRefs
 
                     yield! resArgs |> List.map (fun (name, path) -> sprintf "/res:%s,%s" path name)
@@ -749,20 +748,21 @@ module Csc =
             let! options = getCtxOptions ()
             let! ctx = getCtx ()
             let! outFile =
-                if settings.Out = File.undefined then
+                match settings.Out with
+                | Some out -> recipe.Return out
+                | None ->
                     match Impl.fileTargets ctx.Targets |> List.filter (Impl.isRuntimeConfig >> not) with
                     | file :: _ -> recipe.Return file
                     | [] -> getTargetFile ()
-                else recipe.Return settings.Out
             let (Filelist given) = settings.Ref |> toFileList options.ProjectRoot
             let! p = ProjectPlan.make Description.CSharp path settings.TargetFramework (Path.GetFileNameWithoutExtension outFile.Name) given
             let filesOf (paths: string list) = paths |> List.fold (fun fs f -> fs + (!! f)) Fileset.Empty
-            let doc = if p.Doc then [ "/doc:" + Path.ChangeExtension(outFile.FullName, ".xml").Replace('\\', '/') ] else []
+            let doc = if p.Doc then [ "/doc:" + Path.ChangeExtension(File.getSysFileName outFile, ".xml").Replace('\\', '/') ] else []
             return
                 { settings with
                     Project = None
                     TargetFramework = p.Framework
-                    Out = outFile
+                    Out = Some outFile
                     Target =
                         match settings.Target, p.Kind with
                         | Auto, Description.Exe -> Exe

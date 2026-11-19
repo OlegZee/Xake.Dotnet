@@ -259,7 +259,7 @@ type ``Csc fromlock``() =
                         Csc.ofSettings {
                             CscSettingsType.Default with
                                 Src = !!"HelloResolve.cs"
-                                Out = File.make "HelloResolve.dll"
+                                Out = Some (File.make "HelloResolve.dll")
                                 Target = Library
                                 TargetFramework = "netstandard2.0"
                         }
@@ -357,7 +357,7 @@ type ``Csc fromlock``() =
                         Csc.ofSettings {
                             CscSettingsType.Default with
                                 Src = !!"HelloResx.cs"
-                                Out = File.make "HelloResx.dll"
+                                Out = Some (File.make "HelloResx.dll")
                                 Target = Library
                                 TargetFramework = "net-4.6.2"
                                 RefGlobal = ["System.dll"]

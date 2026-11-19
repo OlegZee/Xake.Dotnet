@@ -89,7 +89,7 @@ module internal Impl =
         | [] -> None, target
         | [ rc ] ->
             let rcName = File.getFileName rc
-            let outPath = File.getFullName outFile
+            let outPath = File.getSysFileName outFile
             let expected = System.IO.Path.ChangeExtension (outPath, ".runtimeconfig.json")
             if File.make expected <> rc then
                 failwithf "'%s' is declared as a target, but the output is '%s', whose runtimeconfig is '%s'"
@@ -103,7 +103,7 @@ module internal Impl =
             | None ->
                 failwithf "'%s' is declared as a target, but %s applications do not use one"
                     rcName (match framework with null | "" -> "this framework's" | f -> f)
-            | Some _ -> Some (File.getFullName rc), effective
+            | Some _ -> Some (File.getSysFileName rc), effective
         | many ->
             failwithf "more than one runtimeconfig is declared as a target: %s" (many |> List.map File.getFileName |> String.concat ", ")
 
@@ -138,7 +138,7 @@ module internal Impl =
     let collectResInfo pathRoot = function
         |ResourceFileset (o,Fileset (fo,fs)) ->
             let mapFile file =
-                let resname = makeResourceName o fo.BaseDir (File.getFullName file) in
+                let resname = makeResourceName o fo.BaseDir (File.getSysFileName file) in
                 (resname,file)
 
             let (Filelist l) = Fileset (fo,fs) |> (toFileList pathRoot) in
@@ -156,7 +156,7 @@ module internal Impl =
     /// Before, net462 used `ResXResourceReader` and wrote the classic BinaryFormatter format;
     /// both targets now write the same bytes.
     let compileResx (resxfile:File) (rcfile:File) =
-        Xake.Dotnet.Resx.compile resxfile.FullName rcfile.FullName
+        Xake.Dotnet.Resx.compile (File.getSysFileName resxfile) (File.getSysFileName rcfile)
 
     let compileResxFiles = function
         | (res,(file:File)) when file |> File.getFileName |> endsWith ".resx" ->

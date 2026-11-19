@@ -30,7 +30,7 @@ type ``Csc lock``() =
     let settings (src: Fileset) (out: string) (lockPath: string option) =
         { CscSettingsType.Default with
             Src = src
-            Out = File.make out
+            Out = Some (File.make out)
             Target = Library
             TargetFramework = "net-4.6.2"
             RefGlobal = ["System.dll"] }, lockPath
