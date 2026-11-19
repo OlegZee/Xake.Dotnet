@@ -4,7 +4,7 @@ One line per item. Status as of 2026-11-19: implemented, local commit, all tests
 
 ## Open
 
-- [ ] Owner: review; push and PR `feature/editorconfig-paths` -> `dev` (squash); release number
+- [ ] Owner: review and squash-merge PR #19 (`feature/editorconfig-paths` -> `dev`); release number
 - [ ] Optional: an end-to-end record on the Windows VM (`win11`), if the owner wants one
 
 ## Done

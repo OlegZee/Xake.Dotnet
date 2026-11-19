@@ -14,5 +14,5 @@ changes; B-5 and B-4 (also `Import.fs`) wait for this one. Do not touch PR #12.
 
 ## Next step
 
-Owner review; on their word push `feature/editorconfig-paths` and open the PR to `dev` (squash).
+PR OlegZee/Xake.Dotnet#19 open (pushed 2026-11-19): owner review, CI, squash-merge into `dev`.
 Then B-5, B-4 on `Import.fs`.
