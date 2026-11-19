@@ -6,7 +6,7 @@ Branch `feature/legacy-recipe` from `dev` at `b82100b` (B-5 #20 included). Task 
 
 ## State at 2026-11-19 (implementation)
 
-Owner approved the design (decisions in `brief.md`). Implemented and committed locally, not pushed.
+Owner approved the design (decisions in `brief.md`). Implemented; pushed on the owner's word, PR #21 to `dev` (squash).
 
 - `docs/legacy-projects.md` (122 lines): the four sections, the overlay as one xml block (the tests
   and the Windows kit read it from there), how to pass it (an absolute path: msbuild resolves a
@@ -22,8 +22,8 @@ Owner approved the design (decisions in `brief.md`). Implemented and committed l
 
 ## Next step
 
-The owner's review. On their word given in this session: push `feature/legacy-recipe`, PR to
-`dev` (squash). Then Xake.Dotnet 4.4.0 is tagged.
+PR #21 (https://github.com/OlegZee/Xake.Dotnet/pull/21): CI green, then the owner squash-merges it
+into `dev`. Then Xake.Dotnet 4.4.0 is tagged.
 
 ## Probe (2026-11-19, before the design)
 

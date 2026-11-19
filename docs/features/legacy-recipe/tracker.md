@@ -1,6 +1,6 @@
 # Tracker: legacy-recipe
 
-One line per item. Status as of 2026-11-19: implemented, local commits; waiting for the owner's review.
+One line per item. Status as of 2026-11-19: PR #21 open; waiting for CI and the merge.
 
 ## Done
 
@@ -19,4 +19,5 @@ One line per item. Status as of 2026-11-19: implemented, local commits; waiting 
 - [x] Links (`docs/hermetic/README.md`/`index.md`), release notes "Unreleased"
 - [x] `dotnet fsi build.fsx -- -- build test pack`
 - [x] Windows acceptance on the VM (`windows/` kit, packed package)
-- [ ] Owner: review, push, PR to `dev` (squash)
+- [x] Push, PR #21 to `dev`
+- [ ] CI green; owner squash-merges
