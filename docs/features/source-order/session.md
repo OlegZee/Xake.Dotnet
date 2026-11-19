@@ -10,7 +10,7 @@ Branch `feature/source-order`, cut from `origin/dev` `b82100b` (4.4.0-preview.1 
 
 ## Next step
 
-On the owner's go: `git push -u origin feature/source-order`, PR to `dev` (squash), CI. Then the
+PR #22 open (pushed 2026-11-19): wait for CI (incl. `build-fsc`), then squash-merge into `dev`. Then the
 consumer re-imports on both OSes with the next preview and compares (also confirms the `Options` cause).
 
 ## Probe recipe

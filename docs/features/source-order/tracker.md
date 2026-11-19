@@ -4,7 +4,7 @@ One line per item. Status as of 2026-11-19: implemented, not pushed.
 
 ## Open
 
-- [ ] Owner's go to push; PR `feature/source-order` -> `dev` (squash)
+- [ ] PR #22 `feature/source-order` -> `dev` (squash): CI green; merge
 - [ ] Confirm the `Options` cause against one of the consumer's 4 test-project lock pairs (the consumer's re-import with the next preview)
 
 ## Later (out of scope)
