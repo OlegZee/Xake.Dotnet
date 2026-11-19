@@ -766,6 +766,20 @@ module Import =
         /// without feed access to the packs): the lock builds only where the same pack is installed.
         | Installed
 
+    /// <summary>
+    /// Where the import takes the .NET Framework reference assemblies of a `net4*` project from
+    /// (`RecordOptions.NetFxReferenceAssemblies`). Qualified: `Installed` is a case of `PacksFrom` too.
+    /// </summary>
+    [<RequireQualifiedAccess>]
+    type NetFxReferenceAssemblies =
+        /// The package `Microsoft.NETFramework.ReferenceAssemblies.<moniker>` on every OS: the
+        /// installed packs are hidden from the SDK's check (`TargetFrameworkRootPath` at a folder
+        /// that does not exist), so the SDK adds its implicit reference to the package
+        | Package
+        /// The installed packs where there are any (msbuild's default): a lock recorded on Windows
+        /// with a pack names `Program Files`, which the import refuses
+        | Installed
+
     /// What `record` is told: the configurations to record, the properties msbuild runs with,
     /// the script's extra roots and its layout, where the packs come from.
     type RecordOptions = {
@@ -784,6 +798,10 @@ module Import =
         OutOf: string -> string -> string -> string
         /// Where the targeting, apphost and runtime packs come from: `NuGet` (the default) or `Installed`
         PacksFrom: PacksFrom
+        /// Where a `net4*` project's reference assemblies come from: `Package` (the default) or `Installed`
+        NetFxReferenceAssemblies: NetFxReferenceAssemblies
+        /// The version of `Microsoft.NETFramework.ReferenceAssemblies` for `Package` (default `1.0.3`)
+        NetFxReferenceAssembliesVersion: string
         /// `true`: record the project's version as the token `$(Version)`, the prefix as
         /// `VersionPrefix`; the build fills it in (`Locks.Settings.VersionSuffixes`), so the lock
         /// does not depend on the build's version suffix. msbuild runs with an internal marker as
@@ -797,6 +815,8 @@ module Import =
               LockOf = (fun name cfg -> sprintf "locks/%s/%s.json" name cfg)
               OutOf = (fun cfg fwk name -> sprintf "out/%s/%s/%s" cfg fwk name)
               PacksFrom = NuGet
+              NetFxReferenceAssemblies = NetFxReferenceAssemblies.Package
+              NetFxReferenceAssembliesVersion = "1.0.3"
               VersionToken = false }
 
     /// The marker msbuild runs with as `VersionSuffix` for `RecordOptions.VersionToken`: a SemVer
@@ -807,14 +827,25 @@ module Import =
     /// `NuGetAudit=false`, the script's `Properties`, and for `PacksFrom = NuGet` a
     /// `NetCoreTargetingPackRoot` that does not exist (a fixed path under `obj/`, so the
     /// intermediate folders keyed by the globals stay the same between imports), unless the
-    /// script sets that property itself; with `VersionToken`, `VersionSuffix=<marker>` (the
-    /// script's own `VersionSuffix` then fails: the lock could not say which it holds).
+    /// script sets that property itself; for `NetFxReferenceAssemblies.Package` the package's
+    /// version, `AutomaticallyUseReferenceAssemblyPackages=true` and `XakeNetFxReferenceRoot`, a
+    /// folder that does not exist (`restoreProps` makes it the `TargetFrameworkRootPath` of a
+    /// `.NETFramework` framework), each unless the script sets it; with `VersionToken`,
+    /// `VersionSuffix=<marker>` (the script's own `VersionSuffix` then fails: the lock could not
+    /// say which it holds).
     let internal recordGlobals (root: string) (options: RecordOptions) : (string * string) list =
         let sets name = options.Properties |> List.exists (fun (k, _) -> k.Equals (name, StringComparison.OrdinalIgnoreCase))
         [ "NuGetAudit", "false" ]
         @ (match options.PacksFrom with
            | NuGet when not (sets "NetCoreTargetingPackRoot") -> [ "NetCoreTargetingPackRoot", root.TrimEnd('/') + "/obj/xake/no-installed-packs" ]
            | _ -> [])
+        @ (match options.NetFxReferenceAssemblies with
+           | NetFxReferenceAssemblies.Package ->
+               [ "AutomaticallyUseReferenceAssemblyPackages", "true"
+                 "MicrosoftNETFrameworkReferenceAssembliesLatestPackageVersion", options.NetFxReferenceAssembliesVersion
+                 "XakeNetFxReferenceRoot", root.TrimEnd('/') + "/obj/xake/no-installed-netfx/" ]
+               |> List.filter (fst >> sets >> not)
+           | NetFxReferenceAssemblies.Installed -> [])
         @ (if not options.VersionToken then []
            elif sets "VersionSuffix" then
                failwith "the import is asked to record the version as a token (RecordOptions.VersionToken) and the script sets the property VersionSuffix too; drop one"
@@ -956,6 +987,16 @@ module Import =
               "    <_XakeWpfTemporaryBase>$(BaseIntermediateOutputPath)</_XakeWpfTemporaryBase>"
               "    <_XakeWpfTemporaryBase Condition=\"'$(_XakeWpfTemporaryBase)' == ''\">obj/</_XakeWpfTemporaryBase>"
               "    <MSBuildProjectExtensionsPath Condition=\"'$(_XakeWpfTemporary)' == 'true'\">$([MSBuild]::EnsureTrailingSlash('$(_XakeWpfTemporaryBase)'))</MSBuildProjectExtensionsPath>"
+              "  </PropertyGroup>"
+              // `NetFxReferenceAssemblies.Package`: the installed .NET Framework packs hidden from the
+              // SDK's check, so it references the package; an ordinary property, not a global one,
+              // as the package's own targets set it to the package after the restore. Also where
+              // `TargetFramework` is not known yet (a single-framework project's restore): other
+              // frameworks do not read it
+              "  <PropertyGroup Condition=\"'$(XakeNetFxReferenceRoot)' != '' and '$(TargetFrameworkRootPath)' == ''\">"
+              "    <_XakeHideNetFx>true</_XakeHideNetFx>"
+              "    <_XakeHideNetFx Condition=\"'$(TargetFramework)' != '' and $([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)')) != '.NETFramework'\">false</_XakeHideNetFx>"
+              "    <TargetFrameworkRootPath Condition=\"'$(_XakeHideNetFx)' == 'true'\">$(XakeNetFxReferenceRoot)</TargetFrameworkRootPath>"
               "  </PropertyGroup>"
               "</Project>"
               "" ]

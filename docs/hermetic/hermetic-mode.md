@@ -107,6 +107,7 @@ content rule belongs to the build definition, not to the machine.
 | fsc `netN.0` default `FSharp.Core` | `FSHARP_CORE_VERSION` set explicitly, or a `ref` to an `FSharp.Core.dll` | resolve fails naming the SDK's `FSharp.Core.dll` |
 | fsc netstandard / .NET Framework `FSharp.Core` | `FSharp.Core` package (default 8.0.100) | nothing to do |
 | Import: compiler, analyzers | `global.json` exact pin; the SDK is the prerequisite | import fails (message 11) |
+| Import: .NET Framework references | `RecordOptions.NetFxReferenceAssemblies = Package` (the default): the package on every OS, installed packs hidden | `Installed` on Windows with a pack: import fails naming the `Program Files` path |
 | Anything else (a `ref` or `cscpath` outside the roots) | move it under the checkout or into a package | resolve fails naming the path |
 
 `HERMETIC` is a pure gate: it never changes where an input resolves from. Every fix is a
