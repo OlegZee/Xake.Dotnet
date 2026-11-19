@@ -221,6 +221,17 @@ condition the masks do not know, the two can drift; the import checks them only 
      project's output: another identity (that project's version changed, only it imported
      again) fails the build with "run the import again" (`LOCK_STALE=warn` makes it a warning),
      where the XAML would otherwise fail to load at run time.
+   - Declared inputs: a file msbuild generated that is not text (a `.licenses`, resources a menu
+     compiler made, a `.res`) is copied beside the lock and used as it is; the import cannot know
+     what it was made from. The project says so: every msbuild run of the import has the global
+     property `XakeImport=true`, and the items `XakeImportInput` the design-time build has (a
+     static `ItemGroup`, or one a target adds before `Compile`) go into `Evaluation.Imports`, so an
+     edited input fails the build with "run the import again" as the project file's does. Each is
+     made absolute against the project folder; a file of a package or of the SDK (pinned by its
+     version) and one under the import's intermediate folder (generated) are left out; a declared
+     file that does not exist fails the import, naming the project and the file. A project that
+     declares nothing records what it did before. How to declare:
+     [workflows.md](workflows.md#generated-resources-and-their-inputs).
    - Every reference and analyzer is hashed, except a project's output (unhashed, as in every
      lock) and a file of the SDK (identified by the SDK version).
    - `Prerequisites` has `dotnet-sdk <NETCoreSdkVersion>` when the entry names a file of that
@@ -663,8 +674,11 @@ the runner checks the hashes, the prerequisite checks the SDK. Two points are sp
   The text inputs of an import (`Evaluation.Imports`, the files written beside the lock in
   `App.Files`, the project's own `App.config`) are recorded with the hash of their content
   read with CRLF as LF (a lone CR kept, a BOM and the encoding unchanged: a UTF-16 file is
-  hashed as its bytes are), `FileHash.textSha256`; `Lock.rehash` fills `Imports` the same
-  way. The check (`Locks.staleOf`, the build's check of `App.Files`, `FileHash.textMatches`)
+  hashed as its bytes are), `FileHash.textSha256`. A binary file in `Evaluation.Imports` (a
+  WPF `Resource` image, a declared PNG: a NUL byte in its first 8000 bytes, git's test) is
+  recorded by its raw hash instead, `FileHash.inputSha256`; `Lock.rehash` fills `Imports` the
+  same way. A lock recorded by an older package holds the text hash of such a file, which still checks
+  current; the next import writes the raw one. The check (`Locks.staleOf`, the build's check of `App.Files`, `FileHash.textMatches`)
   accepts that hash or the raw one, so a lock recorded
   over LF checks out current with CRLF and the reverse, and a lock recorded before 0.8 (raw
   hashes) is still current on a checkout with the line ends it was recorded with; such a
@@ -1309,8 +1323,10 @@ lives in its own `Json` module.
   for a compilation composed from `csc {}` settings:
   - `Project` -- the project file path ("" when composed)
   - `ProjectRefs` -- `ProjectReference` items, as project files
-  - `Imports` -- the msbuild files (outside the SDK) whose evaluation produced this entry, hashed
-    with CRLF read as LF (a raw hash, as before 0.8, is accepted too)
+  - `Imports` -- the msbuild files (outside the SDK) whose evaluation produced this entry, and
+    the files the import reads besides (an application's config, a WPF project's markup, the
+    declared `XakeImportInput`); a text file hashed with CRLF read as LF, a binary one by its
+    bytes (`FileHash.inputSha256`; a raw hash of a text file, as before 0.8, is accepted too)
   - `Sdk` -- `NETCoreSdkVersion`, the SDK that evaluated the project
   - `SdkPin` -- `Lock.SdkPin option`, typed (`NoGlobalJson | Pinned v | RollsForward (v, policy)
     | NoVersion file`); written as `"none"`, `"exact <v>"`, `"<v> rollForward:<policy>"`, `"no

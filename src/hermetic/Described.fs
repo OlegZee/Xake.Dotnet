@@ -239,6 +239,8 @@ module Described =
                     // `dotnet restore` exits, so reading its output to the end waits for the
                     // node's idle timeout (the Linux CI hang of 0.4.0)
                     env ("MSBUILDDISABLENODEREUSE", "1")
+                    // the MSBuild of the SDK the project root picks, not the parent's
+                    envs (DotNetFwk.childMsbuildEnvironment workDir)
                     workdir workDir
                     logprefix "[restore]"
                     stdoutlevel log.Level

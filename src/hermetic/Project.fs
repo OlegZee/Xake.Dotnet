@@ -109,7 +109,9 @@ module Project =
                     args ("msbuild" :: arguments |> List.map Tool.quoteArgument)
                     // no msbuild worker node left holding this process's stdout after msbuild
                     // exits (`Described.runRestore`)
-                    envs (("MSBUILDDISABLENODEREUSE", "1") :: environment)
+                    // the MSBuild of the SDK the project root picks, not the parent's (a caller's
+                    // own variables still apply)
+                    envs (("MSBUILDDISABLENODEREUSE", "1") :: DotNetFwk.childMsbuildEnvironment (projectRootOf options.ProjectRoot) @ environment)
                     workdir (projectRootOf options.ProjectRoot)
                     logprefix "[msbuild]"
                     stdoutlevel log.Level
@@ -136,6 +138,7 @@ module Project =
                         cmd "dotnet"
                         args [ "msbuild"; "-version"; "-nologo" ]
                         env ("MSBUILDDISABLENODEREUSE", "1")
+                        envs (DotNetFwk.childMsbuildEnvironment root)
                         workdir root
                         logprefix "[msbuild]"
                         stdoutlevel (fun _ -> Level.Verbose)

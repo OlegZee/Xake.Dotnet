@@ -27,6 +27,34 @@ with no workaround. [hermetic/lock.md](hermetic/lock.md), [hermetic/versioning.m
   changes where 4.3.0 read a hand-written `InformationalVersion` that is not `$(Version)`: the
   SDK writes `$(Version)`, and so does the build now.
 
+### Declared inputs of generated binaries
+
+A file msbuild generates that is not text (resources a menu compiler made, a `.licenses`) is kept
+beside the lock and used as it is; editing what it was made from did not make the lock stale.
+[hermetic/workflows.md](hermetic/workflows.md#generated-resources-and-their-inputs).
+
+- **`XakeImport=true`**: a global property of every msbuild run of `Import.record`, for a
+  project's own msbuild files to detect the import.
+- **`XakeImportInput`** items: recorded in `Evaluation.Imports` (no format change); an edit fails
+  the build and `Locks.check` with "run the import again". Package and SDK files are left out; a
+  missing declared file fails the import.
+- **Binary inputs by bytes**: a binary file in `Evaluation.Imports` (a declared PNG, a WPF
+  `Resource` image) is hashed by its bytes (`FileHash.inputSha256`), text keeps the line-end
+  neutral hash. Older locks still check current; the next import of a WPF project with images
+  rewrites those hashes once.
+
+### Fixes
+
+- **SDK 11 parent, another SDK in the child**: a child `dotnet restore`/`dotnet msbuild`
+  (package downloads, the import's restore and msbuild runs, the `msbuild` task on the .NET SDK)
+  inherited the `dotnet` CLI's `MSBuildSDKsPath`, `MSBuildExtensionsPath` and `MSBUILD_EXE_PATH`
+  of the parent (a build under `dotnet test` on SDK 11) and loaded that SDK's targets with the
+  MSBuild of the SDK its own `global.json` picks (MSB4216, MSB4027). When the parent has them,
+  they now point at the child's SDK (`DotNetFwk.childMsbuildEnvironment`).
+- **Quoted one-path switch values**: SDK 11's `Csc`/`Fsc` tasks write `/sourcelink:"<path>"`;
+  the command-line parser (`CscArgs`, `FscArgs`) took the quotes as part of the path, and the
+  import failed with "Neither rule nor file is found for '<dir>/"<path>"'". The quotes are dropped.
+
 ## 4.3.0 (2026-11-08)
 
 ### Satellite assemblies (S71 reopened)
