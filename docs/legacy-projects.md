@@ -23,7 +23,10 @@ The import overlay below supplies all four. It is a targets file the import hand
 
 Copy it as is into the repository (here `build/legacy.targets`). Drop section C when no project has
 XAML `Page` items: on a project without them it does no harm, but adds `Version` (`1.0.0.0`) to the
-lock's properties.
+lock's properties. Section C sets `UseWPF=true` on every legacy project, XAML or not: a rule of
+your own msbuild files keyed on `UseWPF` (for example one that adds a `PackageReference` for WPF
+or Windows Forms projects) now applies to all of them, and may duplicate a reference you add
+elsewhere (NU1504).
 
 ```xml
 <Project>

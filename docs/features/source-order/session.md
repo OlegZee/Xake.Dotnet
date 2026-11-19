@@ -1,5 +1,7 @@
 # Session: source-order
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `feature/source-order`, cut from `origin/dev` `b82100b` (4.4.0-preview.1 content).
 
 ## Where things stand (2026-11-19)
