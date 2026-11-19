@@ -353,6 +353,8 @@ packs where there are any). Other frameworks are not affected. A changed version
 `net4*` lock once, on its next import; nothing makes the committed lock stale before that (it
 still builds, with the version it names), so a repository that wants to know compares a fresh
 import with it (`check-locks`, [workflows.md](workflows.md)).
+A legacy (non-SDK) project gets the package only through the import overlay of
+[../legacy-projects.md](../legacy-projects.md) (its section D).
 
 ### Format 2
 
