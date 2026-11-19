@@ -2007,8 +2007,13 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   those). Every `<prefix>-<marker>` in the entry's texts (`Generated`, `Options`, `Defines`,
   `Properties`) becomes `$(Version)`, the prefix goes into `Properties.VersionPrefix`, and a
   `deps.json` names each project's version (the application's and each referenced project's, each
-  with its own prefix) as `$(Version:<file>)`, the informational version of that library's
-  runtime file in the output. The marker anywhere else (a target that uses `$(VersionSuffix)`
+  with its own prefix) as `$(Version:<file>)`. The build takes that version from the project's
+  lock, as its own compile does: the entry of `Settings.LockOf name cfg` for the framework the
+  application references, its `$(Version)` resolved by `Versions`/`VersionSuffixes`; the built
+  file is not read (a project with `GenerateAssemblyInfo=false` has no informational version to
+  read). Only a project whose lock is missing or records no `VersionPrefix` (not imported with the
+  option) falls back to the informational version of its runtime file in the output (without
+  `+<sha>`); with neither the build fails, naming the application, the file, the lock and why. The marker anywhere else (a target that uses `$(VersionSuffix)`
   alone) fails the import, naming the file. A project that sets `Version` itself is recorded
   with its literal (an `Info` line says so); an environment variable `VERSION`, which msbuild
   would take as `$(Version)`, is emptied for the import. At build time `$(Version)` is the
@@ -2028,8 +2033,10 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
       Roots: (string * string) list                 // compileAsWith's extraRoots
       Versions: (string * RequiredVar<string>) list // compileAs's versions
       VersionSuffixes: (string * Recipe<ExecContext, string>) list  // a recorded token's suffix
+      LockOf: string -> string -> string            // a project's lock by name and configuration
       Lock: Lock.Options }                          // Run (csc), FscRun (fsc), Restore
-  // Settings.Default = { Roots = []; Versions = []; VersionSuffixes = []; Lock = Lock.Options.Default }
+  // Settings.Default = { Roots = []; Versions = []; VersionSuffixes = [];
+  //                      LockOf = fun name cfg -> $"locks/{name}/{cfg}.json"; Lock = Lock.Options.Default }
 
   let settings = { Locks.Settings.Default with Roots = roots; Versions = versions }
   let compileTarget = Locks.compile settings   // the script's own compile, partially applied
@@ -2040,7 +2047,10 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
       do! compileTarget (lockOf name cfg) fwk }
   ```
   `compileAsWith roots lockPath fwk versions` is `compile { Settings.Default with Roots = roots;
-  Versions = versions } lockPath fwk`, `compileAs` the same without roots. `Lock` reaches
+  Versions = versions } lockPath fwk`, `compileAs` the same without roots. `LockOf` (the
+  script's `lockOf`; the default is `Import.RecordOptions.LockOf`'s) finds the locks of the
+  projects an application references, for the versions its `deps.json` names (`$(Version:<file>)`,
+  a recorded version token above); a script with another layout sets it. `Lock` reaches
   `Lock.compileFromWith` as given (`Run.FailOnError`, `Run.CscPath`, `FscRun`, `Restore`, ...),
   with one thing filled in: `Lock.Run.Server` left at its default is resolved from `CSC_SERVER`,
   then `XAKE_CSC_SERVER`, as before; one the script set is used as is and the variable is not

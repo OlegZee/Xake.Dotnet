@@ -1,6 +1,6 @@
 # Design: the project version in `deps.json` from the lock
 
-Status: proposed 2026-11-19, waiting for the owner. Code references are to `b4853da` (4.3.0).
+Status: approved by the owner 2026-11-19; implemented as designed. Code references are to `b4853da` (4.3.0).
 
 ## What the code does today
 
@@ -97,3 +97,12 @@ hand-written attribute that is not `$(Version)`).
 
 `Locks.Settings` gains a field: a script that writes the whole record (not `Default with`)
 must add `LockOf`. None in this repository or its docs does.
+
+## Found while implementing
+
+- `Error` in `src/hermetic` is Xake's `Level.Error`: the code writes `Result.Error`.
+- The application's rule now depends on a referenced project's suffix through the suffix recipe
+  it runs (`versionIn` in the application's rule records the variables the recipe reads), not
+  through the referenced file: a project with `GenerateAssemblyInfo=false` gets the same bytes
+  under another suffix. A suffix from a variable (`-d`, `getVar`, `Var`) rebuilds the
+  application; the end-to-end test uses `getVar` for that reason.

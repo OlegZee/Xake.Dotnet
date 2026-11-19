@@ -38,3 +38,10 @@ to the reference build (an extra attribute), only to feed `deps.json`.
   stub assembly lacking the attribute).
 - Consumer side (not this repository): the overlay section that injects the attribute is removed and a re-import gives
   the same `deps.json`.
+
+## Decision (2026-11-19)
+
+The owner approved `design.md` (`e5706b1`) as proposed: the version from the referenced project's
+lock found by a new field `Locks.Settings.LockOf` (default `locks/<name>/<cfg>.json`), the
+`InformationalVersion` fallback, the error naming both, no change in `Import.fs` (point 4 needs
+no msbuild evaluation).

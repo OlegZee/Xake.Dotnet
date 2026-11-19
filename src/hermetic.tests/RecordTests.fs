@@ -1594,8 +1594,11 @@ type ``Import record version token``() =
     let suffixes = [ "app/**", recipe { let! s = appSuffix in return s }; "**", recipe { let! s = coreSuffix in return s } ]
     let dll cfg fwk name = sprintf "out/%s/%s/%s/%s.dll" cfg fwk name name
 
+    // every fixture's folders: one test's projects are not another's (`needAll */xake.project.json`)
+    let folders = [ "app"; "core"; "fixed"; "odd"; "host"; "plain"; "out"; "locks"; "obj" ]
+
     let fixture () =
-        RecordKit.write [ "app"; "core"; "fixed"; "odd"; "out"; "locks"; "obj" ]
+        RecordKit.write folders
             [ "app/app.csproj",
                 RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><VersionPrefix>3.1.0</VersionPrefix>"
                     "<ProjectReference Include=\"../core/core.csproj\" />"
@@ -1738,9 +1741,47 @@ type ``Import record version token``() =
         File.WriteAllText ("core/Directory.Build.props", "<Project><PropertyGroup><VersionPrefix>1.5.0</VersionPrefix></PropertyGroup></Project>\n")
         Assert.That(entries () |> List.collect Locks.staleOf |> List.map Path.GetFileName |> List.distinct, Is.EqualTo [ "Directory.Build.props" ])
 
+    /// A referenced project with `GenerateAssemblyInfo=false` (no `InformationalVersion` in its
+    /// file): the application's `deps.json` takes its version from its lock (`Settings.LockOf`).
+    [<Test>]
+    member x.``a referenced project without an InformationalVersion: deps.json takes its version from the lock``() =
+        RecordKit.write folders
+            [ "host/host.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><VersionPrefix>3.0.0</VersionPrefix>"
+                    "<ProjectReference Include=\"../plain/plain.csproj\" />"
+              "host/P.cs", "class P { static void Main () { System.Console.WriteLine (new Plain.C ()); } }\n"
+              "plain/plain.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework><VersionPrefix>2.2.0</VersionPrefix><GenerateAssemblyInfo>false</GenerateAssemblyInfo>" ""
+              "plain/C.cs", "namespace Plain { public class C { } }\n" ]
+        RecordKit.import x.TestOptions "import-plain" record [ "host/host.csproj"; "plain/plain.csproj" ] |> ignore
+        Assert.That(File.ReadAllText (RecordKit.lockOf "plain" "Release"), Does.Contain "\"VersionPrefix\": \"2.2.0\"")
+        let settings = { Locks.Settings.Default with VersionSuffixes = [ "**", recipe { let! s = getVar "CORE_SUFFIX" in return Option.defaultValue "" s } ] }
+        let build label suffix settings = RecordKit.buildWith { x.TestOptions with ScriptVars = [ "CORE_SUFFIX", suffix ] } label "Release" settings
+        let deps = "out/Release/net8.0/host/host.deps.json"
+
+        build "build-plain-1" "ci.1" settings
+        Assert.That(Apps.informationalVersion (Path.GetFullPath "out/Release/net8.0/plain/plain.dll"), Is.EqualTo None)
+        let written = File.ReadAllText deps
+        Assert.That(written, Does.Contain "\"plain/2.2.0-ci.1\"")
+        Assert.That(written, Does.Contain "\"plain\": \"2.2.0-ci.1\"")
+        Assert.That(written, Does.Contain "\"host/3.0.0-ci.1\"")
+        Assert.That(written, Does.Not.Contain "$(")
+
+        // another suffix: another deps.json
+        build "build-plain-2" "ci.2" settings
+        Assert.That(File.ReadAllText deps, Does.Contain "\"plain/2.2.0-ci.2\"")
+
+        // no lock where `LockOf` says, no attribute in the file: the build fails, naming both
+        Directory.Delete ("out", true)
+        let e = Assert.Throws<XakeException>(fun () ->
+            build "build-plain-nolock" "ci.1" { settings with LockOf = fun name cfg -> sprintf "elsewhere/%s/%s.json" name cfg })
+        Assert.That(e.Data0, Does.Contain "'host' (net8.0): the deps.json needs the version of 'plain.dll' and has none: there is no lock")
+        Assert.That(e.Data0, Does.Contain "elsewhere/plain/Release.json")
+        Assert.That(e.Data0, Does.Contain "has no InformationalVersion")
+
     [<Test>]
     member x.``a version made from VersionSuffix alone fails the import, naming the file``() =
-        RecordKit.write [ "app"; "core"; "fixed"; "odd"; "out"; "locks"; "obj" ]
+        RecordKit.write folders
             [ "odd/odd.csproj",
                 RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>"
                     "<AssemblyAttribute Include=\"System.Reflection.AssemblyMetadataAttribute\"><_Parameter1>Suffix</_Parameter1><_Parameter2>$(VersionSuffix)</_Parameter2></AssemblyAttribute>"

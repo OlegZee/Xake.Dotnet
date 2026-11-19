@@ -6,6 +6,27 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
+## Unreleased
+
+### A project's version in `deps.json` from the lock
+
+An application's `deps.json` names its own project and each referenced project with a version
+(`$(Version:<file>)` in a lock recorded with `RecordOptions.VersionToken`). The build now takes it
+from that project's lock -- `VersionPrefix` and the run's suffix (or a `Versions` mask), as the
+project's own compile resolves `$(Version)` -- instead of reading `InformationalVersion` from the
+built file. A project with `GenerateAssemblyInfo=false` and no hand-written attribute builds
+with no workaround. [hermetic/lock.md](hermetic/lock.md), [hermetic/versioning.md](hermetic/versioning.md).
+
+- **`Locks.Settings.LockOf`** (new): a project's lock by name and configuration, by default
+  `locks/<name>/<cfg>.json` as `Import.RecordOptions.LockOf`. A script with another layout sets
+  it; one that writes the whole `Settings` record (not `Default with`) must add it.
+- A lock that is missing or records no `VersionPrefix` falls back to the file's
+  `InformationalVersion` (without `+<sha>`), as in 4.3.0; with neither, the build fails naming the
+  application, the file, the lock and why.
+- For a project with the generated attribute the `deps.json` is the same as with 4.3.0. It
+  changes where 4.3.0 read a hand-written `InformationalVersion` that is not `$(Version)`: the
+  SDK writes `$(Version)`, and so does the build now.
+
 ## 4.3.0 (2026-11-08)
 
 ### Satellite assemblies (S71 reopened)
