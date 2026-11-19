@@ -374,6 +374,50 @@ type ``Recorded lock identities``() =
         Assert.That(Import.hostStrings roots [] "\"pack:Microsoft.NETCore.App.Host.osx-arm64/8.0.11/x\"", Is.Empty)
         Assert.That(Import.hostStrings roots [] "\"$(DotnetRoot)/packs/Host/8.0.11/runtimes/osx-arm64/native/apphost\"", Has.Length.EqualTo 1)
 
+    [<Test>]
+    member x.``host strings: a Windows path in a lock string, every backslash doubled``() =
+        let roots = [ "$(Root)", "C:/root"; "$(Share)", "//srv/share/root" ]
+        Assert.That(Import.hostStrings roots [] """ "build_property.ProjectDir = C:\\root\\repo\\src\\P\\\n" """, Has.Length.EqualTo 1)
+        Assert.That(Import.hostStrings roots [] """ "x = \\\\srv\\share\\root\\repo\\" """, Has.Length.EqualTo 1)
+        Assert.That(Import.hostStrings roots [] """ "build_property.ProjectDir = $(Root)/repo/src/P/\n" """, Is.Empty)
+        Assert.That(Import.hostStrings roots [] """ "x = D:\\other\\repo" """, Is.Empty)
+
+    [<Test>]
+    member x.``analyzer config: a Windows path under a root is written with / and tokenized``() =
+        let roots = [ "$(Root)", "C:/root"; "$(Share)", "//srv/share/root" ]
+        let paths = Import.analyzerConfigPaths (List.map snd roots)
+        let config =
+            String.concat "\n"
+                [ "is_global = true"
+                  @"build_property.ProjectDir = C:\root\repo\src\P\"
+                  @"build_property.Unc = \\srv\share\root\repo\"
+                  @"build_property.Root = C:\root"
+                  @"build_property.Other = D:\m\n"
+                  @"build_property.Longer = C:\rootx\y"
+                  "build_property.RootNamespace = P"
+                  "[C:/root/repo/src/P/C.cs]"
+                  @"build_metadata.Compile.M = C:\root\repo\m.txt" ]
+        let written = paths "P.GeneratedMSBuildEditorConfig.editorconfig" config
+        Assert.That(written.Split '\n', Is.EqualTo
+                        [| "is_global = true"
+                           "build_property.ProjectDir = C:/root/repo/src/P/"
+                           "build_property.Unc = //srv/share/root/repo/"
+                           "build_property.Root = C:/root"
+                           @"build_property.Other = D:\m\n"
+                           @"build_property.Longer = C:\rootx\y"
+                           "build_property.RootNamespace = P"
+                           "[C:/root/repo/src/P/C.cs]"
+                           "build_metadata.Compile.M = C:/root/repo/m.txt" |])
+        // what the lock then holds (`Lock.format` tokenizes `Generated` so), and expands back to
+        let tokenized = Roots.tokenizeText roots written
+        Assert.That(tokenized, Does.Contain "build_property.ProjectDir = $(Root)/repo/src/P/\n")
+        Assert.That(tokenized, Does.Contain "build_property.Unc = $(Share)/repo/\n")
+        Assert.That(Roots.expand roots "$(Share)/repo/", Is.EqualTo "//srv/share/root/repo/")
+        // a .globalconfig too; any other file, and a config without a backslash, as it is
+        Assert.That(paths "x.globalconfig" @"a = C:\root\b", Is.EqualTo "a = C:/root/b")
+        Assert.That(paths "AssemblyInfo.cs" @"a = C:\root\b", Is.EqualTo @"a = C:\root\b")
+        Assert.That(paths "x.editorconfig" "a = /r/b\n", Is.EqualTo "a = /r/b\n")
+
 
 /// `Import.record` end to end on a two-project solution: a library (netstandard2.0 and net8.0,
 /// a package) and an application (net472 and net8.0, an exe, a project reference, a resx, a
@@ -1214,7 +1258,7 @@ type ``Record entry``() =
         { Root = here (); ProjectFile = dir + "/X.csproj"; ProjectDir = dir; Description = description
           DescriptionFile = dir + "/xake.project.json"; PackageRoot = here () + "/pkgs"
           Pin = Lock.NoGlobalJson; PinFile = None; Pin' = ""; Inputs = []; OutOf = RecordKit.outOf
-          LockOf = (fun name cfg -> here () + "/" + RecordKit.lockOf name cfg); Imported = [ dir + "/X.csproj" ]; VersionMarker = None }
+          LockOf = (fun name cfg -> here () + "/" + RecordKit.lockOf name cfg); Imported = [ dir + "/X.csproj" ]; VersionMarker = None; Roots = [] }
     let context = contextIn "proj"
     let dumpIn (proj: string) (references: string list) (preserialized: bool) : Import.Dump =
         let dir = here () + "/" + proj
