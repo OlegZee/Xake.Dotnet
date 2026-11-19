@@ -292,16 +292,22 @@ module Apps =
     /// `text` (a recorded `deps.json`) with each `$(AssemblyVersion:<file>)` and
     /// `$(FileVersion:<file>)` replaced by the versions of `fileOf <file>` (the copy in the
     /// output), as msbuild reads them from the built file, and each `$(Version:<file>)` (a
-    /// project's version, `Import.RecordOptions.VersionToken`) by its informational version.
-    let depsResolved (fileOf: string -> string) (text: string) : string =
+    /// project's version, `Import.RecordOptions.VersionToken`) by `versionOf <file>`: the version
+    /// from that project's lock (`Ok`, the file not read), else (`Error why`) the file's
+    /// informational version; with neither it fails, naming `app`, the file, `why` and the path.
+    let depsResolved (app: string) (fileOf: string -> string) (versionOf: string -> Result<string, string>) (text: string) : string =
         System.Text.RegularExpressions.Regex.Replace (text, @"\$\((AssemblyVersion|FileVersion|Version):([^)]+)\)", fun m ->
-            let path = fileOf m.Groups.[2].Value
-            if not (File.Exists path) then failwithf "the deps.json names '%s', which is not in the output ('%s')" m.Groups.[2].Value path
+            let file = m.Groups.[2].Value
+            let path = fileOf file
+            if not (File.Exists path) then failwithf "the deps.json names '%s', which is not in the output ('%s')" file path
             match m.Groups.[1].Value with
             | "Version" ->
-                match informationalVersion path with
-                | Some v -> v
-                | None -> failwithf "the deps.json takes the version of '%s' from its InformationalVersion, which '%s' does not have" m.Groups.[2].Value path
+                match versionOf file with
+                | Ok v -> v
+                | Result.Error why ->
+                    match informationalVersion path with
+                    | Some v -> v
+                    | None -> failwithf "%s: the deps.json needs the version of '%s' and has none: %s, and '%s' has no InformationalVersion" app file why path
             | kind ->
                 let a, f = assemblyVersions path
                 (if kind = "AssemblyVersion" then a else f) |> Option.defaultValue "")
@@ -320,7 +326,8 @@ module Apps =
     /// project (the copy-local files and copy items are the run folder's, `Locks.runFolderWith`):
     /// <list type="number">
     /// <item>the recorded files under their names, each checked against its hash; a referenced
-    /// project's versions in `deps.json` read from the file the lock copies (its output);</item>
+    /// project's versions in `deps.json` read from the file the lock copies (its output), a
+    /// project's own version from `versionOf` (`depsResolved`);</item>
     /// <item>the apphost: the SDK's own template (`SdkHost`, by the SDK version) or the lock's
     /// (`PackHost`, checked against its hash), written by the SDK's `HostWriter`, named
     /// `&lt;assembly name&gt;` (`.exe` for a Windows template).</item>
@@ -328,7 +335,7 @@ module Apps =
     /// `dotnetRoot` and `packageRoot` resolve the SDK's template. Returns warnings.
     /// </summary>
     let write (dotnetRoot: string) (packageRoot: string) (lockPath: string) (name: string) (framework: string) (sdk: string)
-              (app: Lock.App) (assembly: string) : Recipe<ExecContext, string list> =
+              (app: Lock.App) (versionOf: string -> Result<string, string>) (assembly: string) : Recipe<ExecContext, string list> =
         recipe {
             let outDir = Path.GetDirectoryName (Path.GetFullPath assembly)
             let warnings = ResizeArray<string> ()
@@ -349,7 +356,7 @@ module Apps =
                 // as it is (a project's own config keeps its BOM and line ends), but a deps.json's tokens
                 let bytes =
                     if f.Name.EndsWith (".deps.json", System.StringComparison.OrdinalIgnoreCase) then
-                        System.Text.Encoding.UTF8.GetBytes (depsResolved sourceOf (System.Text.Encoding.UTF8.GetString bytes))
+                        System.Text.Encoding.UTF8.GetBytes (depsResolved (sprintf "'%s' (%s)" name framework) sourceOf versionOf (System.Text.Encoding.UTF8.GetString bytes))
                     else bytes
                 let destination = Path.Combine (outDir, f.Name)
                 if not (File.Exists destination) || File.ReadAllBytes destination <> bytes then

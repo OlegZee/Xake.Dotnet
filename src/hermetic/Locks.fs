@@ -50,9 +50,16 @@ module Locks =
         /// (`VersionPrefix`, `Import.RecordOptions.VersionToken`) and `-<suffix>`, or the prefix
         /// alone for an empty suffix. A recipe, so the script composes it from its variables.
         VersionSuffixes: (string * Recipe<ExecContext, string>) list
+        /// The lock of a project by name and configuration (the script's `lockOf`, relative to
+        /// the project root or absolute): where an application's compile finds the versions of the
+        /// projects it references for its `deps.json`. The default is `Import.RecordOptions.LockOf`'s.
+        LockOf: string -> string -> string
         /// The options of the compile (`Lock.compileFromWith`).
         Lock: Lock.Options
-    } with static member Default = { Roots = []; Versions = []; VersionSuffixes = []; Lock = Lock.Options.Default }
+    } with
+        static member Default =
+            { Roots = []; Versions = []; VersionSuffixes = []; LockOf = (fun name cfg -> sprintf "locks/%s/%s.json" name cfg)
+              Lock = Lock.Options.Default }
 
     let private same (a: string) (b: string) = System.String.Equals (a, b, System.StringComparison.OrdinalIgnoreCase)
     let private normal (path: string) = path.Replace ('\\', '/')
@@ -772,10 +779,38 @@ module Locks =
             match app with
             | None -> ()
             | Some app ->
+                // the versions its deps.json names (`$(Version:<file>)`): each project's from its
+                // lock, as its own compile resolves `$(Version)`; `Error` (why) falls back to the file
+                let tokens = app.Files |> List.exists (fun f -> f.Name.EndsWith (".deps.json", System.StringComparison.OrdinalIgnoreCase)
+                                                                 && File.Exists f.Path && (File.ReadAllText f.Path).Contains "$(Version:")
+                let versionFrom (lock: string) (e: Lock.Entry) = recipe {
+                    match e.Evaluation.Properties |> Map.tryFind "Version", e.Evaluation.Properties |> Map.tryFind "VersionPrefix" with
+                    | Some v, Some _ when v.Contains VersionToken ->
+                        let! resolved = versionIn settings root lock e e.Compilation
+                        let v = v.Replace (VersionToken, resolved)
+                        return Ok (match v.IndexOf '+' with -1 -> v | i -> v.Substring (0, i))   // the deps.json drops build metadata
+                    | _ -> return Result.Error (sprintf "the lock '%s' records no VersionPrefix (not imported with Import.RecordOptions.VersionToken)" lock) }
+                let versions = System.Collections.Generic.Dictionary<string, Result<string, string>> (System.StringComparer.OrdinalIgnoreCase)
+                if tokens then
+                    let! own = versionFrom lockPath entry
+                    versions.[outputName entry] <- own
+                    for p in entry.Recorded |> Option.map (fun r -> r.Projects) |> Option.defaultValue [] do
+                        let lock = Path.GetFullPath (Path.Combine (options.ProjectRoot, settings.LockOf p.Name p.Configuration))
+                        let! v =
+                            if not (File.Exists lock) then recipe { return Result.Error (sprintf "there is no lock '%s' (Locks.Settings.LockOf)" lock) }
+                            else recipe {
+                                let! l = Lock.loadWith extraRoots lock
+                                let! v = versionFrom lock (entryOfFramework lock p.Framework l)
+                                return v }
+                        versions.[Path.GetFileName p.Path] <- v
+                let versionOf (file: string) =
+                    match versions.TryGetValue file with
+                    | true, v -> v
+                    | _ -> Result.Error (sprintf "the lock '%s' names no project whose output is '%s'" lockPath file)
                 let! roots = Roots.currentWith extraRoots
                 let dotnetRoot = roots |> List.tryFind (fst >> (=) "$(DotnetRoot)") |> Option.map snd |> Option.defaultValue ""
                 let! packageRoot = DotNetFwk.packageRoot ()
-                let! warnings = Apps.write dotnetRoot packageRoot lockPath entry.Name entry.Framework entry.Evaluation.Sdk app target
+                let! warnings = Apps.write dotnetRoot packageRoot lockPath entry.Name entry.Framework entry.Evaluation.Sdk app versionOf target
                 for w in warnings do do! trace Warning "%s" w
         }
 

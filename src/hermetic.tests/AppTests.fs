@@ -207,6 +207,28 @@ type ``App recording``() =
         Assert.That(back.Entries.Head.Recorded.Value.App, Is.EqualTo (Some app))
         Assert.That(Lock.format roots back, Is.EqualTo text)
 
+    /// `$(Version:<file>)` (`Apps.depsResolved`): the version from the project's lock, the file
+    /// not read; the file's informational version only without one; neither fails naming all.
+    [<Test>]
+    member _.``a project's version in deps.json: from the lock, else the file's InformationalVersion``() =
+        let dir = scratch ()
+        try
+            // not an assembly: had anything read it, there would be no version
+            let stub = Path.Combine (dir, "plain.dll")
+            File.WriteAllText (stub, "not an assembly")
+            let real = typeof<Lock.Entry>.Assembly.Location
+            let fileOf = function "plain.dll" -> stub | f -> Path.Combine (Path.GetDirectoryName real, f)
+            let deps = "\"plain/$(Version:plain.dll)\", \"hermetic/$(Version:Xake.Hermetic.Dotnet.dll)\""
+            let fromLock = function "plain.dll" -> Ok "2.2.0-ci.5" | _ -> Result.Error "the lock 'h.json' records no VersionPrefix"
+            let attribute = Diagnostics.FileVersionInfo.GetVersionInfo(real).ProductVersion.Split('+').[0]
+            Assert.That(Apps.depsResolved "'app' (net8.0)" fileOf fromLock deps,
+                        Is.EqualTo (sprintf "\"plain/2.2.0-ci.5\", \"hermetic/%s\"" attribute))
+            let none _ = Result.Error "the lock 'locks/plain/Release.json' records no VersionPrefix"
+            let e = Assert.Throws<exn>(fun () -> Apps.depsResolved "'app' (net8.0)" fileOf none "\"plain/$(Version:plain.dll)\"" |> ignore)
+            Assert.That(e.Message, Is.EqualTo (sprintf "'app' (net8.0): the deps.json needs the version of 'plain.dll' and has none: the lock 'locks/plain/Release.json' records no VersionPrefix, and '%s' has no InformationalVersion" stub))
+        finally
+            Directory.Delete (dir, true)
+
 
 /// Applications recorded from msbuild and built from their locks (`Import.record`,
 /// `Locks.compileAs`): a console app (net8.0, no RID: the SDK's apphost, copy-local packages

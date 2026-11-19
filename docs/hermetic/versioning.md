@@ -271,8 +271,11 @@ dotnet fsi build.fsx -- -- build -d APP_SUFFIX=alpha.7 -d CORE_SUFFIX=beta.3
 # app.dll 3.1.0-alpha.7, core.dll 1.4.0-beta.3; app.deps.json: "app/3.1.0-alpha.7", "core/1.4.0-beta.3"
 ```
 
-The application's `deps.json` names each project with that project's own version: it is read
-from the built `core.dll`, whatever group the application is in.
+The application's `deps.json` names each project with that project's own version, whatever
+group the application is in: from `core`'s lock (`Settings.LockOf`, by default
+`locks/<name>/<cfg>.json`) with `core`'s suffix, as `core`'s own compile resolves it. The built
+`core.dll` is not read, so a project with `GenerateAssemblyInfo=false` needs nothing extra; only
+a lock without `VersionPrefix` falls back to the file's informational version.
 
 ### A variant tag on one group
 
