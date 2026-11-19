@@ -79,6 +79,19 @@ type ``Fsc record tests``() =
         Assert.That(abs, Does.Contain "--define:TRACE")
 
     [<Test>]
+    member __.``a one-path switch value quoted by msbuild loses its quotes``() =
+        // SDK 11's Csc and Fsc tasks write `/sourcelink:"<path>"`
+        let dir = Path.GetFullPath "/proj"
+        let expected (p: string) = (Path.GetFullPath (Path.Combine (dir, p))).Replace('\\', '/')
+        Assert.That(CscArgs.absolutize dir [ "/sourcelink:\"obj/~x/Lib.sourcelink.json\"" ],
+                    Is.EqualTo [ "/sourcelink:" + expected "obj/~x/Lib.sourcelink.json" ])
+        Assert.That(CscArgs.inputs [ "/sourcelink:\"/a/Lib.sourcelink.json\"" ], Is.EqualTo [ "/a/Lib.sourcelink.json" ])
+        Assert.That(FscArgs.absolutize dir [ "--sourcelink:\"obj/Lib.sourcelink.json\"" ],
+                    Is.EqualTo [ "--sourcelink:" + expected "obj/Lib.sourcelink.json" ])
+        // a value that is not one quoted path stays as it is
+        Assert.That(CscArgs.absolutize dir [ "/features:\"A=;B\"" ], Is.EqualTo [ "/features:\"A=;B\"" ])
+
+    [<Test>]
     member __.``Fsc.ofArgs factors the sections and Args rebuilds the line``() =
         let f = Fsc.ofArgs probeLine
         Assert.That(f.Defines, Is.EqualTo [ "TRACE"; "NETSTANDARD" ])
