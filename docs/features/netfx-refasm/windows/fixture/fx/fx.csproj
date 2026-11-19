@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFrameworks>net472;netstandard2.0</TargetFrameworks></PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <!-- in the reference assemblies package -->
+    <Reference Include="System.Management" />
+    <!-- in a GAC only: MSB3245 on every OS -->
+    <Reference Include="System.Management.Automation" />
+  </ItemGroup>
+</Project>

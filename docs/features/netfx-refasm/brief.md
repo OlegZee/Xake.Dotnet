@@ -47,6 +47,25 @@ Make import always take the package, without touching projects:
   assemblies; the lock equals the one recorded on macOS (same `Dependencies.Packages`, same csc switches).
 - A `net472` project with central package management imports on Windows and macOS without NU1008.
 - Projects not targeting .NET Framework: locks byte-for-byte unchanged.
-- Changing the configured package version makes existing locks stale through the normal import-input check.
+- ~~Changing the configured package version makes existing locks stale through the normal import-input check.~~
+  Replaced by decision D1 (a), below.
 - Consumer side (not this repository): the overlay section that adds the package is removed; a re-import on Windows
   gives the same locks as on macOS.
+
+## Decisions (owner, 2026-11-19, after the probe)
+
+- **How the installed packs are hidden.** `TargetFrameworkRootPath` is *not* a global property: the
+  package's own `build/*.targets` sets it to the package after the restore, and a global property
+  would win over that (MSB3644, no references; seen on SDK 8.0.428, 9.0.320, 10.0.404). It is an
+  ordinary property of the import's props file, for `.NETFramework` frameworks and where the
+  framework is not known yet (a single-framework project's restore). The version and
+  `AutomaticallyUseReferenceAssemblyPackages` stay global (the SDK sets the version after
+  `Directory.Build.props`). No explicit `PackageReference` from the import (the SDK's implicit one).
+- **D1 (a): a changed version is treated like `PacksFrom`.** The next import rewrites the `net4*`
+  locks and a re-import comparison (`check-locks`) catches a committed lock with another version;
+  no version is recorded in the lock as such and there is no extra staleness check (the normal
+  check compares the hashes of files, and a `RecordOptions` value is not a file). This replaces
+  the acceptance line on staleness above.
+- `System.Management` is in the 4.7.2 package; the example of an assembly the package lacks is
+  `System.Management.Automation` (in a GAC only): MSB3245 on every OS, since `dotnet msbuild`
+  does not search the GAC.

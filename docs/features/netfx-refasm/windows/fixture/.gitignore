@@ -1,0 +1,8 @@
+pkg/
+locks/
+locks-installed/
+obj/
+out/
+.packages/
+*.log
+.xake

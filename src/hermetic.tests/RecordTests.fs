@@ -234,8 +234,8 @@ type ``Recorded lock identities``() =
 
     [<Test>]
     member x.``packs from NuGet by default: a pack root that does not exist; Installed passes none``() =
-        let options = { Import.RecordOptions.Default with Properties = [ "Brand", "Globex" ] }
-        Assert.That(options.PacksFrom, Is.EqualTo Import.NuGet)
+        let options = { Import.RecordOptions.Default with Properties = [ "Brand", "Globex" ]; NetFxReferenceAssemblies = Import.NetFxReferenceAssemblies.Installed }
+        Assert.That(Import.RecordOptions.Default.PacksFrom, Is.EqualTo Import.NuGet)
         let globals = Import.recordGlobals "/r/proj" options
         Assert.That(globals, Is.EqualTo [ "NuGetAudit", "false"; "NetCoreTargetingPackRoot", "/r/proj/obj/xake/no-installed-packs"; "Brand", "Globex" ])
         Assert.That(Import.recordGlobals "/r/proj/" options, Is.EqualTo globals)
@@ -243,6 +243,25 @@ type ``Recorded lock identities``() =
         // the script's own value wins
         let own = { options with Properties = [ "netcoretargetingpackroot", "/opt/packs" ] }
         Assert.That(Import.recordGlobals "/r/proj" own, Is.EqualTo [ "NuGetAudit", "false"; "netcoretargetingpackroot", "/opt/packs" ])
+
+    [<Test>]
+    member x.``netfx reference assemblies from the package by default: version, root hidden; Installed passes none``() =
+        let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; Properties = [ "Brand", "Globex" ] }
+        Assert.That(options.NetFxReferenceAssemblies, Is.EqualTo Import.NetFxReferenceAssemblies.Package)
+        Assert.That(Import.recordGlobals "/r/proj/" options,
+                    Is.EqualTo [ "NuGetAudit", "false"
+                                 "AutomaticallyUseReferenceAssemblyPackages", "true"
+                                 "MicrosoftNETFrameworkReferenceAssembliesLatestPackageVersion", "1.0.3"
+                                 "XakeNetFxReferenceRoot", "/r/proj/obj/xake/no-installed-netfx/"
+                                 "Brand", "Globex" ])
+        Assert.That(Import.recordGlobals "/r/proj" { options with NetFxReferenceAssembliesVersion = "1.0.2" }
+                    |> List.contains ("MicrosoftNETFrameworkReferenceAssembliesLatestPackageVersion", "1.0.2"))
+        Assert.That(Import.recordGlobals "/r/proj" { options with NetFxReferenceAssemblies = Import.NetFxReferenceAssemblies.Installed },
+                    Is.EqualTo [ "NuGetAudit", "false"; "Brand", "Globex" ])
+        // the script's own value wins
+        let own = { options with Properties = [ "microsoftnetframeworkreferenceassemblieslatestpackageversion", "1.0.0" ] }
+        Assert.That(Import.recordGlobals "/r/proj" own |> List.map fst,
+                    Is.EqualTo [ "NuGetAudit"; "AutomaticallyUseReferenceAssemblyPackages"; "XakeNetFxReferenceRoot"; "microsoftnetframeworkreferenceassemblieslatestpackageversion" ])
 
     [<Test>]
     member x.``a pack identity is the copy whose hash the lock recorded, installed or the package's``() =
@@ -1683,7 +1702,7 @@ type ``Version tokens``() =
 
     [<Test>]
     member x.``VersionToken runs msbuild with the marker; the script's own VersionSuffix fails``() =
-        let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; VersionToken = true }
+        let options = { Import.RecordOptions.Default with PacksFrom = Import.Installed; NetFxReferenceAssemblies = Import.NetFxReferenceAssemblies.Installed; VersionToken = true }
         Assert.That(Import.recordGlobals "/r/proj" options, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", m ])
         Assert.That(Import.recordGlobals "/r/proj" { options with VersionToken = false }, Is.EqualTo [ "NuGetAudit", "false" ])
         Assert.That(Import.recordGlobals "/r/proj" { options with VersionToken = false; Properties = [ "VersionSuffix", "beta" ] }, Is.EqualTo [ "NuGetAudit", "false"; "VersionSuffix", "beta" ])

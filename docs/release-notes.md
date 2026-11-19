@@ -8,6 +8,21 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
 ## Unreleased
 
+### .NET Framework reference assemblies from the package on every OS
+
+The import of a `net4*` project on Windows with a targeting pack installed recorded nothing (the
+reference assemblies under `Program Files` are host paths). It now takes them from
+`Microsoft.NETFramework.ReferenceAssemblies` on every OS, so a lock recorded on Windows equals the
+one recorded on macOS. The project is not changed and no `PackageReference` is added (no NU1008
+under central package management). [hermetic/lock.md](hermetic/lock.md).
+
+- **`Import.RecordOptions.NetFxReferenceAssemblies`** (new): `NetFxReferenceAssemblies.Package`
+  (the default) or `NetFxReferenceAssemblies.Installed` (the behaviour before).
+- **`Import.RecordOptions.NetFxReferenceAssembliesVersion`** (new, default `1.0.3`): the package's
+  version. A changed version changes the `net4*` locks on their next import.
+- A script that writes the whole `RecordOptions` record (not `Default with`) must add both.
+- Locks of other frameworks are unchanged.
+
 ### A project's version in `deps.json` from the lock
 
 An application's `deps.json` names its own project and each referenced project with a version

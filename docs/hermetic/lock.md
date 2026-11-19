@@ -325,6 +325,35 @@ before 0.8: an offline import), and a script's own `NetCoreTargetingPackRoot` in
 wins over the default. The pack versions follow the SDK; an exact `global.json` pin fixes them.
 Switching to NuGet changes every lock with a pack reference once, on its next import.
 
+**.NET Framework reference assemblies: from the package on every OS**
+(`RecordOptions.NetFxReferenceAssemblies`). A `net4*` project compiles against the reference
+assemblies of `Microsoft.NETFramework.ReferenceAssemblies.<moniker>`. Without help, msbuild takes
+them from that package only where no targeting pack is installed (macOS, Linux); on Windows with
+the pack installed it takes `C:\Program Files (x86)\Reference Assemblies\...`, which the import
+refuses as a host path. With `NetFxReferenceAssemblies.Package` (the default) the import hides the
+installed packs from the SDK's check, so the SDK adds its own implicit reference to the package
+on every OS and a lock recorded on Windows equals the one recorded on macOS:
+
+- `TargetFrameworkRootPath` is pointed at a folder that does not exist
+  (`$(ProjectRoot)/obj/xake/no-installed-netfx/`) for the `.NETFramework` frameworks (and where
+  the framework is not known yet, a single-framework project's restore; no other framework reads
+  it), as an ordinary property of the import's props file, not a global one: the package's own targets set
+  it to the package after the restore, which a global property would forbid (MSB3644, no
+  references);
+- `MicrosoftNETFrameworkReferenceAssembliesLatestPackageVersion` is the global
+  `RecordOptions.NetFxReferenceAssembliesVersion` (default `1.0.3`, the SDK's own), and
+  `AutomaticallyUseReferenceAssemblyPackages=true`.
+
+The project is not touched and no `PackageReference` is added: the SDK's reference is implicit,
+so central package management raises no NU1008. A reference the package does not have (an
+assembly only in the GAC) stays unresolved, warning MSB3245, on every OS: `dotnet msbuild` does
+not search the GAC. A script's own value of any of these properties in `Properties` wins.
+`NetFxReferenceAssemblies.Installed` passes none of them (the behaviour before: the installed
+packs where there are any). Other frameworks are not affected. A changed version changes every
+`net4*` lock once, on its next import; nothing makes the committed lock stale before that (it
+still builds, with the version it names), so a repository that wants to know compares a fresh
+import with it (`check-locks`, [workflows.md](workflows.md)).
+
 ### Format 2
 
 ```json

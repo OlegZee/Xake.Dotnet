@@ -1,36 +1,35 @@
 # Session: netfx-refasm
 
 Branch `feature/netfx-refasm` from `dev` at `cc6e3de`. Task B-5: the import takes .NET Framework
-reference assemblies from `Microsoft.NETFramework.ReferenceAssemblies` on every OS. Goal:
-`brief.md` (written in the consumer's repository, code references to v4.3.0). PR #12
-(`feature/import-file-casing`) also touches `Import.fs`: do not touch it.
+reference assemblies from `Microsoft.NETFramework.ReferenceAssemblies` on every OS. Goal and the
+owner's decisions: `brief.md` (its "Decisions" section: the root hidden by an ordinary property,
+D1 (a)). PR #12 (`feature/import-file-casing`) also touches `Import.fs`: not touched here.
 
 ## State at 2026-11-19
 
-Probed and designed; no code. Findings that correct the brief:
+Implemented, committed locally, not pushed.
 
-- The SDK's probe (`IncludeTargetingPackReference`, `Microsoft.NET.Sdk.FrameworkReferenceResolution.targets`,
-  same in SDK 8 and 11) reads `TargetFrameworkRootPath` (and `TargetFrameworkFallbackSearchPaths`),
-  not `FrameworkPathOverride`.
-- `TargetFrameworkRootPath` must **not** be a global property: the package's own
-  `build/*.targets` sets it to the package, and a global wins, giving MSB3644 (an error on Windows,
-  a warning and no references on macOS; seen on SDK 8.0.428, 9.0.320, 10.0.404). It is set in the
-  import's props file (`restoreProps`, before the package's targets), for `.NETFramework` inner
-  builds only.
-- `MicrosoftNETFrameworkReferenceAssembliesLatestPackageVersion` is set unconditionally in
-  `Microsoft.NET.Sdk.props` after `Directory.Build.props`: it must be global.
-- `System.Management` is in the 4.7.2 package. A GAC-only assembly (`System.Management.Automation`)
-  is MSB3245 (warning) on Windows and macOS, with the root hidden or not: `dotnet msbuild` does not
-  search the GAC. Only with `BuildOnlySettings` (as the import runs) is the warning printed.
-- The implicit reference (`IsImplicitlyDefined`) gives no NU1008 under central package management
-  (Windows and macOS).
-- Staleness checks compare file hashes only: no `RecordOptions` value makes a lock stale today.
-  Decision D1 for the owner (design note in the orchestrator's notes folder,
-  `netfx-refasm-design-2026-11-19.md`).
-
-Probe fixture and the VM run: scratchpad of this session (not kept); VM folder `C:\probe-netfx`.
+- `Import.fs` +43/-2 (budget 25; about half is doc comments): `NetFxReferenceAssemblies`
+  (`RequireQualifiedAccess`: `Installed` is a `PacksFrom` case too), `RecordOptions`
+  `NetFxReferenceAssemblies` (default `Package`) and `NetFxReferenceAssembliesVersion` (`1.0.3`),
+  three globals in `recordGlobals` (script's own value wins), one `PropertyGroup` in `restoreProps`.
+- The probe's first condition (`TargetFramework` is `.NETFramework`) missed a single-framework
+  project: its restore evaluates without `TargetFramework`, so the restore did not add the
+  package and the references came from `Program Files` (seen on the VM). The root is now also
+  hidden where `TargetFramework` is empty; `net8.0`/`netstandard2.0` references are the same with
+  it (VM) and their locks byte-identical (test, multi- and single-framework).
+- Tests +90 (`NetFxReferenceTests.fs` 67: package + CPM + GAC-only reference + build, configured
+  version, other frameworks byte-identical; `RecordTests.fs` +22: `recordGlobals`).
+- Docs +45 (`lock.md`, `hermetic-mode.md`, release notes "Unreleased").
+- Windows acceptance (`windows/`, ps1 24 + fsx 32 + README 33 + fixture ~30): on the VM with
+  packs v4.0 to v4.8.1, SDK 10.0.404 and 8.0.428: `Package` records `pkg:` references and builds,
+  `Installed` fails naming `Program Files`; the locks are byte-identical to the macOS ones (SDK
+  10.0.404, outside a git checkout).
+- `dotnet fsi build.fsx -- -- build test pack`: all green (532 tests in 8 slices).
+- fsc self-build: no update needed; `build.fsc.fsx` makes its locks from descriptions
+  (`Locks.generate`), not `Import.record`, so these globals never reach it.
+- Seen on the way: an import under a path with `--` fails (`--` rewritten to `__`), as in lock-inputs.
 
 ## Next step
 
-Wait for the owner's approval and D1. Then: docs, `Import.fs` (+25 lines), tests, the Windows
-acceptance script in `windows/` here, release notes "Unreleased", `build test pack`.
+The owner's review. On their word: push `feature/netfx-refasm`, PR to `dev` (squash).
