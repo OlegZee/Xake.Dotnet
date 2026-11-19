@@ -6,6 +6,20 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
+## Unreleased
+
+### Fixes
+
+- **SDK 11 parent, another SDK in the child**: a child `dotnet restore`/`dotnet msbuild`
+  (package downloads, the import's restore and msbuild runs, the `msbuild` task on the .NET SDK)
+  inherited the `dotnet` CLI's `MSBuildSDKsPath`, `MSBuildExtensionsPath` and `MSBUILD_EXE_PATH`
+  of the parent (a build under `dotnet test` on SDK 11) and loaded that SDK's targets with the
+  MSBuild of the SDK its own `global.json` picks (MSB4216, MSB4027). When the parent has them,
+  they now point at the child's SDK (`DotNetFwk.childMsbuildEnvironment`).
+- **Quoted one-path switch values**: SDK 11's `Csc`/`Fsc` tasks write `/sourcelink:"<path>"`;
+  the command-line parser (`CscArgs`, `FscArgs`) took the quotes as part of the path, and the
+  import failed with "Neither rule nor file is found for '<dir>/"<path>"'". The quotes are dropped.
+
 ## 4.3.0 (2026-11-08)
 
 ### Satellite assemblies (S71 reopened)
