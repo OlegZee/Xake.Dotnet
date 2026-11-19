@@ -97,6 +97,10 @@ module MsbuildImpl =
                     cmd fwkInfo.MsbuildTool
                     args commandLineArgs
                     envs fwkInfo.EnvVars
+                    // `dotnet msbuild` of an SDK (not mono's or .NET Framework's msbuild) with that
+                    // SDK's MSBuild, not the parent's (`DotNetFwk.childMsbuildEnvironment`); not in
+                    // `EnvVars`, which the compilers share (a non-empty one turns the csc server off)
+                    envs (if System.IO.Directory.Exists (System.IO.Path.Combine (fwkInfo.InstallPath, "Sdks")) then DotNetFwk.sdkImpl.msbuildVariables fwkInfo.InstallPath else [])
                     logprefix pfx
                     stdoutlevel diagnostics.Level
                     erroutlevel diagnostics.Level

@@ -49,6 +49,14 @@ module internal ArgsCore =
 
     let quoteIfNeeded (s: string) = if s.Contains "," then "\"" + s + "\"" else s
 
+    /// A one-path switch value without the quotes msbuild may put around it: SDK 11's tasks
+    /// write `/sourcelink:"<path>"`. The compiler drops them, so they are not part of the path
+    /// (a list value loses its quotes in `splitList`).
+    let unquotePath (value: string) =
+        if value.Length >= 2 && value.StartsWith "\"" && value.EndsWith "\"" && value.IndexOf ('"', 1) = value.Length - 1
+        then value.Substring (1, value.Length - 2)
+        else value
+
     let aliasSplitIndex (p: string) =
         match p.IndexOf '=' with
         | -1 -> -1
@@ -59,7 +67,7 @@ module internal ArgsCore =
     /// Paths a switch's value names.
     let switchPaths (d: Dialect) name (value: string) =
         match d.Shapes |> Map.tryFind (canonical d name) with
-        | Some Path -> [value]
+        | Some Path -> [unquotePath value]
         | Some PathList ->
             splitList value |> List.filter ((<>) "")
             |> List.map (fun p ->
@@ -72,7 +80,7 @@ module internal ArgsCore =
     /// A switch's value with every path it names rewritten, the rest left as it is.
     let mapSwitchPaths (d: Dialect) (f: string -> string) name (value: string) =
         match d.Shapes |> Map.tryFind (canonical d name) with
-        | Some Path -> f value
+        | Some Path -> f (unquotePath value)
         | Some PathList ->
             let mapped =
                 splitList value |> List.map (fun p ->

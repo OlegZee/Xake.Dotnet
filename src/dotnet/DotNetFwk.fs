@@ -393,52 +393,6 @@ module DotNetFwk =
                 moniker fwk
                 |> Option.map (fun m -> "Microsoft.NETFramework.ReferenceAssemblies." + m, versions.ReferenceAssemblies)
 
-        /// `<packageRoot>/<id lowercase>/<version>`. Every function below that reads or restores
-        /// a package takes the package folder as its first argument: `nugetRoot ()` for a caller
-        /// with no build, the build's own folder (`DotNetFwk.packageRoot`) from a recipe.
-        let internal packageDir (packageRoot: string) (packageId: string) (version: string) =
-            packageRoot </> packageId.ToLowerInvariant() </> version
-
-        /// The synchronous twin of `downloadPackages`, for a caller with no build context
-        /// (`locateFramework`): the same synthesized project under `projectRoot`, the same
-        /// arguments, and a failure that names the package and version. A build goes through
-        /// `resolveFramework`, which downloads with the recipe before this is reached.
-        let internal restoreSync (packageRoot: string) (projectRoot: string) (packageId: string) (version: string) =
-            let root = packageRoot.Replace('\\', '/').TrimEnd '/'
-            let dir = nextRestoreDir projectRoot
-            Directory.CreateDirectory dir |> ignore
-            let project = dir </> "restore.csproj"
-            File.WriteAllText (project, restoreProjectText [ packageId, version ])
-            let args = restoreArgs project |> List.map Tool.quoteArgument |> String.concat " "
-            // no build to log to: the output is only classified for the failure message
-            let diagnostics = Tool.DiagnosticLog Level.Verbose
-            let classify line = diagnostics.Level line |> ignore
-            let exitCode =
-                try ProcessExec.pexecSync classify classify "dotnet" args [ "NUGET_PACKAGES", root ] (Some dir)
-                with _ -> -1
-            if exitCode <> 0 then
-                failwith (restoreFailure root exitCode project [ packageId, version ] + diagnostics.Summary)
-            try Directory.Delete (dir, true) with _ -> ()
-
-        /// `locate ()`, restoring `packageId version` first when it finds nothing.
-        let private locateOrRestore packageRoot projectRoot packageId version (locate: unit -> string option) =
-            match locate () with
-            | Some dir -> dir
-            | None ->
-                restoreSync packageRoot projectRoot packageId version
-                match locate () with
-                | Some dir -> dir
-                | None ->
-                    failwithf "package %s %s was restored into '%s' but has no reference assemblies where expected"
-                        packageId version (packageDir packageRoot packageId version)
-
-        let private refAssembliesDir packageRoot projectRoot versions moniker =
-            let packageId = "Microsoft.NETFramework.ReferenceAssemblies." + moniker
-            let version = versions.ReferenceAssemblies
-            locateOrRestore packageRoot projectRoot packageId version (fun () ->
-                // one `v4.x` directory under `build/.NETFramework` in the package
-                latestDir (packageDir packageRoot packageId version </> "build" </> ".NETFramework"))
-
         let private dotnetHost () =
             match %"DOTNET_HOST_PATH" with
             | null | "" -> try System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName with _ -> null
@@ -521,6 +475,74 @@ module DotNetFwk =
             | _ -> None
 
         let private sdkDir projectRoot = sdkProbe projectRoot |> fst
+
+        /// The variables the `dotnet` CLI sets for the MSBuild of its own SDK.
+        let private cliMsbuildVariables = [ "MSBuildSDKsPath"; "MSBuildExtensionsPath"; "MSBUILD_EXE_PATH" ]
+
+        /// The environment for a child `dotnet restore`/`dotnet msbuild` that uses the SDK in
+        /// `sdkDir`. A build under `dotnet test` or `dotnet fsi` inherits the CLI's MSBuild
+        /// variables of the parent's SDK, and the child's CLI keeps them: an SDK 10 child then
+        /// loads SDK 11's targets (MSB4216, MSB4027). They point at `sdkDir` instead. An empty
+        /// or null value is no way to drop them: a .NET 8 parent passes either as empty, which
+        /// the child takes as set (MSB4236). Empty when the parent has none of them.
+        let internal msbuildVariables (sdkDir: string) : (string * string) list =
+            if cliMsbuildVariables |> List.forall (fun name -> System.String.IsNullOrEmpty %name) then []
+            else
+                [ "MSBuildSDKsPath", sdkDir </> "Sdks"
+                  "MSBuildExtensionsPath", sdkDir + string Path.DirectorySeparatorChar
+                  "MSBUILD_EXE_PATH", sdkDir </> "MSBuild.dll" ]
+
+        /// `msbuildVariables` of the SDK the `dotnet` host picks in `projectRoot` (`sdkProbe`);
+        /// empty when the parent has no MSBuild variables, so no probe runs then.
+        let internal childMsbuildEnvironment (projectRoot: string) : (string * string) list =
+            if cliMsbuildVariables |> List.forall (fun name -> System.String.IsNullOrEmpty %name) then []
+            else sdkDir projectRoot |> Option.map msbuildVariables |> Option.defaultValue []
+
+        /// `<packageRoot>/<id lowercase>/<version>`. Every function below that reads or restores
+        /// a package takes the package folder as its first argument: `nugetRoot ()` for a caller
+        /// with no build, the build's own folder (`DotNetFwk.packageRoot`) from a recipe.
+        let internal packageDir (packageRoot: string) (packageId: string) (version: string) =
+            packageRoot </> packageId.ToLowerInvariant() </> version
+
+        /// The synchronous twin of `downloadPackages`, for a caller with no build context
+        /// (`locateFramework`): the same synthesized project under `projectRoot`, the same
+        /// arguments, and a failure that names the package and version. A build goes through
+        /// `resolveFramework`, which downloads with the recipe before this is reached.
+        let internal restoreSync (packageRoot: string) (projectRoot: string) (packageId: string) (version: string) =
+            let root = packageRoot.Replace('\\', '/').TrimEnd '/'
+            let dir = nextRestoreDir projectRoot
+            Directory.CreateDirectory dir |> ignore
+            let project = dir </> "restore.csproj"
+            File.WriteAllText (project, restoreProjectText [ packageId, version ])
+            let args = restoreArgs project |> List.map Tool.quoteArgument |> String.concat " "
+            // no build to log to: the output is only classified for the failure message
+            let diagnostics = Tool.DiagnosticLog Level.Verbose
+            let classify line = diagnostics.Level line |> ignore
+            let exitCode =
+                try ProcessExec.pexecSync classify classify "dotnet" args (("NUGET_PACKAGES", root) :: childMsbuildEnvironment projectRoot) (Some dir)
+                with _ -> -1
+            if exitCode <> 0 then
+                failwith (restoreFailure root exitCode project [ packageId, version ] + diagnostics.Summary)
+            try Directory.Delete (dir, true) with _ -> ()
+
+        /// `locate ()`, restoring `packageId version` first when it finds nothing.
+        let private locateOrRestore packageRoot projectRoot packageId version (locate: unit -> string option) =
+            match locate () with
+            | Some dir -> dir
+            | None ->
+                restoreSync packageRoot projectRoot packageId version
+                match locate () with
+                | Some dir -> dir
+                | None ->
+                    failwithf "package %s %s was restored into '%s' but has no reference assemblies where expected"
+                        packageId version (packageDir packageRoot packageId version)
+
+        let private refAssembliesDir packageRoot projectRoot versions moniker =
+            let packageId = "Microsoft.NETFramework.ReferenceAssemblies." + moniker
+            let version = versions.ReferenceAssemblies
+            locateOrRestore packageRoot projectRoot packageId version (fun () ->
+                // one `v4.x` directory under `build/.NETFramework` in the package
+                latestDir (packageDir packageRoot packageId version </> "build" </> ".NETFramework"))
 
         /// The .NET target framework the SDK in `sdkDir` is for and the version of the
         /// targeting pack it bundles, from its `Microsoft.NETCoreSdk.BundledVersions.props`
@@ -803,6 +825,15 @@ module DotNetFwk =
     /// reference packs live under it.
     let dotnetRoot () = sdkImpl.dotnetRoot ()
 
+    /// <summary>
+    /// The environment entries for a child <c>dotnet restore</c> or <c>dotnet msbuild</c> run in
+    /// <c>projectRoot</c>: the MSBuild variables of the <c>dotnet</c> CLI (<c>MSBuildSDKsPath</c>,
+    /// <c>MSBuildExtensionsPath</c>, <c>MSBUILD_EXE_PATH</c>) pointed at the SDK the host picks
+    /// there, when this process inherited them from a CLI of another SDK (a build under
+    /// <c>dotnet test</c>); empty when it has none.
+    /// </summary>
+    let childMsbuildEnvironment (projectRoot: string) = sdkImpl.childMsbuildEnvironment projectRoot
+
     /// Where the package folder of a build came from (`packageRootWithSource`).
     type PackageRootSource =
         /// the build variable `NUGET_PACKAGES`, or its default `.packages`: a folder of the
@@ -997,6 +1028,8 @@ module DotNetFwk =
                             cmd "dotnet"
                             args (restoreArgs project |> List.map Tool.quoteArgument)
                             env ("NUGET_PACKAGES", root)
+                            // the MSBuild of the SDK the project root picks, not the parent's
+                            envs (sdkImpl.childMsbuildEnvironment ctxOptions.ProjectRoot)
                             workdir dir
                             logprefix "[restore]"
                             stdoutlevel diagnostics.Level

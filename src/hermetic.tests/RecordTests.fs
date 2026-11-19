@@ -389,6 +389,10 @@ type ``Import record``() =
         let psi = ProcessStartInfo ("dotnet")
         // no msbuild node left holding the redirected output (ReadToEnd would wait for it)
         psi.Environment.["MSBUILDDISABLENODEREUSE"] <- "1"
+        // the msbuild of the SDK `global.json` picks there, not the test host's (`dotnet test`
+        // on SDK 11 under a fixture pinned to SDK 10: SDK 11's MSBuild, a reused node, a hang)
+        for n in [ "MSBuildSDKsPath"; "MSBuildExtensionsPath"; "MSBUILD_EXE_PATH"; "MSBuildLoadMicrosoftTargetsReadOnly" ] do
+            psi.Environment.Remove n |> ignore
         psi.WorkingDirectory <- workDir
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
@@ -571,6 +575,10 @@ module internal RecordKit =
         let psi = ProcessStartInfo ("dotnet")
         // no msbuild node left holding the redirected output (ReadToEnd would wait for it)
         psi.Environment.["MSBUILDDISABLENODEREUSE"] <- "1"
+        // the msbuild of the SDK `global.json` picks there, not the test host's (`dotnet test`
+        // on SDK 11 under a fixture pinned to SDK 10: SDK 11's MSBuild, a reused node, a hang)
+        for n in [ "MSBuildSDKsPath"; "MSBuildExtensionsPath"; "MSBUILD_EXE_PATH"; "MSBuildLoadMicrosoftTargetsReadOnly" ] do
+            psi.Environment.Remove n |> ignore
         psi.WorkingDirectory <- workDir
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
