@@ -1,5 +1,7 @@
 # Session: netfx-refasm
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `feature/netfx-refasm` from `dev` at `cc6e3de`. Task B-5: the import takes .NET Framework
 reference assemblies from `Microsoft.NETFramework.ReferenceAssemblies` on every OS. Goal and the
 owner's decisions: `brief.md` (its "Decisions" section: the root hidden by an ordinary property,

@@ -21,10 +21,20 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Release state
 
+- `Xake.Dotnet` 4.4.0 (2026-11-19), squash-merged into `dev` one PR at a time: SDK 11 runner
+  images (#17, `docs/features/sdk11/`), declared inputs of generated binaries (#16,
+  `lock-inputs`), the `deps.json` version from the lock (#18, `deps-version`), Windows paths in
+  recorded analyzer configs (#19, `editorconfig-paths`), .NET Framework reference assemblies from
+  the package (#20, `netfx-refasm`), the legacy projects recipe and guard (#21,
+  `legacy-recipe`), the source order independent of the importing OS (#22, `source-order`).
+  Previews `v4.4.0-preview.1` (`b82100b`) and `v4.4.0-preview.2` (`2f89bfd`) were checked by a
+  consumer on macOS and a Windows VM: Windows locks equal the macOS ones. Tag `v4.4.0` on the
+  release-notes merge; `publish.yml` pushes the package; `master` follows by `--ff-only`.
+  `feature/import-file-casing` (#12) is not in it; if it lands, it is 4.5.0 (its notes still say
+  4.2.0).
 - `Xake.Dotnet` 4.3.0 (satellite assemblies, `docs/features/satellites/`): PR #15 squash-merged
   into `dev`, tag `v4.3.0` on that merge (2026-11-08); `publish.yml` pushes the package;
   `master` follows by `--ff-only`. New package dependency `System.Reflection.Metadata` 8.0.0.
-  `feature/import-file-casing` (#12) is not in it; if it lands, it is 4.4.0.
 - `Xake.Dotnet` 4.2.0 (the version as a token in a recorded lock,
   `docs/features/lock-version-params/`): PR #13 squash-merged into `dev`, tag `v4.2.0` on that
   merge (`22d61e0`, 2026-11-07); `publish.yml` pushed the package, on nuget.org the same day.
@@ -63,6 +73,13 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Feature folders
 
+- Released in 4.4.0 (2026-11-19); open only the "Later" items of their `tracker.md`:
+  `docs/features/sdk11/`, `lock-inputs/` (post-compile outputs through the same declaration),
+  `deps-version/`, `editorconfig-paths/`, `netfx-refasm/`, `legacy-recipe/`, `source-order/`
+  (test projects on Windows: testhost x64 in `App/Content`).
+- Open observation (2026-11-19, a consumer's Windows re-import): a lock whose only difference
+  would be the importing SDK's patch version (`"Sdk": "8.0.427"` vs 8.0.428) is not rewritten;
+  check whether that is intended and document it.
 - `docs/features/satellites/`: released in 4.3.0; open only its `tracker.md` "Later" items (run
   folders with a referenced lock's satellites, F# satellites from a lock).
 - `docs/features/lock-version-params/`: released in 4.2.0; open only the "Later" items of its

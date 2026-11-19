@@ -1,5 +1,7 @@
 # Session: sdk11
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `bugfix/sdk11` from `dev` (`b4853da`). GitHub's runner images ship SDK 11.0.100 since
 2026-11-16; `global.json` (8.0.0, `rollForward: latestMajor`) runs the tests on it, and CI
 failed on every PR (first seen on PR #16).

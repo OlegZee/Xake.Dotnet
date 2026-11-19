@@ -1,5 +1,7 @@
 # Session: deps-version
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `feature/deps-version`, cut from `dev` at `b4853da` (4.3.0). Task B-3 of the consumer
 analysis: the project version in an application's `deps.json` from the lock (`brief.md`).
 

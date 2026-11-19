@@ -1,5 +1,7 @@
 # Session: lock-inputs
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `feature/lock-inputs` from `dev` at `b4853da` (4.3.0). Goal and design: `brief.md`;
 items: `tracker.md`. PR #12 (`feature/import-file-casing`, open) also touches `Import.fs`: keep
 this diff to `entryOf`, `designTimeItems` and `record`'s `extensions`.

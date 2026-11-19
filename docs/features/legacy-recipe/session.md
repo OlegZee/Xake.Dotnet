@@ -1,5 +1,7 @@
 # Session: legacy-recipe
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `feature/legacy-recipe` from `dev` at `b82100b` (B-5 #20 included). Task B-4: legacy
 (non-SDK) csproj are not supported natively; an import overlay recipe in the docs
 (`docs/legacy-projects.md`) and a guard that fails such an import clearly. Goal: `brief.md`.

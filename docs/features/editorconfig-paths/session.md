@@ -1,5 +1,7 @@
 # Session: editorconfig-paths (B-1)
 
+**Released in 4.4.0 (2026-11-19).** Only the "Later" items of `tracker.md` are open.
+
 Branch `feature/editorconfig-paths`, cut from `dev` `d727ce3`. Only `src/hermetic/Import.fs`
 changes; B-5 and B-4 (also `Import.fs`) wait for this one. Do not touch PR #12.
 
