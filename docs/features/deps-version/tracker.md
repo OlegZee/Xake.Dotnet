@@ -1,11 +1,11 @@
 # Tracker: deps-version
 
-One line per item. Status as of 2026-11-19: implemented, committed locally, not pushed.
+One line per item. Status as of 2026-11-19: PR open into `dev`, not merged.
 
 ## Open
 
-- [ ] Owner reviews the report; push `feature/deps-version` and open the PR into `dev` (squash) on their word
-- [ ] CI: `build-fsc` (SDK 10.0.403) runs only there; SDK 11 failures are another session's fix
+- [ ] Owner reviews and squash-merges the PR (pushed and opened 2026-11-19 on their word)
+- [ ] CI green, `build-fsc` (SDK 10.0.403) included
 - [ ] Consumer side: drop the overlay that injects `AssemblyInformationalVersion`, re-import, same `deps.json`
 
 ## Done

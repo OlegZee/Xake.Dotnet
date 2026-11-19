@@ -6,14 +6,13 @@ analysis: the project version in an application's `deps.json` from the lock (`br
 ## Where things stand (2026-11-19)
 
 - Design approved by the owner (`brief.md`, Decision); implemented as `design.md` says, plus its
-  "Found while implementing" notes. Committed on `feature/deps-version`, not pushed.
-- Sizes: `Locks.fs` +37/-2, `Apps.fs` +17/-10; tests +65; docs +40.
-- `build test pack` locally: dotnet/rest 2 and hermetic/rest 4 failures (satellites, resource
-  sets, an fsproj+csproj lock, msbuild bytes) and a test-host crash in the satellite key test --
-  all the same on clean dev `b4853da` (SDK 8.0.427 + 11.0.100 here, no 10.0.x). Every other slice
-  passes, the version-token fixture included. `Import.fs` untouched.
+  "Found while implementing" notes. Sizes: `Locks.fs` +37/-2, `Apps.fs` +17/-10; tests +65; docs +40.
+- `origin/dev` (`d727ce3`: SDK 11 fix #17, lock-inputs #16) merged in with a merge commit;
+  release notes keep both "Unreleased" entries. `build test pack` under SDK 11.0.100: all green.
+- Pushed, PR into `dev` open (squash), not merged. `Import.fs` untouched.
 
 ## Next step
 
-The owner's word on the report: then push `feature/deps-version`, open the PR into `dev`
-(squash), watch CI (`build-fsc` checks SDK 10.0.403; SDK 11 failures are another session's).
+The owner reviews and squash-merges the PR; `build-fsc` in CI checks SDK 10.0.403. After the
+merge: the consumer drops its `AssemblyInformationalVersion` overlay and re-imports (same
+`deps.json`).
