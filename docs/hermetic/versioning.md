@@ -68,7 +68,7 @@ command "import" {
                 { Import.RecordOptions.Default with
                     LockOf = lockOf; OutOf = outOf
                     VersionToken = true }
-                [ for f in files -> f.FullName ]
+                [ for f in files -> File.getSysFileName f ]
     () }
 ```
 
@@ -133,9 +133,10 @@ let settings =
         VersionSuffixes = [ "**", recipe { let! s = vars.Suffix in return s } ] }
 
 let compile = recipe {
-    let! cfg = getRuleMatch "cfg"
-    let! fwk = getRuleMatch "fwk"
-    let! name = getRuleMatch "name"
+    let! m = matched
+    let cfg = m["cfg"]
+    let fwk = m["fwk"]
+    let name = m["name"]
     do! Locks.compile settings (lockOf name cfg) fwk }
 
 do xakeScript {
@@ -402,7 +403,8 @@ group's package takes that version through its own token:
 
 ```fsharp
 target "out/pkg/(name:*).nupkg" {
-    let! name = getRuleMatch "name"
+    let! m = matched
+    let name = m["name"]
     let! d = Description.load (descriptionOf name)
     let fwks = [ for f in d.Frameworks -> f, outOf "Release" f name ]
     do! need [ for f, dir in fwks -> $"{dir}/{name}.dll" ]
@@ -412,7 +414,8 @@ target "out/pkg/(name:*).nupkg" {
     if not (version.Contains "-") && coreVersion.Contains "-" then
         failwithf "%s %s (stable) would depend on Acme.Core %s (pre-release)" name version coreVersion
     let tokens = Pack.tokensOf d version |> Map.add "coreVersion" coreVersion
-    let! target = getTargetFullName ()
+    let! targetFile = getTargetFile ()
+    let target = File.getSysFileName targetFile
     let! options = Pack.Options.current ()
     Pack.fromNuspec target $"{dirOf name}/{name}.nuspec" tokens (Pack.libOf name fwks) options }
 ```

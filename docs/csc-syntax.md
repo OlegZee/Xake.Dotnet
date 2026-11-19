@@ -41,7 +41,7 @@ no file target.) Every custom operation of
 | `platform` | `TargetPlatform` | `/platform:` | `AnyCpu` |
 | `target` | `TargetType` | `/target:`, resolved from the output name when `Auto` | `Auto` |
 | `targetfwk` | `string` | target framework to compile against; see [`docs/dotnet-build.md`](dotnet-build.md) | `null`: the `NETFX-TARGET` var, else the SDK's own .NET framework (`net10.0` for SDK 10.0.x) |
-| `out` | `File` | output file; `/out:` | `File.undefined` (task infers a target file) |
+| `out` | `File` | output file; `/out:` (the settings record holds `Some file`) | none: the rule's target |
 | `src` | `Fileset` | source files | `Fileset.Empty` |
 | `ref` | `Fileset` | adds to the reference fileset (`+`) | -- |
 | `refif` | `bool * Fileset` | adds the fileset conditionally (`+?`) | -- |
@@ -176,7 +176,8 @@ description is read -- no msbuild, no restore, no lock. Code: `src/dotnet/Projec
 
 ```fsharp
 "out/(fwk:*)/Sample.dll" ..> recipe {
-    let! fwk = getRuleMatch "fwk"
+    let! m = matched
+    let fwk = m["fwk"]
     do! csc { targetfwk fwk; project "src/Sample/xake.project.json" }
 }
 "out/net8.0/Web.dll" ..> csc { project "src/Web/xake.project.json" }     // frameworkReferences: Microsoft.AspNetCore.App
@@ -280,7 +281,7 @@ open Xake.Hermetic.Dotnet
       do! Described.restoreAll descOf [ for n in names -> descOf n ] fwks
       do! need [ for n in names do for f in fwks -> dllOf "Release" f n ] }
   target "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" {
-      // ... cfg, fwk, name from getRuleMatch
+      // ... cfg, fwk, name from `let! m = matched`
       let! d = Description.load (descOf name)
       let! pkgs = Described.restoreWith descOf d fwk               // from the cache
       let! refs = Described.closure descOf d

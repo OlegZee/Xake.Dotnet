@@ -203,7 +203,7 @@ module ProjectPlan =
                     entries |> List.fold (fun (fs: Fileset) (entry: string) ->
                         if entry.StartsWith "!" then fs - normal (entry.Substring 1) else fs + normal entry) (Fileset.(~+) projectDir)
                 let! (Filelist found) = getFiles fs
-                let files = found |> List.map (File.getFullName >> normal) |> List.distinct
+                let files = found |> List.map (fun f -> f.Name) |> List.distinct
                 if entries |> List.exists hasWildcard then
                     return files |> List.sortWith (fun a b -> System.String.CompareOrdinal (a, b))
                 else return files
@@ -279,7 +279,7 @@ module ProjectPlan =
             // a projectRef's output path is the script's layout: it comes with `ref`
             let missing =
                 d.ProjectRefs |> List.filter (fun name ->
-                    not (given |> List.exists (fun f -> same (Path.GetFileNameWithoutExtension f.FullName) name)))
+                    not (given |> List.exists (fun f -> same (Path.GetFileNameWithoutExtension (File.getSysFileName f)) name)))
             if not (List.isEmpty missing) then
                 failwithf "'%s': projectRefs %s have no output path; pass each one's output with `ref` (e.g. ref !! \"out/%s/%s.dll\") -- the composed path neither builds nor locates project references (the hermetic lock records them)"
                     d.Name (missing |> List.map (sprintf "'%s'") |> String.concat ", ") framework missing.Head

@@ -17,7 +17,7 @@ module CscBuilder =
         [<CustomOperation("platform")>]  member __.Platform(s:CscSettingsType, value) =    {s with Platform = value}
         [<CustomOperation("target")>]    member __.Target(s:CscSettingsType, value) =    {s with Target = value}
         [<CustomOperation("targetfwk")>] member __.TargetFwk(s:CscSettingsType, value) = {s with TargetFramework = value}
-        [<CustomOperation("out")>]       member __.OutFile(s:CscSettingsType, value) =   {s with Out = value}
+        [<CustomOperation("out")>]       member __.OutFile(s:CscSettingsType, value) =   {s with Out = Some value}
         [<CustomOperation("src")>]       member __.SrcFiles(s:CscSettingsType, value) =  {s with Src = value}
 
         [<CustomOperation("ref")>]       member __.Ref(s:CscSettingsType, value) =         {s with Ref = s.Ref + value}

@@ -759,7 +759,7 @@ the runner checks the hashes, the prerequisite checks the SDK. Two points are sp
 ```fsharp
 command "import" {
     let! (Filelist files) = getFiles (!! "src/*/*.csproj")
-    let! _ = Import.record { Import.RecordOptions.Default with LockOf = lockOf; OutOf = outOf } [ for f in files -> f.FullName ]
+    let! _ = Import.record { Import.RecordOptions.Default with LockOf = lockOf; OutOf = outOf } [ for f in files -> File.getSysFileName f ]
     () }
 command "build" { do! Locks.needAll (!! "src/*/xake.project.json") "Release" lockOf outOf }
 "out/(cfg:*)/(fwk:*)/(name:*)/*.dll" ..> compile
@@ -783,9 +783,10 @@ command "deploy" {
     let! folders = Locks.runFoldersWith [] (!! "src/*/xake.project.json") "Release" lockOf Locks.runOf
     do! need folders }
 "run/(cfg:*)/(fwk:*)/(name:*)/.xake-run.txt" ..> recipe {
-    let! cfg = getRuleMatch "cfg"
-    let! fwk = getRuleMatch "fwk"
-    let! name = getRuleMatch "name"
+    let! m = matched
+    let cfg = m["cfg"]
+    let fwk = m["fwk"]
+    let name = m["name"]
     do! Locks.runFolderWith [] RunFolder.Clone lockOf Locks.flatOutOf cfg fwk name }
 "out/(cfg:*)/(fwk:*)/(asm:*).dll" ..> compile      // finds the project by the assembly name
 "out/(cfg:*)/(fwk:*)/(asm:*).exe" ..> compile
@@ -843,8 +844,8 @@ What a run folder holds, step by step:
 
 Dependencies: the locks the rule reads; the closure's assemblies as the compile rules' targets,
 needed before anything beside them is looked at (so `deploy` on an unbuilt tree builds first and
-places the whole folder; Xake 3.8 records them with their change stamps (`ArtifactDep2`), so an
-assembly rebuilt by an earlier run brings the folder up to date in the next one); the package
+places the whole folder; Xake records them as target dependencies (`TargetDep`; `ArtifactDep2` with change stamps from
+Xake 3.8 to 4.x), so an assembly rebuilt by an earlier run brings the folder up to date in the next one); the package
 files and the items. The side outputs (pdb, xml, runtime
 files, apphost) change with their assembly and are not needed through the compile rule. So a
 .NET Framework application's `.xml` is never asked for as `<asm>.dll` (S64).
@@ -1890,8 +1891,9 @@ let outOf cfg fwk (_: string) = $"out/{cfg}/{fwk}"
 let descriptionOf name = $"src/{name}/xake.project.json"
 
 "lock::(name:*)::(cfg:*)" => recipe {
-    let! name = getRuleMatch "name"
-    let! cfg  = getRuleMatch "cfg"
+    let! m = matched
+    let name = m["name"]
+    let cfg = m["cfg"]
     let! d = Description.load (descriptionOf name)
     do! need [ for r in d.ProjectRefs -> $"lock::{r}::{cfg}" ]
     do! alwaysRerun ()
@@ -2023,9 +2025,10 @@ input files to it, so a fresh clone or a CI run (no `.xake`) builds from what wa
 let versions = [ "src/hermetic/**", vars.HermeticVersion; "**", vars.Version ]
 command "build" { do! Locks.needAll (!! "src/*/xake.project.json") "Release" lockOf outOf }
 target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-    let! cfg = getRuleMatch "cfg"
-    let! fwk = getRuleMatch "fwk"
-    let! name = getRuleMatch "name"
+    let! m = matched
+    let cfg = m["cfg"]
+    let fwk = m["fwk"]
+    let name = m["name"]
     do! Locks.compileAs (lockOf name cfg) fwk versions }
 ```
 
@@ -2106,9 +2109,10 @@ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
   let settings = { Locks.Settings.Default with Roots = roots; Versions = versions }
   let compileTarget = Locks.compile settings   // the script's own compile, partially applied
   target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-      let! cfg = getRuleMatch "cfg"
-      let! fwk = getRuleMatch "fwk"
-      let! name = getRuleMatch "name"
+      let! m = matched
+      let cfg = m["cfg"]
+      let fwk = m["fwk"]
+      let name = m["name"]
       do! compileTarget (lockOf name cfg) fwk }
   ```
   `compileAsWith roots lockPath fwk versions` is `compile { Settings.Default with Roots = roots;

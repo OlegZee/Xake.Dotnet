@@ -273,8 +273,8 @@ module Satellite =
                 return
                     before
                     @ [ for f in found do
-                          let name = manifestName culture (Impl.makeResourceName setOptions fileOptions.BaseDir f.FullName)
-                          let file = f.FullName.Replace ('\\', '/')
+                          let name = manifestName culture (Impl.makeResourceName setOptions fileOptions.BaseDir (File.getSysFileName f))
+                          let file = f.Name
                           yield { File = file; Compiled = (if compiled file then compiledDir.TrimEnd('/') + "/" + name else ""); Name = name } ] })
             (recipe { return [] })
 

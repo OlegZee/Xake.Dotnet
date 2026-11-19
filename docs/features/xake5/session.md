@@ -4,21 +4,19 @@ Branch `feature/xake5`, cut from `origin/dev` `61b3b07` (= release 4.4.0). Start
 
 ## Where things stand
 
-- Design reported to the orchestrator session (brief.md, tracker.md); no code changed.
-- The trial compile (a scratch copy against `Xake 5.0.0-preview.2`) is in brief.md: every
-  project compiles with about 25 changed lines; the deprecated aliases leave ~190 FS0044
-  warnings.
-- `build.fsx` runs on `Xake 5.0.0-preview.2` unchanged. `build.fsc.fsx` needs a published
-  `Xake.Dotnet` built for Xake 5 (`5.0.0-preview.1`), so it cannot move in this PR.
-
-## Trap
-
-- Both scripts use the database `.xake` at the repository root. Xake 5 upgrades a 0.6 database
-  to 0.7; Xake 4 cannot read 0.7 and recreates it (a full rebuild, with a warning). With
-  `build.fsx` on Xake 5 and `build.fsc.fsx` on Xake 4, alternating the two locally rebuilds
-  everything each time; CI jobs run in fresh checkouts and are not affected.
+- Design approved by the owner (bootstrap option B: both scripts stay on `Xake 4.0.0`).
+- Port implemented and committed locally, not pushed: `Out`/`Doc` as `File option`, Sign's
+  delegated result, Pack's `recipe`, annotated recursive recipes, the deprecated aliases and
+  `getRuleMatch` (tests, doc examples) replaced; `XakeVersion` `[5.0.0-preview.2, 6.0)`; CI
+  `xake-latest` on `5.*-*`; locks on Xake 5.0.0-preview.2 with the SDK 10.0.403 compiler lines
+  kept, `xake.fingerprints` recomputed, the fixture description copy updated.
+- `dotnet fsi build.fsx -- -- build test pack` green (dotnet 172, hermetic 368), 0 warnings
+  from the port; `build.fsc.fsx check` green. The fsc self-build (`build`) needs SDK 10.0.403:
+  CI's `build-fsc` covers it.
+- Windows VM not run: tool paths are `File.getSysFileName`, which is what `FullName` returned.
 
 ## Next step
 
-Wait for the owner's approval of the design; then docs first (release notes migration section),
-then the code in the order of tracker.md "Open".
+Report to the owner; on the owner's word in this session push `feature/xake5` and open the PR to
+`dev` (squash). After merge the owner tags `v5.0.0-preview.1`; then the follow-up moves both
+scripts' `#r` lines (tracker "Open").

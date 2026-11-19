@@ -18,7 +18,8 @@ open Xake.Dotnet
 do xakeScript {
     rules [
         "out/(fwk:*)/Sample.dll" ..> recipe {
-            let! fwk = getRuleMatch "fwk"
+            let! m = matched
+            let fwk = m["fwk"]
             do! csc { targetfwk fwk; project "src/Sample/xake.project.json" }
         }
         "out/net8.0/Web.dll" ..> csc { project "src/Web/xake.project.json" }

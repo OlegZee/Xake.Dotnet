@@ -71,7 +71,7 @@ type ``Description import``() =
             // the engine is the published package, its range as the project file writes it
             Assert.That(dotnet.ProjectRefs, Is.Empty)
             let xake = dotnet.Packages |> List.find (fun p -> p.Id = "Xake")
-            Assert.That(xake.Version.Value, Does.StartWith "[4.")
+            Assert.That(xake.Version.Value, Does.StartWith "[5.")
             Assert.That(dotnet.ByFramework |> List.map fst, Is.EqualTo [ "net462"; "netstandard2.0" ])
             Assert.That((dotnet.ByFramework |> List.find (fst >> (=) "net462") |> snd).References, Is.EqualTo [ "System.Windows.Forms" ])
             Assert.That((dotnet.ByFramework |> List.find (fst >> (=) "netstandard2.0") |> snd).Packages |> List.map (fun p -> p.Id, p.Version),

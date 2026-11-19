@@ -15,8 +15,9 @@ module LockRule =
     let lockRuleWith (roots: (string * string) list) (lockOf: string -> string -> string) (outOf: string -> string -> string -> string)
                      (descriptionOf: string -> string) (refCfg: string -> string) (ran: ResizeArray<string>) =
         "lock::(name:*)::(cfg:*)" => recipe {
-            let! name = getRuleMatch "name"
-            let! cfg  = getRuleMatch "cfg"
+            let! m = matched
+            let name = m["name"]
+            let cfg = m["cfg"]
             let! d = Description.load (descriptionOf name)
             do! need [ for r in d.ProjectRefs -> $"lock::{r}::{refCfg cfg}" ]
             do! alwaysRerun ()

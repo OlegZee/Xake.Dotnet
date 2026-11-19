@@ -1,29 +1,30 @@
 # Tracker: xake5
 
-One line per item. Status as of 2026-11-19: design reported, waiting for the owner's approval.
+One line per item. Status as of 2026-11-19: implemented, not pushed.
 
 ## Open
 
-- [ ] Owner approves the design (brief.md; the bootstrap choice and `Out`/`Doc` as `File option`)
-- [ ] Docs first: release notes "5.0.0 (unreleased)" with a consumer migration section; `csc-syntax.md` (`out` default), docs naming `FullName`/`getTargetFullName`/`ArtifactDep2`
-- [ ] `XakeVersion` `[5.0.0-preview.2, 6.0)`; CI `xake-latest` on `5.*-*`
-- [ ] Errors: `File.undefined` -> `File option` (Csc, Fsc, Described.plan); Sign's `BuildResult`/`FileDep`; Pack's `recipe`; recursive recipes annotated
-- [ ] Deprecated aliases replaced (`FullName`, `getFullName`, `getTargetFullName`): src ~80 sites, tests ~105
-- [ ] Tests adapted (`FileDep f`, `TargetDep`, `FileRule ([mask], _, _)`, `Out = Some ..`)
-- [ ] Bootstrap: `build.fsx` / `build.fsc.fsx` per the approved option
-- [ ] `dotnet fsi build.fsx -- -- build test pack` green; locks unchanged (or re-recorded)
-- [ ] Windows VM check of the hermetic tests if a path change touches Windows behaviour
-- [ ] Report before push; push on the owner's word in this session
+- [ ] Report to the owner; push and PR `feature/xake5` -> `dev` (squash) on the owner's word in this session
+- [ ] Windows VM check of the hermetic tests: not needed by the port's changes (tool paths are `getSysFileName`, equal to the old `FullName`); run it if the owner wants it before the preview
+- [ ] Release follow-up (owner tags `v5.0.0-preview.1`): both scripts' `#r` to `Xake 5.0.0-preview.2` + `Xake.Dotnet 5.0.0-preview.1`; at 5.0.0 the floor to `[5.0.0, 6.0)`, and the getting-started `#r "nuget: Xake.Dotnet, 4.x"` lines and `[4.0.0, 5.0)` ranges (readme, hermetic-guide, hermetic/README, tasks, lock, workflows) to 5.0.0
 
 ## Later (out of scope, proposals for the owner)
 
 - [ ] csc/fsc rules: `also` for the `.pdb` / `.xml` side outputs (Xake 5 checks every output is written)
 - [ ] Hermetic rules: header `needs` for the lock and description inputs (built before the body, content cut-off)
 - [ ] `requires` instead of `withResource`/`CSC_JOBS` inside the compile recipes (WaitTime accounted by the engine)
-- [ ] `build.fsx`: `let! m = matched` instead of `getRuleMatch`-style code, if any
-- [ ] Remove `Xake.Dotnet`'s own `Path`-case assumptions now that filesets ignore case on Linux
+- [ ] `bump-base` did not re-resolve Xake in the locks on the 4.0.0-preview.1 bootstrap (its `LOCK_REFRESH` environment variable); check after the scripts move
 
 ## Done
 
-- [x] Trial compile against 5.0.0-preview.2 (scratch copy): the full error list, ~25 changed lines to compile everything (2026-11-19)
+- [x] `dotnet fsi build.fsx -- -- build test pack` green: dotnet 172/172, hermetic 368/368; the package depends on `Xake [5.0.0-preview.2, 6.0.0)` (2026-11-19)
+- [x] The fixture copy `src/hermetic.tests/fixtures/src/dotnet/xake.project.json` equal to `src/dotnet`'s; the import test expects `[5.` (2026-11-19)
+- [x] Locks: Xake 5.0.0-preview.2 in both locks (`update-locks -d LOCK_REFRESH=Xake`), the compiler lines kept at SDK 10.0.403, `xake.fingerprints` recomputed; `build.fsc.fsx check` green (2026-11-19)
+- [x] `XakeVersion` `[5.0.0-preview.2, 6.0)`; CI `xake-latest` on `5.*-*` (2026-11-19)
+- [x] Tests: `FileDep f`, `TargetDep`, `FileRule ([mask], _, _)`, `Out = Some ..`, the fold annotated, the `Started` log line relative; `getRuleMatch` -> `let! m = matched` (89 lines) (2026-11-19)
+- [x] Deprecated aliases: src 74 sites (`getSysFileName`; `.Name` where the code slashed the path), tests 15; 0 warnings in src and tests (FS1253 in RecordTests predates the port) (2026-11-19)
+- [x] Errors: `Out`/`Doc` as `File option` (Csc, Fsc, builders, `Described.plan`); Sign's delegated `BuildResult`; Pack's `recipe`; recursive recipes annotated (2026-11-19)
+- [x] Docs: release notes "5.0.0 (unreleased)" with the migration table; csc-syntax, tasks, devprocess, hermetic lock/versioning/pack/workflows; doc examples on `matched` (2026-11-19)
+- [x] Owner approved the design, bootstrap option B (2026-11-19)
+- [x] Trial compile against 5.0.0-preview.2 (scratch copy): the full error list (2026-11-19)
 - [x] `build.fsx` runs on `Xake 5.0.0-preview.2` unchanged (one FS0044 at line 135) (2026-11-19)

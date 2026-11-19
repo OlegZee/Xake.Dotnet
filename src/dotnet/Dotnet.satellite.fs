@@ -104,12 +104,12 @@ module SatelliteTask =
             let! options = getCtxOptions ()
             let root = Path.GetFullPath options.ProjectRoot
             let! target = getTargetFile ()
-            let output = (File.getFullName target).Replace ('\\', '/')
-            let what = (Impl.getRelative root (File.getFullName target)).Replace ('\\', '/')
+            let output = target.Name
+            let what = (Impl.getRelative root (File.getSysFileName target)).Replace ('\\', '/')
 
             if String.IsNullOrWhiteSpace settings.Template then
                 failwithf "'%s': satellite needs its template: template \"<the main assembly>\"" what
-            let culture = Path.GetFileName (Path.GetDirectoryName (File.getFullName target))
+            let culture = Path.GetFileName (Path.GetDirectoryName (File.getSysFileName target))
             Satellite.checkCulture what culture
 
             let templatePath = Path.GetFullPath (Path.Combine (root, settings.Template))
@@ -145,7 +145,7 @@ module SatelliteTask =
             Satellite.checkKey what template switches
 
             let outDir =
-                let rel = Impl.getRelative root (Path.GetDirectoryName (Path.GetDirectoryName (File.getFullName target)))
+                let rel = Impl.getRelative root (Path.GetDirectoryName (Path.GetDirectoryName (File.getSysFileName target)))
                 if Path.IsPathRooted rel then rel.Replace(":", "").TrimStart ('/', '\\') else rel
             let compiledDir = (Path.Combine (root, "obj", "xake", "satellites", outDir, culture)).Replace ('\\', '/')
             let! resources = Satellite.resourcesOf culture compiledDir settings.Resources

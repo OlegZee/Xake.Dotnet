@@ -11,7 +11,7 @@
 // (the trx, the blame sequence file and console.log, its whole output); the console gets the
 // summary lines. FILTER (-d FILTER=Rm) narrows every job to its tests whose name matches Rm
 // (NUnit's `name =~ 'Rm'`, a regex; no quote in it); a job left with no test passes.
-// XAKE_VERSION (-d XAKE_VERSION=4.*-*) builds and tests against another `Xake` than the range
+// XAKE_VERSION (-d XAKE_VERSION=5.*-*) builds and tests against another `Xake` than the range
 // of the project file (CI's xake-latest job).
 
 open Xake
@@ -25,7 +25,7 @@ let vars = {|
     Version     = Var.create<string>(cliArg = "VERSION", envVar = "VERSION", description = "Version number for the Xake.Dotnet package, e.g. 4.0.1") |> withDefault "0.0.1"
     NUGET_KEY   = Var.env<string>(envVar = "NUGET_KEY", description = "API key for NuGet.org, required for pushing the package") |> withDefault "" |> secret
     TestFilter  = Var.string(cliArg = "FILTER", envVar = "FILTER", description = "Runs only the tests whose name matches this regex, e.g. 'Rm'")
-    XakeVersion = Var.string(cliArg = "XAKE_VERSION", envVar = "XAKE_VERSION", description = "The Xake package version (or range, e.g. 4.*-*) to build and test against instead of the project file's")
+    XakeVersion = Var.string(cliArg = "XAKE_VERSION", envVar = "XAKE_VERSION", description = "The Xake package version (or range, e.g. 5.*-*) to build and test against instead of the project file's")
 |}
 
 let frameworks = ["netstandard2.0" (*; "net462" *)]

@@ -202,7 +202,7 @@ not pinned (...) -- the lock's compiler (...) will drift with every SDK the mach
         Project.ImportOptions.Default with
             Projects = [ "src/Hello/Hello.csproj" ]
             Frameworks = [ "netstandard2.0" ]
-            Output = lockFile.FullName }
+            Output = File.getSysFileName lockFile }
 }
 ```
 

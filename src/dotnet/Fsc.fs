@@ -19,7 +19,7 @@ module FscTypes =
         /// Specifies the format of the output file.
         Target: TargetType
         /// Specifies the output file name (default: the target of the rule).
-        Out: File
+        Out: File option
         /// Source files, in compile order.
         Src: Fileset
         /// References metadata from the specified assembly files.
@@ -36,7 +36,7 @@ module FscTypes =
         /// Use a specific F# compiler version (the Windows registry provider only).
         FscVersion: string option
         /// Xml documentation file to produce alongside the assembly.
-        Doc: File
+        Doc: File option
         /// Custom command-line arguments
         CommandArgs: string list
         /// Build fails on compile error.
@@ -58,7 +58,7 @@ module FscTypes =
     } with static member Default = {
             Platform = AnyCpu
             Target = Auto
-            Out = File.undefined
+            Out = None
             Src = Fileset.Empty
             Ref = Fileset.Empty
             RefGlobal = []
@@ -66,7 +66,7 @@ module FscTypes =
             Define = []
             TargetFramework = null
             FscVersion = None
-            Doc = File.undefined
+            Doc = None
             CommandArgs = []
             FailOnError = true
             NoFramework = false
@@ -312,12 +312,12 @@ module Fsc =
             let! ctx = getCtx()
             let targetFiles = Impl.fileTargets ctx.Targets
             let! outFile =
-                if settings.Out = File.undefined then
+                match settings.Out with
+                | Some out -> recipe.Return out
+                | None ->
                     match targetFiles |> List.filter (Impl.isRuntimeConfig >> not) with
                     | file :: _ -> recipe.Return file
                     | [] -> getTargetFile()
-                else
-                    settings.Out |> recipe.Return
 
             let resNames = settings.Resources |> List.collect (Impl.collectResInfo options.ProjectRoot)
             let isResx (_, file: File) = file |> File.getFileName |> Impl.endsWith ".resx"
@@ -330,10 +330,10 @@ module Fsc =
                     let manifestName = Path.ChangeExtension(resname, ".resources")
                     let resourcesPath =
                         (options.ProjectRoot </> "obj" </> "xake" </> assemblyName </> manifestName).Replace('\\', '/')
-                    manifestName, file.FullName, resourcesPath)
+                    manifestName, File.getSysFileName file, resourcesPath)
 
             let resArgs =
-                (plainEntries |> List.map (fun (name, file: File) -> name, file.FullName))
+                (plainEntries |> List.map (fun (name, file: File) -> name, File.getSysFileName file))
                 @ (resxResources |> List.map (fun (manifestName, _, resourcesPath) -> manifestName, resourcesPath))
             let resources = resxResources |> List.map (fun (_, resx, resourcesPath) -> resx, resourcesPath)
 
@@ -360,7 +360,7 @@ module Fsc =
             let isNetFramework = not isNetstandard && not isNetcore
             let fileNamed name (path: string) =
                 System.String.Equals (Path.GetFileName path, name, System.StringComparison.OrdinalIgnoreCase)
-            let refsNamed name = refs |> List.exists (fun f -> fileNamed name f.FullName)
+            let refsNamed name = refs |> List.exists (fun f -> fileNamed name (File.getSysFileName f))
             // FSharp.Core (any of them: the SDK's, the package's netstandard builds) references
             // netstandard 2.0.0.0, which .NET Framework reference assemblies below 4.7.1 lack:
             // a forwarding facade makes it resolve, unless the settings reference one
@@ -418,15 +418,15 @@ module Fsc =
                         yield "--targetprofile:netcore"
                     if not settings.Tailcalls then
                         yield "--tailcalls-"
-                    if outFile <> File.undefined then
-                        yield "--out:" + File.getFullName outFile
-                    if settings.Doc <> File.undefined then
-                        yield "--doc:" + File.getFullName settings.Doc
+                    yield "--out:" + File.getSysFileName outFile
+                    match settings.Doc with
+                    | Some doc -> yield "--doc:" + File.getSysFileName doc
+                    | None -> ()
                     // one symbol per switch: fsc, unlike csc, takes '--define:A;B' as a
                     // single (and useless) symbol named "A;B"
                     yield! settings.Define |> List.map (fun symbol -> "--define:" + symbol)
-                    yield! src |> List.map (fun f -> f.FullName)
-                    yield! refs |> List.map (fun f -> "-r:" + f.FullName)
+                    yield! src |> List.map File.getSysFileName
+                    yield! refs |> List.map (fun f -> "-r:" + File.getSysFileName f)
                     yield! defaultFSharpCore |> List.map ((+) "-r:")
                     yield! globalRefs |> List.map ((+) "-r:")
                     yield! resArgs |> List.map (fun (name, path) -> sprintf "--resource:%s,%s" path name)
@@ -483,11 +483,12 @@ module Fsc =
             let! options = getCtxOptions ()
             let! ctx = getCtx ()
             let! outFile =
-                if settings.Out = File.undefined then
+                match settings.Out with
+                | Some out -> recipe.Return out
+                | None ->
                     match Impl.fileTargets ctx.Targets |> List.filter (Impl.isRuntimeConfig >> not) with
                     | file :: _ -> recipe.Return file
                     | [] -> getTargetFile ()
-                else recipe.Return settings.Out
             let (Filelist given) = settings.Ref |> toFileList options.ProjectRoot
             let! p = ProjectPlan.make Description.FSharp path settings.TargetFramework (Path.GetFileNameWithoutExtension outFile.Name) given
             let filesOf (paths: string list) = paths |> List.fold (fun fs f -> fs + (!! f)) Fileset.Empty
@@ -495,7 +496,7 @@ module Fsc =
                 { settings with
                     Project = None
                     TargetFramework = p.Framework
-                    Out = outFile
+                    Out = Some outFile
                     Target =
                         match settings.Target, p.Kind with
                         | Auto, Description.Exe -> Exe
@@ -506,7 +507,7 @@ module Fsc =
                     RefGlobal = p.GlobalRefs @ settings.RefGlobal |> List.distinctBy (fun r -> r.ToLowerInvariant ())
                     Define = (if List.isEmpty settings.Define then p.Defines else settings.Define) @ p.FrameworkDefines |> List.distinct
                     Doc =
-                        if settings.Doc = File.undefined && p.Doc then File.make (Path.ChangeExtension (outFile.FullName, ".xml"))
+                        if settings.Doc.IsNone && p.Doc then Some (File.make (Path.ChangeExtension (File.getSysFileName outFile, ".xml")))
                         else settings.Doc
                     CommandArgs = p.Args @ settings.CommandArgs }, p
         }

@@ -21,6 +21,9 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Release state
 
+- `Xake.Dotnet` 5.0.0 (unreleased, `feature/xake5`, `docs/features/xake5/`): the port to Xake 5
+  (`XakeVersion` `[5.0.0-preview.2, 6.0)`). Both build scripts stay on `Xake 4.0.0` until
+  `Xake.Dotnet 5.0.0-preview.1` is on nuget.org, then move together (owner, option B).
 - `Xake.Dotnet` 4.4.0 (2026-11-19), squash-merged into `dev` one PR at a time: SDK 11 runner
   images (#17, `docs/features/sdk11/`), declared inputs of generated binaries (#16,
   `lock-inputs`), the `deps.json` version from the lock (#18, `deps-version`), Windows paths in
@@ -51,6 +54,12 @@ The engine's notes are in [Xake's docs/session.md](https://github.com/OlegZee/Xa
 
 ## Build facts
 
+- When the scripts move to Xake 5, the root's `.xake` becomes database 0.7: a checkout switched
+  back to a branch on Xake 4 recreates it (Xake 4 cannot read 0.7; a full rebuild, no failure).
+- `bump-base` (on the `Xake.Dotnet 4.0.0-preview.1` bootstrap) did not re-resolve Xake in the locks
+  (2026-11-19, floor 5.0.0-preview.2); `update-locks -d LOCK_REFRESH=Xake -d NUGET_FETCH=on` did.
+  On a machine without SDK 10.0.403 a lock records its own SDK's compiler: put the `Compiler`
+  lines back and recompute `xake.fingerprints` (`docs/fingerprints.md`).
 - `build.fsx` bootstraps on `Xake 4.0.0`; `build.fsc.fsx` on `Xake 4.0.0` +
   `Xake.Dotnet 4.0.0-preview.1` (published 2026-11-03 to try the package before 4.0.0); moves to
   `Xake.Dotnet 4.0.0` after the release (split step S9).

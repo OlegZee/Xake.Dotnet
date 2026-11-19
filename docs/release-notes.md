@@ -6,6 +6,37 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
+## 5.0.0 (unreleased)
+
+`Xake.Dotnet` 5 runs on the Xake 5 engine: the package depends on `Xake [5.0.0, 6.0)` (the
+previews on `[5.0.0-preview.2, 6.0)`). The major follows the engine; the tasks, the descriptions
+and the hermetic part do what they did in 4.4.0, and the locks they record are unchanged.
+
+### Migrating a script
+
+| A script that ... | changes |
+|---|---|
+| references `Xake.Dotnet` | `#r "nuget: Xake.Dotnet, 5.0.0"`; it brings Xake 5. Xake 5's own breaking changes apply to the script ([Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md), 5.0.0): `File.Name` is the absolute path, rules and `File` compare paths ordinally on every OS, filesets ignore case unless `casesensitive`, `FileDep` / `TargetDep` carry no stamp, one `FileRule (outputs, header, recipe)` case, database 0.7 |
+| uses `csc { out .. }`, `fsc { out ..; doc .. }` | nothing: the operations still take a `File` |
+| writes the settings record: `{ CscSettings with Out = File.make "a.dll" }` | `Out = Some (File.make "a.dll")`; the same for `Out` and `Doc` of `FscSettings` |
+| compares with `File.undefined` | `None`: no `Out` is the rule's target, as before |
+| reads `settings.Out` / `settings.Doc` | they are `File option` |
+| takes rule groups with `getRuleMatch "n"` (obsolete in Xake 5), as the examples in these docs did | `let! m = matched`, then `m["n"]`; the docs' examples now do so |
+
+- **`CscSettingsType.Out`, `FscSettingsType.Out`, `FscSettingsType.Doc`: `File option`** (were `File`, with
+  `File.undefined` for "not given"; Xake 5 removes `File.undefined`).
+- **Paths handed to the tools** (`csc`, `fsc`, `resgen`, `msbuild`, the hermetic compilers) are
+  `File.getSysFileName` (`\` on Windows), as `FullName` gave before: command lines do not change.
+  The deprecated `FullName`, `File.getFullName` and `getTargetFullName` are no longer used by
+  `Xake.Dotnet`; a script that uses them gets Xake 5's FS0044 warning for its own code.
+- **Filesets ignore case on Linux too** (Xake 5): a `src` mask of a `csc`/`fsc` block, or of a
+  description, now also takes files whose names differ from the mask only in case. Windows and
+  macOS do not change.
+- **The log names targets relative to the project root** (Xake 5): `Started out/Release/a.dll`,
+  not the absolute path. A script or CI step that parses the log for the absolute path changes.
+- **Database 0.7.** A project's `.xake` built by Xake 5 cannot be read by Xake 4 (which recreates
+  it, rebuilding everything); a 4.x database is upgraded on the first Xake 5 run.
+
 ## 4.4.0 (2026-11-19)
 
 ### Source order independent of the importing OS

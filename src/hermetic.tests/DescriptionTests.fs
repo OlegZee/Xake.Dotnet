@@ -103,9 +103,8 @@ type ``Project description``() =
         Assert.That(found.Value.Value.Name, Is.EqualTo "B")
         let inputs =
             depends.Value |> List.choose (function
-                | FileDep (f, _) -> Some f.FullName
-                | ArtifactDep (FileTarget f) -> Some f.FullName
-                | ArtifactDep2 (FileTarget f, _) -> Some f.FullName
+                | FileDep f -> Some (File.getSysFileName f)
+                | TargetDep (FileTarget f) -> Some (File.getSysFileName f)
                 | GetFiles _ -> Some "GetFiles"
                 | _ -> None)
         Assert.That(inputs, Is.EqualTo [ Path.GetFullPath (root </> "find" </> "B" </> Description.FileName) ])

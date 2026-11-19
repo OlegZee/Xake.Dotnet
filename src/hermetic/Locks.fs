@@ -398,7 +398,7 @@ module Locks =
                     match files with
                     | [] -> return acc
                     | f :: rest ->
-                        let! d = Description.load f.FullName
+                        let! d = Description.load (File.getSysFileName f)
                         let rec each (fwks: string list) (acc: (string * Description.Package list) list) : Recipe<ExecContext, (string * Description.Package list) list> =
                             recipe {
                                 match fwks with
@@ -698,7 +698,7 @@ module Locks =
             let! options = getCtxOptions ()
             let root = normal (Path.GetFullPath options.ProjectRoot)
             let! target = getTargetFile ()
-            let target = normal target.FullName
+            let target = target.Name
             let! doc = Lock.loadWith extraRoots lockPath
             let entry = entryOfFramework lockPath fwk doc
             // the entry's output: what msbuild named it when recorded, else either extension (a
@@ -880,8 +880,8 @@ module Locks =
     let compile (settings: Settings) (lockPath: string) (fwk: string) : Recipe<ExecContext, unit> =
         recipe {
             let! target = getTargetFile ()
-            if target.FullName.EndsWith (".xml", System.StringComparison.OrdinalIgnoreCase) then
-                failwithf "'%s': Locks.compile builds the assembly; the .xml rule is Locks.doc settings lockPath fwk" (normal target.FullName)
+            if (File.getSysFileName target).EndsWith (".xml", System.StringComparison.OrdinalIgnoreCase) then
+                failwithf "'%s': Locks.compile builds the assembly; the .xml rule is Locks.doc settings lockPath fwk" target.Name
             do! compileAssembly settings lockPath fwk
         }
 
@@ -899,7 +899,7 @@ module Locks =
     let doc (settings: Settings) (lockPath: string) (fwk: string) : Recipe<ExecContext, unit> =
         recipe {
             let! target = getTargetFile ()
-            do! docOf settings.Roots lockPath fwk (normal target.FullName)
+            do! docOf settings.Roots lockPath fwk target.Name
         }
 
     /// <summary>
@@ -966,7 +966,7 @@ module Locks =
             let! options = getCtxOptions ()
             let root = normal (Path.GetFullPath options.ProjectRoot)
             let! target = getTargetFile ()
-            let target = normal target.FullName
+            let target = target.Name
             let! doc = Lock.loadWith settings.Roots lockPath
             let entry = entryOfFramework lockPath fwk doc
             let fileName = Path.GetFileName target
@@ -1047,7 +1047,7 @@ module Locks =
             let! options = getCtxOptions ()
             let! (Filelist files) = getFiles descriptions
             let! loaded =
-                files |> List.map (fun f -> Description.load f.FullName) |> sequence
+                files |> List.map (fun f -> Description.load (File.getSysFileName f)) |> sequence
             let missing =
                 loaded |> List.filter (fun d ->
                     let lockPath = lockOf d.Name cfg
@@ -1169,7 +1169,7 @@ module Locks =
             let! options = getCtxOptions ()
             let full (p: string) = normal (Path.GetFullPath (if Path.IsPathRooted p then p else Path.Combine (options.ProjectRoot, p)))
             let! target = getTargetFile ()
-            let manifest = target.FullName
+            let manifest = File.getSysFileName target
             let what = sprintf "run folder %s/%s/%s" cfg fwk name
             let entryOf (lockPath: string) (doc: Lock.Document) (f: string) =
                 match doc.Entries |> List.filter (fun e -> same e.Framework f) with
@@ -1355,7 +1355,7 @@ module Locks =
         recipe {
             let! options = getCtxOptions ()
             let! (Filelist files) = getFiles descriptions
-            let! loaded = files |> List.map (fun f -> Description.load f.FullName) |> sequence
+            let! loaded = files |> List.map (fun f -> Description.load (File.getSysFileName f)) |> sequence
             let withLock =
                 loaded |> List.filter (fun d ->
                     let p = lockOf d.Name cfg

@@ -1,6 +1,6 @@
 # Brief: xake5 — Xake.Dotnet 5.0.0 on the Xake 5 engine
 
-Status: design, waiting for the owner's approval (2026-11-19). No code yet.
+Status: design approved by the owner (2026-11-19), bootstrap option B.
 
 ## Goal
 
@@ -51,9 +51,10 @@ inside `recipe { }` (no FS0020 left), `ExecContext` construction.
    `Xake.Dotnet 4.0.0-preview.1` until `Xake.Dotnet 5.0.0-preview.1` is on nuget.org, then both
    lines move (a small follow-up PR). Both scripts use the database `.xake` at the repository
    root: Xake 4 cannot read 0.7 and recreates it, so locally alternating the two scripts rebuilds
-   everything once each way in between (CI runs each in a fresh checkout). Proposed: option A,
-   `build.fsx` moves now (it tests the port on the engine it targets); option B, both stay on 4.0.0
-   and move together after the preview publish.
+   everything once each way in between (CI runs each in a fresh checkout). **Decided
+   (owner, 2026-11-19): option B** — both scripts stay on `Xake 4.0.0` in this port and move
+   together in a small follow-up after `Xake.Dotnet 5.0.0-preview.1` is on nuget.org (option A,
+   `build.fsx` alone moving now, was not taken).
 5. **Locks.** `locks/*/Release.json` record the package `Xake` 4.0.0: the hermetic test "the
    repository's projects build from their generated locks" fails until they are re-recorded
    (`build.fsc.fsx -- -- import update-locks -d NUGET_FETCH=on`, with Xake 5 as the compile

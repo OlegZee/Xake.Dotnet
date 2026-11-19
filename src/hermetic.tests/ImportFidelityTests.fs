@@ -136,9 +136,10 @@ type ``Import fidelity``() =
               LockRule.updateLocks [ "Release" ] [ "Fid" ]
               command "build" { do! Locks.needAll (!! "fid/xake.project.json") "Release" lockOf outOf }
               target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                  let! cfg = getRuleMatch "cfg"
-                  let! fwk = getRuleMatch "fwk"
-                  let! name = getRuleMatch "name"
+                  let! m = matched
+                  let cfg = m["cfg"]
+                  let fwk = m["fwk"]
+                  let name = m["name"]
                   do! Locks.compileAs (lockOf "Fid" cfg) fwk [ "**", version ] } ]
             [ "update-locks"; "build" ]
 

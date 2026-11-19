@@ -133,7 +133,7 @@ type ``Project description``() =
             ]
         }
         Assert.That(loaded.Value.Value.Name, Is.EqualTo "Saved")
-        let files = depends.Value |> List.choose (function FileDep (f, _) -> Some f.FullName | _ -> None)
+        let files = depends.Value |> List.choose (function FileDep f -> Some (File.getSysFileName f) | _ -> None)
         Assert.That(files, Is.EqualTo [ Path.GetFullPath (x.TestOptions.ProjectRoot </> "saved" </> Description.FileName) ])
 
     [<Test>]
@@ -158,7 +158,7 @@ type ``Project description``() =
         Assert.That(found.Value.Value.Name, Is.EqualTo "B")
         let inputs =
             depends.Value |> List.choose (function
-                | FileDep (f, _) -> Some f.FullName
+                | FileDep f -> Some (File.getSysFileName f)
                 | GetFiles _ -> Some "GetFiles"
                 | _ -> None)
         Assert.That(inputs, Is.EqualTo [ Path.GetFullPath (root </> "find" </> "B" </> Description.FileName) ])

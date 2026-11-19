@@ -74,7 +74,7 @@ Every operation of `csc {}`:
 
 | Operation | Argument | Effect |
 |---|---|---|
-| `out` | `File` | output file (default: the rule's target) |
+| `out` | `File` | output file (default: the rule's target; the record's `Out` is a `File option`) |
 | `target` | `TargetType` | `/target:`; resolved from the output name when left `Auto` |
 | `platform` | `TargetPlatform` | `/platform:` (default `AnyCpu`) |
 | `targetfwk` | `string` | framework to compile against: `net10.0`, `netstandard2.0`, `net-4.6.2`, ... (default: the `NETFX-TARGET` variable, else the SDK's own .NET framework) |
@@ -230,13 +230,13 @@ referenced implicitly, so this too needs nothing but the SDK, on any OS:
 |---|---|---|
 | `targetfwk` | `string` | target framework (`net10.0`, `netstandard2.0`, `net-4.6.2`, ...); default: `NETFX-TARGET`, else the SDK's own .NET framework |
 | `src` | `Fileset` | sources, in compile order |
-| `out` | `File` | output (default: the rule's target) |
+| `out` | `File` | output (default: the rule's target; the record's `Out` is a `File option`) |
 | `target` | `TargetType` | `Library`, `Exe`, ... (default: from the output's extension) |
 | `ref` / `refif` / `refs` | `Fileset` | add / add when / set references (`-r:`) |
 | `grefs` | `string list` | framework references by file name (`System.dll`, `System.Core.dll`, ...), resolved against the target framework's reference directory and passed as `-r:`; for a .NET target the whole targeting pack is referenced already |
 | `resources` / `resourceslist` | `ResourceFileset` | embedded resources; a `.resx` is compiled to `obj/xake/<name>/*.resources` |
 | `define` | `string list` | conditional compilation symbols, one `--define:` each |
-| `doc` | `File` | xml documentation file |
+| `doc` | `File` | xml documentation file (the record's `Doc` is a `File option`) |
 | `notailcalls` | -- | `--tailcalls-` |
 | `noframework` | -- | kept for compatibility; `--noframework` is always passed now |
 | `fscver` | `string` | compiler version, Windows registry provider only (also `FSCVER`) |

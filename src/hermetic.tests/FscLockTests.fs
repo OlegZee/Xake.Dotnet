@@ -21,7 +21,7 @@ type ``Fsc lock``() =
     inherit XakeTestBase("fsc-lock")
 
     let settings (src: Fileset) (out: string) =
-        { FscSettingsType.Default with Src = src; Out = File.make out; Target = Library }
+        { FscSettingsType.Default with Src = src; Out = Some (File.make out); Target = Library }
 
     let readLock (path: string) =
         Lock.read (Roots.builtin (Directory.GetCurrentDirectory())) path

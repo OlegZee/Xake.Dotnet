@@ -73,9 +73,10 @@ type ``Building from Xake-generated locks``() =
             rules [
                 command "build" { do! Locks.needAll descriptions cfg lockOf outOf }
                 target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                    let! cfg = getRuleMatch "cfg"
-                    let! fwk = getRuleMatch "fwk"
-                    let! name = getRuleMatch "name"
+                    let! m = matched
+                    let cfg = m["cfg"]
+                    let fwk = m["fwk"]
+                    let name = m["name"]
                     do! Locks.compileAs (lockOf name cfg) fwk versions }
             ]
         }
@@ -272,9 +273,10 @@ type ``Building from Xake-generated locks``() =
             want [ goal ]
             rules [
                 target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                    let! cfg = getRuleMatch "cfg"
-                    let! fwk = getRuleMatch "fwk"
-                    let! name = getRuleMatch "name"
+                    let! m = matched
+                    let cfg = m["cfg"]
+                    let fwk = m["fwk"]
+                    let name = m["name"]
                     do! compile (lockOf name cfg) fwk } ]
         }
 
@@ -416,14 +418,16 @@ type ``Building from Xake-generated locks``() =
         fixture ()
         x.Generate "generate-xml" fixtureOf [ "A" ] [ "Release" ] |> ignore
         let compile = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.compileAs (lockOf name cfg) fwk versions }
         let doc = recipe {
-            let! cfg = getRuleMatch "cfg"
-            let! fwk = getRuleMatch "fwk"
-            let! name = getRuleMatch "name"
+            let! m = matched
+            let cfg = m["cfg"]
+            let fwk = m["fwk"]
+            let name = m["name"]
             do! Locks.doc Locks.Settings.Default (lockOf name cfg) fwk }
         let build label (goal: string) =
             xake {x.TestOptions with FileLog = label + ".log"; ThrowOnError = true; ScriptVars = [ "CI", "off" ]; FileLogLevel = Loud} {
@@ -455,9 +459,10 @@ type ``Building from Xake-generated locks``() =
                 want [ goal ]
                 rules [
                     target "out/(cfg:*)/(fwk:*)/(name:*).(ext:*)" {
-                        let! cfg = getRuleMatch "cfg"
-                        let! fwk = getRuleMatch "fwk"
-                        let! name = getRuleMatch "name"
+                        let! m = matched
+                        let cfg = m["cfg"]
+                        let fwk = m["fwk"]
+                        let name = m["name"]
                         do! Locks.compile Locks.Settings.Default (lockOf name cfg) fwk } ]
             }
         let xml = Assert.Throws<XakeException>(fun () -> build "output-xml" "out/Release/netstandard2.0/B.xml")
@@ -534,9 +539,10 @@ type ``Building from Xake-generated locks``() =
         let build label (settings: Locks.Settings) =
             run label (dll "Release" "P")
                 [ target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                    let! cfg = getRuleMatch "cfg"
-                    let! fwk = getRuleMatch "fwk"
-                    let! name = getRuleMatch "name"
+                    let! m = matched
+                    let cfg = m["cfg"]
+                    let fwk = m["fwk"]
+                    let name = m["name"]
                     do! Locks.compile settings (lockOf name cfg) fwk } ]
             System.Text.Encoding.UTF8.GetString (File.ReadAllBytes (root </> dll "Release" "P"))
         let text = build "build" { Locks.Settings.Default with Roots = roots; Versions = [ "$(SiblingRoot)/P/**", defaultVersion; "**", otherVersion ] }
@@ -588,9 +594,10 @@ type ``Building from Xake-generated locks``() =
         let buildRules = [
             command "build" { do! Locks.needAllWith roots (!! ("desc/P/" + Description.FileName)) "Release" lockOf outOf }
             target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                let! cfg = getRuleMatch "cfg"
-                let! fwk = getRuleMatch "fwk"
-                let! name = getRuleMatch "name"
+                let! m = matched
+                let cfg = m["cfg"]
+                let fwk = m["fwk"]
+                let name = m["name"]
                 do! Locks.compileAsWith roots (lockOf name cfg) fwk versions } ]
         run (a </> "root") "generate" "update-locks"
             [ LockRule.lockRuleWith roots lockOf outOf descriptionOf id (ResizeArray ()); LockRule.updateLocks [ "Release" ] [ "P" ] ]
@@ -625,9 +632,10 @@ type ``Building from Xake-generated locks``() =
         let settingsRules = [
             command "build" { do! Locks.needAllWith roots (!! ("desc/P/" + Description.FileName)) "Release" lockOf outOf }
             target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                let! cfg = getRuleMatch "cfg"
-                let! fwk = getRuleMatch "fwk"
-                let! name = getRuleMatch "name"
+                let! m = matched
+                let cfg = m["cfg"]
+                let fwk = m["fwk"]
+                let name = m["name"]
                 do! Locks.compile { Locks.Settings.Default with Roots = roots; Versions = versions } (lockOf name cfg) fwk } ]
         run (b </> "root") "build-b" "build" settingsRules
         let other = b </> "root" </> dll "Release" "P"
@@ -674,9 +682,10 @@ type ``Building from Xake-generated locks``() =
                     LockRule.updateLocks [ "Release" ] [ "B"; "Cs" ]
                     command "build" { do! Locks.needAll (!! "p/*/xake.project.json") "Release" lockOf outOf }
                     target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-                        let! cfg = getRuleMatch "cfg"
-                        let! fwk = getRuleMatch "fwk"
-                        let! name = getRuleMatch "name"
+                        let! m = matched
+                        let cfg = m["cfg"]
+                        let fwk = m["fwk"]
+                        let name = m["name"]
                         do! Locks.compileAs (lockOf name cfg) fwk versions } ]
             }
         let hermetic = [ "HERMETIC", "on"; "NUGET_PACKAGES", Xake.Dotnet.DotNetFwk.nugetRoot (); "CSC_TOOLSET", "4.12.0" ]
@@ -718,8 +727,9 @@ type ``Building from Xake-generated locks``() =
         let e = Assert.Throws<XakeException>(fun () -> x.Script "badfetch" [] (!! "p/B/xake.project.json" + "p/Cs/xake.project.json") "Release")
         let log = File.ReadAllText "badfetch.log"
         Assert.That(log, Does.Contain "fetching the packages of the Release locks at once failed; each compile restores its own")
-        // Cs's own restore fails (after the warning: the second restore of the build)
-        Assert.That(log, Does.Contain ("Started " + Path.GetFullPath (dll "Release" "Cs")))
+        // Cs's own restore fails (after the warning: the second restore of the build); the log
+        // names a target relative to the project root (Xake 5)
+        Assert.That(log, Does.Contain ("Started " + dll "Release" "Cs"))
         Assert.That(e.Data0, Does.Contain "xake.no.such.package 9.9.9")
         Assert.That(File.Exists (dll "Release" "B"), Is.True, "B's packages are there: B builds")
         Assert.That(File.Exists (dll "Release" "Cs"), Is.False)

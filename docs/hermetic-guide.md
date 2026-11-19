@@ -646,9 +646,10 @@ hands `Locks.compile`, and partially applies it:
 let settings = { Locks.Settings.Default with Roots = roots; Versions = versions }
 let compileTarget = Locks.compile settings
 target "out/(cfg:*)/(fwk:*)/(name:*).dll" {
-    let! cfg = getRuleMatch "cfg"
-    let! fwk = getRuleMatch "fwk"
-    let! name = getRuleMatch "name"
+    let! m = matched
+    let cfg = m["cfg"]
+    let fwk = m["fwk"]
+    let name = m["name"]
     do! compileTarget (lockOf name cfg) fwk }
 ```
 

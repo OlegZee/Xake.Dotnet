@@ -384,7 +384,7 @@ module Description =
             let! options = getCtxOptions ()
             let (Filelist files) = descriptions |> Fileset.toFileList options.ProjectRoot
             let matching =
-                files |> List.choose (fun f -> let d = read f.FullName in if d.Name = name then Some (f, d) else None)
+                files |> List.choose (fun f -> let d = read (File.getSysFileName f) in if d.Name = name then Some (f, d) else None)
             match matching with
             | [ f, d ] ->
                 do! needFiles (Filelist [ f ])
@@ -392,10 +392,10 @@ module Description =
             | [] when files.IsEmpty -> return failwithf "no description named '%s': the fileset matches no file" name
             | [] ->
                 return failwithf "no description named '%s' among %s" name
-                                 (files |> List.map (fun f -> f.FullName) |> String.concat ", ")
+                                 (files |> List.map File.getSysFileName |> String.concat ", ")
             | many ->
                 return failwithf "'%s' is described by more than one file: %s" name
-                                 (many |> List.map (fun (f, _) -> f.FullName) |> String.concat ", ")
+                                 (many |> List.map (fun (f, _) -> File.getSysFileName f) |> String.concat ", ")
         }
 
     /// The project names of `descriptions`, in order.

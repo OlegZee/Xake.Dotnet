@@ -329,7 +329,8 @@ module Sign =
     /// called at all; it is kept so that one settings record drives both shapes.
     let rule (settings: Settings) (signer: Signer) : ExecContext Rule =
         settings.Target ..> recipe {
-            let! target = getTargetFullName ()
+            let! targetFile = getTargetFile ()
+            let target = File.getSysFileName targetFile
             let input = settings.Input target
             do! need [ input ]
             let! bytes = signer (request settings input)
@@ -359,7 +360,7 @@ module Sign =
             async {
                 let targetPaths =
                     targets |> List.map (function
-                        | FileTarget file -> File.getFullName file
+                        | FileTarget file -> File.getSysFileName file
                         | PhonyAction name -> failwithf "Sign.executor: '%s' is a phony target; signing produces a file" name)
                 let input = settings.Input (List.head targetPaths)
                 let key = identity settings input
@@ -384,10 +385,13 @@ module Sign =
                     writeTo path bytes
 
                 return
+                    // the engine stamps the run's epoch on a delegated result
                     { Targets = targets
                       Built = DateTime.Now
-                      Depends = [ FileDep (File.make input, File.getLastWriteTime (File.make input)) ]
-                      Steps = [] }
+                      Epoch = 0
+                      Depends = [ FileDep (File.make input) ]
+                      Steps = []
+                      StaticCount = 0 }
             }
 
 /// The state of a `sign {}` block: the settings, plus what turns them into a rule -- the

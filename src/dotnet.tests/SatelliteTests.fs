@@ -239,9 +239,10 @@ type ``satellite task``() =
             rules [
                 "plain/lib.dll" ..> csc { targetfwk "net8.0"; src (!! "plain/A.cs"); resources (resourceset { prefix "lib"; basedir "plain"; includes "Strings.resx" }) }
                 "(set:*)/(fwk:*)/(culture:*)/(asm:*).resources.dll" ..> recipe {
-                    let! set = getRuleMatch "set"
-                    let! fwk = getRuleMatch "fwk"
-                    let! culture = getRuleMatch "culture"
+                    let! m = matched
+                    let set = m["set"]
+                    let fwk = m["fwk"]
+                    let culture = m["culture"]
                     do! make set fwk culture } ]
         }
 
