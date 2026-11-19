@@ -859,6 +859,70 @@ type ``Import record repository settings``() =
         Assert.That(copy.ToArray (), Is.EqualTo blob)
 
 
+/// `Import.record` of a project whose own target makes a binary resource from a menu source and
+/// an image (an add-on's menu compiler, generic): the binary is copied beside the lock, and the
+/// inputs the project declares (`XakeImportInput`, under `XakeImport`) go into `Evaluation.Imports`.
+[<TestFixture>]
+type ``Import record declared inputs``() =
+    inherit XakeTestBase("import-record-inputs")
+
+    let png = Array.append [| 0x89uy; 0x50uy; 0x4Euy; 0x47uy; 0x0Duy; 0x0Auy; 0x1Auy; 0x0Auy; 0uy; 0uy |] (Array.init 64 byte)
+
+    let fixture (declared: string) =
+        RecordKit.write [ "menu"; "out"; "locks"; "obj" ]
+            [ "menu/menu.csproj",
+                RecordKit.sdkProject "<TargetFramework>net8.0</TargetFramework>"
+                    "<PackageReference Include=\"Newtonsoft.Json\" Version=\"13.0.3\" />"
+                |> fun t -> t.Replace ("</Project>", sprintf "  <ItemGroup Condition=\"'$(XakeImport)' == 'true'\"><XakeImportInput Include=\"%s\" /></ItemGroup>\n  <Target Name=\"Menus\" BeforeTargets=\"CoreCompile\">\n    <Copy SourceFiles=\"icon.png\" DestinationFiles=\"$(IntermediateOutputPath)Menus.bin\" />\n    <ItemGroup><_CoreCompileResourceInputs Include=\"$(IntermediateOutputPath)Menus.bin\" LogicalName=\"Menus.bin\" /></ItemGroup>\n  </Target>\n</Project>" declared)
+              "menu/C.cs", "namespace Menu { public class C { } }\n"
+              "menu/menu.src", "menu Main\n  item Open\n" ]
+        File.WriteAllBytes ("menu/icon.png", png)
+
+    let imports () =
+        let doc = Lock.read (Roots.builtin (Directory.GetCurrentDirectory ())) (RecordKit.lockOf "menu" "Release")
+        [ for h in doc.Entries.Head.Evaluation.Imports -> Path.GetFileName h.Path, h.Sha256 ]
+
+    let staleWith (options: ExecOptions) label =
+        let stale = ref []
+        RecordKit.run options label [ label => recipe { let! s = Locks.staleWith [] [ RecordKit.lockOf "menu" "Release" ] in stale.Value <- s } ] [ label ]
+        stale.Value |> List.collect snd
+
+    [<Test>]
+    member x.``a declared input is recorded by its kind; an edited image makes the lock stale``() =
+        // a package's file and a generated one are left out
+        fixture "menu.src;icon.png;$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))newtonsoft.json/13.0.3/newtonsoft.json.nuspec;$(IntermediateOutputPath)Menus.bin"
+        RecordKit.import x.TestOptions "import-inputs" RecordKit.recordDefault [ "menu/menu.csproj" ] |> ignore
+        let recorded = imports ()
+        Assert.That(recorded |> List.map fst, Is.EquivalentTo [ "menu.csproj"; "menu.src"; "icon.png" ])
+        // text by its content with CRLF read as LF, binary by its bytes
+        Assert.That(recorded |> List.find (fst >> (=) "menu.src") |> snd, Is.EqualTo (FileHash.textSha256 (Path.GetFullPath "menu/menu.src")))
+        Assert.That(recorded |> List.find (fst >> (=) "icon.png") |> snd, Is.EqualTo (Csc.sha256 "menu/icon.png"))
+        Assert.That(File.ReadAllBytes "locks/menu/Release.files/net8.0/Menus.bin", Is.EqualTo png)
+        RecordKit.build x.TestOptions "build-inputs-1" "Release"
+        Assert.That(staleWith x.TestOptions "stale-1", Is.Empty)
+        // line ends alone: current
+        File.WriteAllText ("menu/menu.src", "menu Main\r\n  item Open\r\n")
+        Assert.That(staleWith x.TestOptions "stale-2", Is.Empty)
+        // one byte of the image: stale, at build and in check
+        File.WriteAllBytes ("menu/icon.png", Array.append png [| 1uy |])
+        let e = Assert.Catch(fun () -> RecordKit.build x.TestOptions "build-inputs-2" "Release")
+        Assert.That(string e, Does.Contain "/menu/icon.png' changed since the import that wrote it; run the import again")
+        Assert.That(staleWith x.TestOptions "stale-3" |> String.concat "\n", Does.Contain "/menu/icon.png' changed since the import")
+        RecordKit.build { x.TestOptions with ScriptVars = [ "LOCK_STALE", "warn" ] } "build-inputs-3" "Release"
+        Assert.That(File.ReadAllText "build-inputs-3.log", Does.Contain "is stale")
+        // imported again: current, the new image beside the lock
+        RecordKit.import x.TestOptions "import-inputs-2" RecordKit.recordDefault [ "menu/menu.csproj" ] |> ignore
+        Assert.That(staleWith x.TestOptions "stale-4", Is.Empty)
+        Assert.That(File.ReadAllBytes "locks/menu/Release.files/net8.0/Menus.bin", Is.EqualTo (Array.append png [| 1uy |]))
+
+    [<Test>]
+    member x.``a declared input that does not exist fails the import, naming it``() =
+        fixture "menu.src;missing.src"
+        let e = Assert.Catch(fun () -> RecordKit.import x.TestOptions "import-missing" RecordKit.recordDefault [ "menu/menu.csproj" ] |> ignore)
+        Assert.That(string e, Does.Contain "'menu' (Release|net8.0): the declared input (XakeImportInput)")
+        Assert.That(string e, Does.Contain "/menu/missing.src' does not exist")
+
+
 /// `Import.record` of a chain of project references (c -> b -> a): the transitive reference
 /// is a `project:` identity too, and a referenced project outside the import fails it.
 [<TestFixture>]

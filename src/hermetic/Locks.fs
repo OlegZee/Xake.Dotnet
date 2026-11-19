@@ -477,9 +477,10 @@ module Locks =
         else suffix.Split '.' |> Array.tryPick identifier
 
     /// The files an entry's import read (`Evaluation.Imports`: the project file,
-    /// `Directory.Build.props`, an application's `App.config`, ...) that are missing or no
-    /// longer have the hash the lock records. Text: a file whose line ends alone differ (a
-    /// CRLF checkout of an LF-recorded file, or the reverse) is current (`FileHash.textMatches`).
+    /// `Directory.Build.props`, an application's `App.config`, a declared `XakeImportInput`, ...)
+    /// that are missing or no longer have the hash the lock records. Text: a file whose line ends
+    /// alone differ (a CRLF checkout of an LF-recorded file, or the reverse) is current; a binary
+    /// one is recorded by its bytes, which `FileHash.textMatches` accepts too.
     /// Pure (reads the files).
     let staleOf (entry: Lock.Entry) : string list =
         entry.Evaluation.Imports

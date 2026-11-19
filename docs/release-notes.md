@@ -8,6 +8,22 @@ for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
 ## Unreleased
 
+### Declared inputs of generated binaries
+
+A file msbuild generates that is not text (resources a menu compiler made, a `.licenses`) is kept
+beside the lock and used as it is; editing what it was made from did not make the lock stale.
+[hermetic/workflows.md](hermetic/workflows.md#generated-resources-and-their-inputs).
+
+- **`XakeImport=true`**: a global property of every msbuild run of `Import.record`, for a
+  project's own msbuild files to detect the import.
+- **`XakeImportInput`** items: recorded in `Evaluation.Imports` (no format change); an edit fails
+  the build and `Locks.check` with "run the import again". Package and SDK files are left out; a
+  missing declared file fails the import.
+- **Binary inputs by bytes**: a binary file in `Evaluation.Imports` (a declared PNG, a WPF
+  `Resource` image) is hashed by its bytes (`FileHash.inputSha256`), text keeps the line-end
+  neutral hash. Older locks still check current; the next import of a WPF project with images
+  rewrites those hashes once.
+
 ### Fixes
 
 - **SDK 11 parent, another SDK in the child**: a child `dotnet restore`/`dotnet msbuild`

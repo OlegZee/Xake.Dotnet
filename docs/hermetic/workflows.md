@@ -315,6 +315,36 @@ An output that is not built fails the import naming it. The build then compiles 
 project from its lock like any other: the generated sources are in the lock, the
 `g.resources` beside it.
 
+### Generated resources and their inputs
+
+A tool that runs in the build before the compiler (a menu compiler, an icon packer) writes a
+binary file the compiler embeds. The import copies that file beside the lock and the build uses
+it as it is, so the lock must know what it was made from, or an edited input is silently
+ignored. The add-on's msbuild file declares the inputs as `XakeImportInput` items; the import
+records them in `Evaluation.Imports` with their hashes (text by content with CRLF read as LF,
+binary by bytes), and an edit fails the build and `Locks.check` with "run the import again":
+
+```xml
+<!-- the add-on's .targets, or the project's Directory.Build.targets -->
+<ItemGroup Condition="'$(XakeImport)' == 'true'">
+  <XakeImportInput Include="Menus/menu.src;Menus/ids.h;Menus/Images/*.png" />
+</ItemGroup>
+```
+
+`XakeImport` is `true` in every msbuild run of `Import.record` and unset otherwise; the
+condition is optional (outside an import nothing reads the item). Inputs only known when the
+tool's target runs are added there, before `Compile`:
+
+```xml
+<Target Name="CompileMenus" BeforeTargets="CoreCompile" Inputs="@(MenuSource)" Outputs="$(IntermediateOutputPath)Menus.bin">
+  <!-- ... the tool writes Menus.bin and adds it as an EmbeddedResource ... -->
+  <ItemGroup Condition="'$(XakeImport)' == 'true'"><XakeImportInput Include="@(MenuSource);@(MenuImage)" /></ItemGroup>
+</Target>
+```
+
+A declared file from a package or the SDK is left out (pinned by its version); a declared file
+that does not exist fails the import. Run the import again after changing the declaration.
+
 ### `$(SourceRevisionId)`
 
 A project with SourceLink writes the commit sha into generated files. The import replaces it
