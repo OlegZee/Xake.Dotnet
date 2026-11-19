@@ -1,6 +1,6 @@
 # Tracker: legacy-recipe
 
-One line per item. Status as of 2026-11-19: design reported; waiting for the owner's approval.
+One line per item. Status as of 2026-11-19: implemented, local commits; waiting for the owner's review.
 
 ## Done
 
@@ -12,11 +12,11 @@ One line per item. Status as of 2026-11-19: design reported; waiting for the own
 
 ## Open
 
-- [ ] Owner: approve the design (guard checks and message suffix; C's placement)
-- [ ] `docs/legacy-projects.md` (recipe verbatim, how to pass it, staleness, limits, today's failure)
-- [ ] Guard in `Import.fs` `evaluate`
-- [ ] `LegacyProjectTests.fs`: record + build (A–D), no overlay → guard, partial overlay → guard names what is missing, SDK dumps never trip it
-- [ ] Links (`docs/hermetic/README.md`/`index.md`), release notes "Unreleased"
-- [ ] `dotnet fsi build.fsx -- -- build test pack`
-- [ ] Windows acceptance on the VM (`windows/` kit, packed package)
+- [x] Owner: approve the design (guard checks and message suffix; C's placement)
+- [x] `docs/legacy-projects.md` (recipe verbatim, how to pass it, staleness, limits, today's failure)
+- [x] Guard in `Import.fs` `evaluate`
+- [x] `LegacyProjectTests.fs`: record + build (A–D), no overlay → guard, partial overlay → guard names what is missing, SDK dumps never trip it
+- [x] Links (`docs/hermetic/README.md`/`index.md`), release notes "Unreleased"
+- [x] `dotnet fsi build.fsx -- -- build test pack`
+- [x] Windows acceptance on the VM (`windows/` kit, packed package)
 - [ ] Owner: review, push, PR to `dev` (squash)

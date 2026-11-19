@@ -4,9 +4,30 @@ Branch `feature/legacy-recipe` from `dev` at `b82100b` (B-5 #20 included). Task 
 (non-SDK) csproj are not supported natively; an import overlay recipe in the docs
 (`docs/legacy-projects.md`) and a guard that fails such an import clearly. Goal: `brief.md`.
 
-## State at 2026-11-19
+## State at 2026-11-19 (implementation)
 
-Probe and design done; no code. The design report (probe results, the recipe as tested, the guard,
+Owner approved the design (decisions in `brief.md`). Implemented and committed locally, not pushed.
+
+- `docs/legacy-projects.md` (122 lines): the four sections, the overlay as one xml block (the tests
+  and the Windows kit read it from there), how to pass it (an absolute path: msbuild resolves a
+  relative one against its own targets folder), the guard's message, limits.
+- `Import.fs` +24/-2: `legacyGaps` (A, B, D) and five probe properties; the guard right after the
+  outer evaluation in `evaluate` (`record` and `project`).
+- `LegacyProjectTests.fs` (109): the docs' overlay records a legacy library with a package and XAML
+  and the lock builds; an SDK project's lock differs only by the overlay as an input; no overlay ->
+  A, B, D; section A alone -> B, D; `legacyGaps` over dumps.
+- Links (`hermetic/index.md`, `hermetic/lock.md`), release notes "Unreleased".
+- `dotnet fsi build.fsx -- -- build test pack`: green, 537 tests in 8 slices (was 532).
+- Windows acceptance (`windows/`, package `4.4.0-legacy.1`): SDK 10.0.404 and 8.0.428 pass.
+
+## Next step
+
+The owner's review. On their word given in this session: push `feature/legacy-recipe`, PR to
+`dev` (squash). Then Xake.Dotnet 4.4.0 is tagged.
+
+## Probe (2026-11-19, before the design)
+
+The design report (probe results, the recipe as tested, the guard,
 the fixture, the line budget) is in the orchestrator's notes folder:
 `legacy-recipe-design-2026-11-19.md`. Key findings:
 
@@ -24,10 +45,3 @@ the fixture, the line budget) is in the orchestrator's notes folder:
 
 Probe material (session scratchpad, not kept): the probe test was a temporary
 `LegacyProjectTests.fs` over `RecordKit` with `PROBE_DIR`/`PROBE_OVERLAY`; removed from the tree.
-
-## Next step
-
-Wait for the owner's approval of the design (open: the guard's "(missing: …)" suffix and B/D
-checks beyond the brief's TF-only check; C in the same file vs a separate one). Then: docs first
-(`docs/legacy-projects.md`), the guard in `evaluate`, `LegacyProjectTests.fs` (overlay extracted
-from the docs' xml block), release notes, `build test pack`, the Windows acceptance kit on the VM.
