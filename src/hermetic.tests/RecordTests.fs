@@ -9,6 +9,20 @@ open Xake
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet
 
+/// msbuild sorts a glob's files ordinally ignoring case on the OS's spelling: these are the
+/// orders `dotnet msbuild -getItem:Compile` gave on macOS and on Windows (SDK 8.0.427/8.0.428)
+/// for the same files, plus a folder beside a longer file name (`Models/`, `ModelsExt.cs`).
+module SourceOrderProbe =
+    let mac =
+        [ "1n.cs"; "ab.cs"; "Abc.cs"; "Abc/x.cs"; "Abc/Y.cs"; "Alpha.cs"; "a_b.cs"; "a_b/k.cs"; "B.cs"
+          "lower/m.cs"; "Lower2.cs"; "Models/A.cs"; "ModelsExt.cs"; "Zed.cs"; "Zed/a.cs"; "Zed/Inner/q.cs"; "zeta.cs"; "_u.cs" ]
+    let windows =
+        [ "1n.cs"; "ab.cs"; "Abc.cs"; "Abc/x.cs"; "Abc/Y.cs"; "Alpha.cs"; "a_b.cs"; "a_b/k.cs"; "B.cs"
+          "Lower2.cs"; "lower/m.cs"; "ModelsExt.cs"; "Models/A.cs"; "Zed.cs"; "Zed/a.cs"; "Zed/Inner/q.cs"; "zeta.cs"; "_u.cs" ]
+    /// msbuild's sort with `separator`
+    let sortWith (separator: char) (files: string list) =
+        files |> List.sortWith (fun a b -> String.Compare (a.Replace ('/', separator), b.Replace ('/', separator), StringComparison.OrdinalIgnoreCase))
+
 /// The portable names of a recorded entry (`Lock.Identity`), the lock format 2 that writes
 /// them, and the host-string check of `Import.record`. Pure: no msbuild.
 [<TestFixture>]
@@ -301,6 +315,51 @@ type ``Recorded lock identities``() =
             Assert.That(Lock.packMismatches (Some dotnet) pkgs matching, Is.Empty)
         finally
             Directory.Delete (dir, true)
+
+    [<Test>]
+    member x.``sources msbuild globbed on Windows are recorded in the order of macOS``() =
+        let masks = [ "/r/proj/**/*.cs"; "/r/shared/Link.cs"; "!/r/proj/obj/**/*" ]
+        let gen = "/r/proj/obj/xake/App.AssemblyInfo.cs"
+        let isGen = (=) gen
+        // the model: each OS's order is the masks' order on its spelling
+        let inProj = List.map ((+) "/r/proj/")
+        let windowsKey (f: string) = f.Replace ('/', '\\')
+        Assert.That(Lock.canonicalSourcesBy windowsKey masks (inProj SourceOrderProbe.mac), Is.EqualTo (inProj SourceOrderProbe.windows))
+        Assert.That(Lock.canonicalSources masks (inProj SourceOrderProbe.windows), Is.EqualTo (inProj SourceOrderProbe.mac))
+        // msbuild's lists: an explicit Z.cs first (out of the masks' order), the link, the generated file
+        let compiled order = [ "/r/proj/zz/Z.cs" ] @ inProj order @ [ "/r/shared/Link.cs"; gen ]
+        let mac, windows = compiled SourceOrderProbe.mac, compiled SourceOrderProbe.windows
+        Assert.That(Lock.portableSources masks '\\' isGen windows, Is.EqualTo mac)
+        Assert.That(Lock.portableSources masks '/' isGen mac, Is.EqualTo mac)
+        // the identity where msbuild spells with `/`, whatever the list
+        Assert.That(Lock.portableSources masks '/' isGen windows, Is.EqualTo windows)
+        // and so the same `Placed`: the explicit file and the generated one only
+        let placed = Lock.placedSources masks isGen (Lock.portableSources masks '\\' isGen windows)
+        Assert.That(placed, Is.EqualTo (Lock.placedSources masks isGen mac))
+        Assert.That(placed, Is.EqualTo [ "/r/proj/zz/Z.cs", ""; gen, "/r/shared/Link.cs" ])
+        Assert.That((Lock.placedSources masks isGen windows).Length, Is.EqualTo 4)
+
+    [<Test>]
+    member x.``item switch values msbuild globbed on Windows are recorded in the order of macOS``() =
+        let item (o: string) =
+            match o.IndexOf ':' with
+            | -1 -> None
+            | i when o.StartsWith "/resource:" || o.StartsWith "/additionalfile:" -> Some (o.Substring (1, i - 1), o.Substring(i + 1).Split(',').[0])
+            | _ -> None
+        let options (resources: string list) (additional: string list) =
+            [ "/noconfig"; "/debug:portable" ]
+            @ (resources |> List.map (fun r -> sprintf "/resource:/r/p/%s,X.%s" r (r.Replace ('/', '.'))))
+            @ [ "/target:exe"; "/analyzerconfig:/r/p/.editorconfig"; "/analyzerconfig:/r/p/Abc/.editorconfig" ]
+            @ (additional |> List.map (sprintf "/additionalfile:/r/p/%s"))
+            @ [ "/warnaserror+:NU1605" ]
+        let mac = options [ "Data/a.txt"; "Data/Sub/b.txt"; "DataX/c.txt"; "Data_1.txt" ] [ "Data/a.txt"; "Data/Sub/b.txt"; "DataX/c.txt" ]
+        let windows = options [ "DataX/c.txt"; "Data/a.txt"; "Data/Sub/b.txt"; "Data_1.txt" ] [ "DataX/c.txt"; "Data/a.txt"; "Data/Sub/b.txt" ]
+        Assert.That(Lock.portableItemSwitches '\\' item windows, Is.EqualTo mac)
+        Assert.That(Lock.portableItemSwitches '/' item windows, Is.EqualTo windows)
+        Assert.That(Lock.portableItemSwitches '/' item mac, Is.EqualTo mac)
+        // a hand-written block out of the native order keeps it; the other options keep theirs
+        let explicit = options [ "Zeta.txt"; "Alpha.txt" ] []
+        Assert.That(Lock.portableItemSwitches '\\' item explicit, Is.EqualTo explicit)
 
     [<Test>]
     member x.``with masks, a lock writes only the sources the masks do not put in place, and a build puts them back``() =
@@ -1359,6 +1418,42 @@ type ``Record entry``() =
         let (Filelist files) = (Described.filesetOf masks).Value |> Fileset.toFileList (here ())
         Assert.That(files |> List.map (fun f -> f.FullName.Replace ('\\', '/')) |> List.sort,
                     Is.EqualTo [ here () + "/" + proj + "/A.cs"; here () + "/" + proj + "/Sub/B.cs" ])
+
+    /// The same project with msbuild's items in Windows' order (`\\` spelling) and in macOS's
+    /// order records the same entry: sources, `Placed`, and the item switches.
+    [<Test>]
+    member x.``items in Windows' and macOS's globbing order record the same lock``() =
+        setup ()
+        File.WriteAllText ("proj/obj/s/X.exe.licenses", "")
+        for f in SourceOrderProbe.mac do
+            Directory.CreateDirectory (Path.GetDirectoryName (Path.Combine ("proj", f))) |> ignore
+            File.WriteAllText ("proj/" + f, "class C { }\n")
+        // one glob over A.cs, Sub/B.cs and the probe's files, sorted on each OS's spelling
+        let files = [ "A.cs"; "Sub/B.cs" ] @ SourceOrderProbe.mac
+        let dumpOf (separator: char) (data: string list) =
+            let d = dump [] false
+            let args =
+                [ "/noconfig"; "/target:library"; "/out:obj/s/X.dll"; "/resource:obj/s/X.R.resources" ]
+                @ (SourceOrderProbe.sortWith separator data |> List.map (fun r -> sprintf "/resource:%s,X.%s" r (r.Replace ('/', '.'))))
+                @ (SourceOrderProbe.sortWith separator data |> List.map (sprintf "/additionalfile:%s"))
+                @ SourceOrderProbe.sortWith separator files @ [ "obj/s/X.AssemblyInfo.cs" ]
+            { d with Items = d.Items |> Map.add "CscCommandLineArgs" (args |> List.map (fun a -> a, Map.empty)) }
+        let record separator =
+            let d = dumpOf separator [ "Data/a.txt"; "Data/Sub/b.txt"; "DataX/c.txt"; "Data_1.txt" ]
+            let entry, warnings, _ = Import.entryOfWith separator (context [ "**/*.cs"; "!obj/**/*" ]) "Release" "net472" (here () + "/proj/obj/s") (here () + "/b") d
+            Assert.That(warnings, Is.Empty)
+            entry
+        let mac, windows = record '/', record '\\'
+        Assert.That(SourceOrderProbe.sortWith '\\' files, Is.Not.EqualTo (SourceOrderProbe.sortWith '/' files))
+        Assert.That(windows.Compilation.Sources, Is.EqualTo mac.Compilation.Sources)
+        Assert.That(windows.Compilation.Options, Is.EqualTo mac.Compilation.Options)
+        Assert.That(windows, Is.EqualTo mac)
+        let doc entry : Lock.Document = { Configuration = "Release"; Properties = []; Entries = [ entry ] }
+        let roots = [ "$(ProjectRoot)", here () ]
+        Assert.That(Lock.format roots (doc windows), Is.EqualTo (Lock.format roots (doc mac)))
+        // msbuild's own order on macOS is recorded as is
+        Assert.That(mac.Compilation.Sources |> List.filter (fun s -> not (s.Contains "/obj/")),
+                    Is.EqualTo (SourceOrderProbe.sortWith '/' files |> List.map (fun f -> here () + "/proj/" + f)))
 
 
 /// One synthesized restore downloads one version of an id: the fetch of a recorded lock set

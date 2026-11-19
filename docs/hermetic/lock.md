@@ -211,6 +211,18 @@ condition the masks do not know, the two can drift; the import checks them only 
      masks name exactly these files, the masks go into `Recorded.Masks` (else a warning, and
      `Sources` keeps msbuild's whole list). With masks, the lock writes in `Sources` only the
      files the masks do not put in place, and `Recorded.Placed` says where each goes (below).
+   - The order does not depend on the importing OS. msbuild sorts each glob's files ordinally
+     ignoring case on the path as the OS spells it, so `\` (Windows, after every letter) and `/`
+     (before digits and letters) give other orders: `Models/A.cs` before `ModelsExt.cs` on macOS,
+     after it on Windows. The lock keeps the `/` order (`Lock.portableSources`: the sources the
+     masks order are put in it, generated and explicit ones keep their places), and the same for
+     the values of the item switches `/resource:`, `/linkresource:`, `/additionalfile:`
+     (`Lock.portableItemSwitches`: each run already in the OS's order is sorted; a hand-written
+     run that happens to be in Windows order is sorted too). The other `Options` keep msbuild's
+     order, which is the same on every OS. An import on macOS or Linux records msbuild's order
+     as is; on Windows a build from the lock differs from that machine's `dotnet build` for a
+     project whose names sort differently with `\` (the order goes into the assembly's metadata):
+     the plain SDK build gives other bytes per OS there, the lock picks one.
    - A project reference is the referenced project's output in the build's layout
      (`OutOf cfg <NearestTargetFramework> <name>`), in `Recorded.Projects`. The referenced
      project is one this import records or one an earlier import recorded (its lock exists).
