@@ -6,11 +6,15 @@ was the package `Xake.Hermetic.Dotnet` (up to 0.10.0), is in
 [Xake's release notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md) and,
 for the hermetic part, in [docs/hermetic/README.md](hermetic/README.md).
 
-## 5.0.0 (unreleased)
+## 5.0.0 (2026-11-21)
 
-`Xake.Dotnet` 5 runs on the Xake 5 engine: the package depends on `Xake [5.0.0, 6.0)` (the
-previews on `[5.0.0-preview.2, 6.0)`). The major follows the engine; the tasks, the descriptions
-and the hermetic part do what they did in 4.4.0, and the locks they record are unchanged.
+`Xake.Dotnet` 5 runs on the Xake 5 engine: the package depends on `Xake [5.0.0, 6.0)`, the
+released Xake 5.0.0 (`5.0.0-preview.1` was on `[5.0.0-preview.2, 6.0)`). The major follows the
+engine; the tasks, the descriptions and the hermetic part do what they did in 4.4.0, and the
+locks they record are unchanged. What the engine itself changed (`File option` settings,
+`File.getSysFileName` in place of `FullName`, database 0.7, the content cut-off, the critical-path
+schedule) is in [Xake's 5.0.0 notes](https://github.com/OlegZee/Xake/blob/master/docs/release-notes.md).
+This repository's own build scripts (`build.fsx`, `build.fsc.fsx`, the samples) run on Xake 5.0.0.
 
 ### Migrating a script
 

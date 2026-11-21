@@ -4,16 +4,16 @@ One line per item. Status as of 2026-11-19: implemented, not pushed.
 
 ## Open
 
-- [ ] Report to the owner; push and PR `feature/xake5` -> `dev` (squash) on the owner's word in this session
+- [x] PR #24 squash-merged into `dev` (`96f36de`); published as `5.0.0-preview.1`
 - [ ] Windows VM check of the hermetic tests: not needed by the port's changes (tool paths are `getSysFileName`, equal to the old `FullName`); run it if the owner wants it before the preview
-- [ ] Release follow-up (owner tags `v5.0.0-preview.1`): both scripts' `#r` to `Xake 5.0.0-preview.2` + `Xake.Dotnet 5.0.0-preview.1`; at 5.0.0 the floor to `[5.0.0, 6.0)`, and the getting-started `#r "nuget: Xake.Dotnet, 4.x"` lines and `[4.0.0, 5.0)` ranges (readme, hermetic-guide, hermetic/README, tasks, lock, workflows) to 5.0.0
+- [x] Release follow-up: done in `feature/scripts-xake5` (`docs/features/scripts-xake5/`), 2026-11-21
 
 ## Later (out of scope, proposals for the owner)
 
 - [ ] csc/fsc rules: `also` for the `.pdb` / `.xml` side outputs (Xake 5 checks every output is written)
 - [ ] Hermetic rules: header `needs` for the lock and description inputs (built before the body, content cut-off)
 - [ ] `requires` instead of `withResource`/`CSC_JOBS` inside the compile recipes (WaitTime accounted by the engine)
-- [ ] `bump-base` did not re-resolve Xake in the locks on the 4.0.0-preview.1 bootstrap (its `LOCK_REFRESH` environment variable); check after the scripts move
+- [x] `bump-base` re-resolve: checked after the scripts moved, still not; moved to `scripts-xake5` "Later"
 
 ## Done
 

@@ -61,7 +61,7 @@ One recipe holds the settings, so the build, the update and the check use the sa
 **(run)**:
 
 ```fsharp
-#r "nuget: Xake.Dotnet, 4.0.0"   // brings Xake
+#r "nuget: Xake.Dotnet, 5.0.0"   // brings Xake
 open Xake
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet

@@ -18,7 +18,7 @@ project description (`Xake.Dotnet.Description`) and `csc { project }` / `fsc { p
 both:
 
 ```fsharp
-#r "nuget: Xake.Dotnet, 4.0.0"   // brings Xake
+#r "nuget: Xake.Dotnet, 5.0.0"   // brings Xake
 
 open Xake
 open Xake.Dotnet

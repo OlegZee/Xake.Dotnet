@@ -22,18 +22,18 @@ loaded with `#r` on the dll files instead of the NuGet package.
 ## 1. Install
 
 The hermetic library is the assembly `Xake.Hermetic.Dotnet` in the `Xake.Dotnet` package, which
-depends on `Xake` `[4.0.0, 5.0)`. Reference the package from your build script and open three
+depends on `Xake` `[5.0.0, 6.0)`. Reference the package from your build script and open three
 namespaces:
 
 ```fsharp
-#r "nuget: Xake.Dotnet, 4.0.0"   // brings Xake
+#r "nuget: Xake.Dotnet, 5.0.0"   // brings Xake
 
 open Xake
 open Xake.Dotnet
 open Xake.Hermetic.Dotnet
 ```
 
-Add `#r "nuget: Xake, 4.0.0"` if you want to pin the engine too. Until 4.0 the library was the
+Add `#r "nuget: Xake, 5.0.0"` if you want to pin the engine too. Until 4.0 the library was the
 separate package `Xake.Hermetic.Dotnet` (up to 0.10.0); the migration is in
 [release-notes.md](release-notes.md#migration).
 
