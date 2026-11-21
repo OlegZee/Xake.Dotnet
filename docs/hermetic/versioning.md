@@ -6,7 +6,7 @@ token; the script supplies the suffix per build. This page is the how-to; the re
 [lock.md](lock.md#building-from-xake-generated-locks) ("A recorded version token").
 
 ```fsharp
-#r "nuget: Xake.Dotnet, 4.2.0"   // brings Xake; VersionSuffixes is new in 4.2
+#r "nuget: Xake.Dotnet, 5.0.0"   // brings Xake; VersionSuffixes is new in 4.2
 
 open Xake
 open Xake.Dotnet

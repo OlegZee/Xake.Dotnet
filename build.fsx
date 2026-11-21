@@ -1,4 +1,4 @@
-#r "nuget: Xake, 4.0.0"
+#r "nuget: Xake, 5.0.0"
 #load "testjobs.fsx"
 
 // Builds the one package of this repository, `Xake.Dotnet`: the assemblies Xake.Dotnet
@@ -132,7 +132,8 @@ do xakeScript {
         }
 
         Package.Rule <| fun ver -> recipe {
-            let! nupkg = getTargetFullName()
+            let! target = getTargetFile()
+            let nupkg = File.getSysFileName target
             do! dotnet [
                 "pack"; "src/dotnet"
                 "-c"; "Release"

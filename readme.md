@@ -6,10 +6,10 @@ utility that uses the full power of F#.
 [![Build and Test](https://github.com/OlegZee/Xake.Dotnet/actions/workflows/build.yml/badge.svg)](https://github.com/OlegZee/Xake.Dotnet/actions/workflows/build.yml)
 
 **From Xake 4.0 the .NET tasks are a package of their own.** A script that compiles with `csc`
-or `fsc` adds one line; it brings the engine (`Xake [4.0.0, 5.0)`) too:
+or `fsc` adds one line; it brings the engine (`Xake [5.0.0, 6.0)`) too:
 
 ```fsharp
-#r "nuget: Xake.Dotnet, 4.0.0"
+#r "nuget: Xake.Dotnet, 5.0.0"
 
 open Xake
 open Xake.Dotnet
